@@ -1,0 +1,203 @@
+{
+  "schema_version": 3,
+  "seed_name": "deregistration_templates",
+  "templates": [
+    {
+      "key": "STANDESAMT",
+      "recipientType": "STANDESAMT",
+      "name": "Standesamtliche Anzeige",
+      "contactCategory": "Standesämter",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Sterbefallanzeige {{case.number}} – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nwir zeigen den Sterbefall {{case.last_name}}, {{case.first_name}}, Fall {{case.number}}, an. Bitte prüfen Sie die beigefügten Unterlagen.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 10,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 7,
+      "documentTemplateKey": "STERBEFALLANZEIGE_STANDESAMT"
+    },
+    {
+      "key": "GKV_PFLEGEKASSE",
+      "recipientType": "KRANKENKASSE_PFLEGEKASSE",
+      "name": "Krankenkasse / Pflegekasse",
+      "contactCategory": "GKV",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Abmeldung wegen Sterbefall – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nhiermit melden wir {{case.first_name}} {{case.last_name}}, verstorben am {{case.date_of_death}}, ab. Bitte bestätigen Sie die Bearbeitung.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 20,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 14,
+      "documentTemplateKey": ""
+    },
+    {
+      "key": "RENTENSERVICE",
+      "recipientType": "RENTENVERSICHERUNG",
+      "name": "Rentenservice / Rentenversicherung",
+      "contactCategory": "Rentenversicherungsträger",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Rentenabmeldung {{case.number}} – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nwir melden den Tod von {{case.first_name}} {{case.last_name}}, Postrentennummer {{case.pension_number}}, am {{case.date_of_death}}.\n\nVorschussantrag für Witwe/Witwer: {{advance.application}}.\n\nMit freundlichen Grüßen",
+      "formType": "PENSION_SERVICE",
+      "active": true,
+      "sortOrder": 30,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel",
+        "case.pension_number"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 14,
+      "documentTemplateKey": "RENTENSERVICE_AENDERUNGSFORMULAR"
+    },
+    {
+      "key": "FRIEDHOF",
+      "recipientType": "FRIEDHOF",
+      "name": "Friedhof / Friedhofsverwaltung",
+      "contactCategory": "Friedhöfe",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL",
+        "TELEFON"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Mitteilung zum Sterbefall {{case.number}}",
+      "bodyTemplate": "Guten Tag,\n\nbitte bearbeiten Sie die Mitteilung zum Sterbefall {{case.first_name}} {{case.last_name}}, Fall {{case.number}}.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 40,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 7,
+      "documentTemplateKey": ""
+    },
+    {
+      "key": "VERSICHERUNG",
+      "recipientType": "VERSICHERUNG",
+      "name": "Versicherung",
+      "contactCategory": "Versicherungen",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Abmeldung wegen Sterbefall – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nhiermit teilen wir den Tod von {{case.first_name}} {{case.last_name}} am {{case.date_of_death}} mit. Bitte bestätigen Sie Vertragsbeendigung beziehungsweise weitere erforderliche Schritte.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 50,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 14,
+      "documentTemplateKey": ""
+    },
+    {
+      "key": "RUNDFUNKBEITRAG",
+      "recipientType": "RUNDFUNKBEITRAG",
+      "name": "Rundfunkbeitrag / Beitragsservice",
+      "contactCategory": "Behörden und öffentliche Stellen",
+      "deliveryChannels": ["POST", "PORTAL"],
+      "defaultChannel": "PORTAL",
+      "subjectTemplate": "Abmeldung Rundfunkbeitrag – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nhiermit teilen wir den Tod von {{case.first_name}} {{case.last_name}} am {{case.date_of_death}} mit. Beitragsnummer: {{case.broadcast_contribution_number}}.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD", "active": true, "sortOrder": 60,
+      "requiredFields": ["case.first_name", "case.last_name", "case.date_of_death", "case.broadcast_contribution_number", "contact", "delivery_channel"],
+      "allowedStatuses": ["ENTWURF", "VORBEREITET", "VERSENDET", "BESTAETIGT", "ERLEDIGT"],
+      "followUpDays": 14,
+      "documentTemplateKey": "RUNDFUNKBEITRAG_ABMELDUNG"
+    },
+    {
+      "key": "VERTRAGSPARTNER_STANDARD",
+      "recipientType": "VERTRAGSPARTNER",
+      "name": "Sonstiger Vertragspartner",
+      "contactCategory": "Sonstige Kontakte",
+      "deliveryChannels": ["EMAIL", "POST", "PORTAL"],
+      "defaultChannel": "",
+      "subjectTemplate": "Vertragsmitteilung im Sterbefall – {{case.last_name}}, {{case.first_name}}",
+      "bodyTemplate": "Guten Tag,\n\nhiermit teilen wir den Tod von {{case.first_name}} {{case.last_name}} am {{case.date_of_death}} mit. Vertragsreferenz: {{case.contract_reference}}.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD", "active": true, "sortOrder": 70,
+      "requiredFields": ["case.first_name", "case.last_name", "case.date_of_death", "contact", "delivery_channel"],
+      "allowedStatuses": ["ENTWURF", "VORBEREITET", "VERSENDET", "BESTAETIGT", "ERLEDIGT"],
+      "followUpDays": 14,
+      "documentTemplateKey": "VERTRAGSABMELDUNG_STANDARD"
+    }
+  ]
+}

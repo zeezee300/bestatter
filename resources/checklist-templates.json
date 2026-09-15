@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "seed_name": "checklist_templates",
+  "description": "Auslieferungsstand der Aufgaben-Checklisten. Wird nur beim ersten Aufbau einer leeren Checklisten-Tabelle importiert.",
+  "templates": [
+    {
+      "key": "STERBEFALL_STANDARD",
+      "name": "Sterbefall – Grundcheckliste",
+      "case_type": "STERBEFALL",
+      "description": "Kernaufgaben nach Anlage eines Sterbefalls.",
+      "active": true,
+      "sort_order": 1,
+      "items": [
+        {
+          "title": "Todesbescheinigung prüfen",
+          "description": "Vollständigkeit und Freigaben prüfen.",
+          "due_offset_days": 0,
+          "priority": "KRITISCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 1
+        },
+        {
+          "title": "Überführung koordinieren",
+          "description": "Abholung, Fahrzeug und Zielort abstimmen.",
+          "due_offset_days": 0,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 2
+        },
+        {
+          "title": "Angehörige und Auftraggeber erfassen",
+          "description": "Vertretung, Kontaktdaten und Berechtigung sichern.",
+          "due_offset_days": 0,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 3
+        },
+        {
+          "title": "Standesamtliche Anzeige vorbereiten",
+          "description": "Unterlagen und Frist prüfen.",
+          "due_offset_days": 1,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 4
+        },
+        {
+          "title": "Bestattungsart und Termin abstimmen",
+          "description": "Abstimmung mit Angehörigen und Beteiligten.",
+          "due_offset_days": 1,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 5
+        },
+        {
+          "title": "Friedhof oder Krematorium beauftragen",
+          "description": "Auftrag und Termin absichern.",
+          "due_offset_days": 2,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 6
+        },
+        {
+          "title": "Trauerdruck und Anzeige abstimmen",
+          "description": "Entwurf, Freigabe und Veröffentlichung planen.",
+          "due_offset_days": 2,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 7
+        },
+        {
+          "title": "Leistungen und Fremdkosten prüfen",
+          "description": "KVA, Auslagen und Abrechnung vorbereiten.",
+          "due_offset_days": 3,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 8
+        }
+      ]
+    },
+    {
+      "key": "FEUERBESTATTUNG",
+      "name": "Feuerbestattung – Ergänzung",
+      "case_type": "STERBEFALL",
+      "description": "Zusatzaufgaben bei einer Feuerbestattung.",
+      "active": true,
+      "sort_order": 2,
+      "items": [
+        {
+          "title": "Einwilligung zur Feuerbestattung prüfen",
+          "description": "Verfügung oder Berechtigung dokumentieren.",
+          "due_offset_days": 0,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 1
+        },
+        {
+          "title": "Krematoriumstermin bestätigen",
+          "description": "Anlieferung und Unterlagen abstimmen.",
+          "due_offset_days": 1,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 2
+        },
+        {
+          "title": "Urnenbeisetzung disponieren",
+          "description": "Termin, Ort und Beteiligte festlegen.",
+          "due_offset_days": 2,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 3
+        }
+      ]
+    },
+    {
+      "key": "ERDBESTATTUNG",
+      "name": "Erdbestattung – Ergänzung",
+      "case_type": "STERBEFALL",
+      "description": "Zusatzaufgaben bei einer Erdbestattung.",
+      "active": true,
+      "sort_order": 3,
+      "items": [
+        {
+          "title": "Grabstelle und Graböffnung beauftragen",
+          "description": "Friedhofsverwaltung und Grabart abstimmen.",
+          "due_offset_days": 1,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 1
+        },
+        {
+          "title": "Sargträger und Fahrzeug disponieren",
+          "description": "Personal und Logistik planen.",
+          "due_offset_days": 1,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 2
+        }
+      ]
+    },
+    {
+      "key": "ERSTBESTATTUNG",
+      "name": "Erstbestattung",
+      "case_type": "STERBEFALL",
+      "description": "Ergänzende Aufgaben für eine erstmalige Bestattung.",
+      "active": true,
+      "sort_order": 4,
+      "items": [
+        {
+          "title": "Bestattungsauftrag und Angehörige bestätigen",
+          "description": "Auftrag, Ansprechpartner und Berechtigung prüfen.",
+          "due_offset_days": 0,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 1
+        },
+        {
+          "title": "Friedhof und Bestattungstermin abstimmen",
+          "description": "Grabstelle, Termin und Beteiligte koordinieren.",
+          "due_offset_days": 1,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 2
+        },
+        {
+          "title": "Erste Unterlagen und Aufgabenmappe vervollständigen",
+          "description": "Stammdaten, Behördenunterlagen und Folgeaufgaben prüfen.",
+          "due_offset_days": 2,
+          "priority": "NORMAL",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 3
+        }
+      ]
+    },
+    {
+      "key": "ABMELDUNGEN",
+      "name": "Abmeldungen",
+      "case_type": "STERBEFALL",
+      "description": "Empfänger prüfen, Übertragungswege auswählen und Entwürfe vorbereiten.",
+      "active": true,
+      "sort_order": 5,
+      "items": [
+        {
+          "title": "Abmeldungen vorbereiten",
+          "description": "Krankenkasse, Rentenservice und weitere beauftragte Empfänger prüfen.",
+          "due_offset_days": 2,
+          "priority": "HOCH",
+          "default_assigned_to": "",
+          "required": true,
+          "active": true,
+          "sort_order": 1
+        }
+      ]
+    }
+  ]
+}

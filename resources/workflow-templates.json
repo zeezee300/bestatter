@@ -1,0 +1,266 @@
+{
+  "schema_version": 4,
+  "schedulePresets": [
+    { "key": "BERATUNGSGESPRAECH", "label": "Beratungsgespräch", "title": "Beratungsgespräch", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Beratungsgespräch", "durationMinutes": 90, "priority": "NORMAL" },
+    { "key": "UEBERFUEHRUNG", "label": "Überführung", "title": "Überführung", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Überführung", "durationMinutes": 60, "priority": "HOCH" },
+    { "key": "AUFBAHRUNG", "label": "Aufbahrung", "title": "Aufbahrung", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Aufbahrung", "durationMinutes": 60, "priority": "NORMAL" },
+    { "key": "TRAUERFEIER_1", "label": "1. Trauerfeier", "title": "1. Trauerfeier", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "1. Trauerfeier", "durationMinutes": 90, "priority": "HOCH" },
+    { "key": "TRAUERFEIER_2", "label": "2. Trauerfeier", "title": "2. Trauerfeier", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "2. Trauerfeier", "durationMinutes": 90, "priority": "HOCH" },
+    { "key": "BEISETZUNG", "label": "Beisetzung", "title": "Beisetzung", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Beisetzung", "durationMinutes": 90, "priority": "HOCH" },
+    { "key": "ABSCHIEDNAHME", "label": "Abschiednahme", "title": "Abschiednahme", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Abschiednahme", "durationMinutes": 60, "priority": "NORMAL" },
+    { "key": "BEHOERDENTERMIN", "label": "Behördentermin", "title": "Behördentermin", "scheduleKind": "EXTERNAL_APPOINTMENT", "appointmentCategory": "Behördentermin", "durationMinutes": 60, "priority": "NORMAL" },
+    { "key": "INTERNE_TAETIGKEIT", "label": "Interne Tätigkeit", "title": "Interne Tätigkeit", "scheduleKind": "INTERNAL_ACTIVITY", "appointmentCategory": "", "durationMinutes": 60, "priority": "NORMAL" }
+  ],
+  "workflows": [
+    {
+      "key": "BESTATTUNGSART_TERMIN",
+      "name": "Bestattungsart und Termin weiterbearbeiten",
+      "description": "Bietet aus der Abstimmungsaufgabe direkt den Bestattungstermin und die anschließende Beauftragung an.",
+      "taskTitlePattern": "Bestattungsart und Termin abstimmen",
+      "checklistKey": "STERBEFALL_STANDARD",
+      "requiredStatus": "ANY",
+      "active": true,
+      "sortOrder": 10,
+      "actions": [
+        {
+          "key": "BESTATTUNGSTERMIN",
+          "type": "SCHEDULE",
+          "label": "Bestattungstermin anlegen",
+          "title": "Bestattungstermin {{case.number}}",
+          "description": "Folgetermin aus der Aufgabe {{source.title}}",
+          "dueOffsetDays": 3,
+          "priority": "NORMAL",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "caseStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "FRIEDHOF_BEAUFTRAGEN",
+          "type": "TASK",
+          "label": "Beauftragung als Folgeaufgabe",
+          "title": "Friedhof oder Krematorium beauftragen",
+          "description": "Folgeaufgabe zu {{source.title}}",
+          "dueOffsetDays": 1,
+          "priority": "HOCH",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        }
+      ]
+    },
+    {
+      "key": "AUFTRAG_DOKUMENTE",
+      "name": "Auftragsdokumente erzeugen",
+      "description": "Erzeugt Bestattungsauftrag beziehungsweise KVA und Bestattungsvollmacht aus der bestätigenden Aufgabe.",
+      "taskTitlePattern": "Bestattungsauftrag und Angehörige bestätigen",
+      "checklistKey": "ERSTBESTATTUNG",
+      "requiredStatus": "ANY",
+      "active": true,
+      "sortOrder": 20,
+      "actions": [
+        {
+          "key": "BESTATTUNGSAUFTRAG",
+          "type": "DOCUMENT",
+          "label": "Bestattungsauftrag / KVA erzeugen",
+          "templateKey": "BESTATTUNGSAUFTRAG",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "BESTATTUNGSVOLLMACHT",
+          "type": "DOCUMENT",
+          "label": "Bestattungsvollmacht erzeugen",
+          "templateKey": "BESTATTUNGSVOLLMACHT",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "UNTERSCHRIFT_PRUEFEN",
+          "type": "TASK",
+          "label": "Unterschrift als Folgeaufgabe prüfen",
+          "title": "Unterschriebene Auftragsdokumente prüfen",
+          "description": "Bestattungsauftrag und Vollmacht auf Vollständigkeit und Unterschrift prüfen.",
+          "dueOffsetDays": 1,
+          "priority": "HOCH",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        }
+      ]
+    },
+    {
+      "key": "STANDESAMT_ANZEIGE",
+      "name": "Standesamtliche Anzeige vorbereiten",
+      "description": "Erzeugt den bearbeitbaren Arbeitsentwurf, bereitet die Kommunikation vor und dokumentiert die weitere Bearbeitung ohne automatischen Versand.",
+      "taskTitlePattern": "Standesamtliche Anzeige vorbereiten",
+      "checklistKey": "STERBEFALL_STANDARD",
+      "requiredStatus": "ANY",
+      "active": true,
+      "sortOrder": 15,
+      "actions": [
+        {
+          "key": "STERBEFALLANZEIGE_ERZEUGEN",
+          "type": "DOCUMENT",
+          "label": "Sterbefallanzeige erzeugen",
+          "templateKey": "STERBEFALLANZEIGE_STANDESAMT",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "caseStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "STANDESAMT_EMAIL_ENTWURF",
+          "type": "EMAIL_DRAFT",
+          "label": "E-Mail-Entwurf an Standesamt",
+          "title": "Sterbefallanzeige {{case.number}} – {{case.last_name}}, {{case.first_name}}",
+          "description": "Guten Tag,\n\nanbei erhalten Sie die vorbereitete Sterbefallanzeige zum Fall {{case.number}}. Fehlende Angaben und Anlagen sind vor einem späteren Versand zu prüfen.\n\nMit freundlichen Grüßen",
+          "recipientCategory": "Standesämter",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": true
+        },
+        {
+          "key": "STANDESAMT_KONTAKT",
+          "type": "CONTACT_ACTIVITY",
+          "label": "Kontakt mit Standesamt dokumentieren",
+          "title": "Kontakt mit dem Standesamt",
+          "description": "Rücksprache zur standesamtlichen Anzeige für Fall {{case.number}}.",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": true
+        },
+        {
+          "key": "STANDESAMT_WIEDERVORLAGE",
+          "type": "REMINDER",
+          "label": "Wiedervorlage in 3 Tagen",
+          "title": "Rückmeldung des Standesamts prüfen",
+          "description": "Wiedervorlage zur standesamtlichen Anzeige im Fall {{case.number}}.",
+          "dueOffsetDays": 3,
+          "priority": "NORMAL",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": true
+        },
+        {
+          "key": "STANDESAMT_AUFGABE_ERLEDIGEN",
+          "type": "CASE_STATUS",
+          "label": "Bearbeitung bestätigen",
+          "caseStatusAfter": "IN_BEARBEITUNG",
+          "sourceStatusAfter": "ERLEDIGT",
+          "repeatable": false
+        }
+      ]
+    },
+    {
+      "key": "ABMELDUNGEN_VORBEREITEN",
+      "name": "Abmeldungen vorbereiten",
+      "description": "Erzeugt kontrollierte Folgeaufgaben für Krankenkasse und Rentenservice und eine Wiedervorlage.",
+      "taskTitlePattern": "Abmeldungen vorbereiten",
+      "checklistKey": "ABMELDUNGEN",
+      "requiredStatus": "ANY",
+      "active": true,
+      "sortOrder": 30,
+      "actions": [
+        {
+          "key": "RENTENSERVICE_FORMULAR",
+          "type": "DOCUMENT",
+          "label": "Rentenservice-Formular erzeugen",
+          "templateKey": "RENTENSERVICE_AENDERUNGSFORMULAR",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "GKV_ABMELDUNG",
+          "type": "TASK",
+          "label": "GKV-Abmeldung bearbeiten",
+          "title": "Krankenkasse / Pflegekasse abmelden",
+          "description": "Empfänger und verfügbare Übertragungswege im Reiter Abmeldungen prüfen.",
+          "dueOffsetDays": 0,
+          "priority": "HOCH",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "RENTENSERVICE_ABMELDUNG",
+          "type": "TASK",
+          "label": "Rentenservice bearbeiten",
+          "title": "Rentenservice abmelden und Vorschuss prüfen",
+          "description": "Separates Rentenservice-Formular verwenden und Vorschussantrag für Witwe/Witwer prüfen.",
+          "dueOffsetDays": 0,
+          "priority": "HOCH",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        },
+        {
+          "key": "ABMELDUNG_WIEDERVORLAGE",
+          "type": "REMINDER",
+          "label": "Rückmeldungen nachhalten",
+          "title": "Rückmeldungen zu Abmeldungen prüfen",
+          "description": "Bearbeitungsbestätigungen und fehlende Unterlagen im Fall {{case.number}} prüfen.",
+          "dueOffsetDays": 7,
+          "priority": "NORMAL",
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": true
+        }
+      ]
+    },
+    {
+      "key": "TRAUERFEIER_VORBEREITEN",
+      "name": "Bestätigte Trauerfeier vorbereiten",
+      "description": "Startet einmalig die terminbezogenen Vorbereitungsaufgaben, sobald eine erste oder zweite Trauerfeier bestätigt wird.",
+      "triggerType": "SCHEDULE",
+      "triggerEvent": "CONFIRMED",
+      "triggerConfig": { "schedulePresetKeys": ["TRAUERFEIER_1", "TRAUERFEIER_2"] },
+      "requiredStatus": "BESTAETIGT",
+      "active": true,
+      "sortOrder": 40,
+      "actions": [
+        {
+          "key": "KONDOLENZLISTEN_VORBEREITEN",
+          "type": "TASK",
+          "label": "Kondolenzlisten vorbereiten",
+          "title": "Kondolenzlisten erstellen",
+          "description": "Deckblatt und Kondolenzliste für {{source.title}} vorbereiten. Datum, Uhrzeit und Ort werden aus dem verknüpften Termin übernommen.",
+          "dueOffsetDays": -3,
+          "priority": "HOCH",
+          "repeatable": false
+        },
+        {
+          "key": "ABLAUF_TRAUERFEIER_PRUEFEN",
+          "type": "TASK",
+          "label": "Ablauf prüfen",
+          "title": "Ablauf der Trauerfeier prüfen",
+          "description": "Ablauf, Beteiligte und Ort für {{source.title}} abschließend prüfen.",
+          "dueOffsetDays": -2,
+          "priority": "HOCH",
+          "repeatable": false
+        },
+        {
+          "key": "TRAUERFEIER_VORBEREITUNG_PRUEFEN",
+          "type": "TASK",
+          "label": "Vorbereitung vor Ort prüfen",
+          "title": "Vorbereitung der Trauerfeier vor Ort prüfen",
+          "description": "Ausstattung, Unterlagen und Zuständigkeiten am Ort der Trauerfeier prüfen.",
+          "dueOffsetDays": -1,
+          "priority": "NORMAL",
+          "repeatable": false
+        }
+      ]
+    },
+    {
+      "key": "KONDOLENZLISTEN_ERSTELLEN",
+      "name": "Kondolenzlisten als Dokumentpaket erzeugen",
+      "description": "Erzeugt Deckblatt und eigentliche Kondolenzliste gemeinsam aus dem mit der Aufgabe verknüpften Trauerfeier-Termin.",
+      "triggerType": "TASK",
+      "triggerEvent": "MANUAL",
+      "taskTitlePattern": "Kondolenzlisten erstellen",
+      "requiredStatus": "ANY",
+      "active": true,
+      "sortOrder": 41,
+      "actions": [
+        {
+          "key": "KONDOLENZLISTEN_PAKET",
+          "type": "DOCUMENT_BUNDLE",
+          "label": "Deckblatt und Kondolenzliste erzeugen",
+          "templateKeys": ["KONDOLENZLISTE_DECKBLATT", "KONDOLENZLISTE_LISTE"],
+          "sourceStatusAfter": "IN_BEARBEITUNG",
+          "repeatable": false
+        }
+      ]
+    }
+  ]
+}

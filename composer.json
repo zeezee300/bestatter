@@ -1,0 +1,49 @@
+{
+  "name": "bestatterplattform/bestatter",
+  "description": "Fachakte und Vorgangssteuerung für Bestattungsunternehmen als Nextcloud-App",
+  "type": "nextcloud-app",
+  "license": "AGPL-3.0-or-later",
+  "require": {
+    "php": "~8.2 || ~8.3 || ~8.4 || ~8.5",
+    "ext-gd": "*",
+    "endroid/qr-code": "6.0.9"
+  },
+  "require-dev": {
+    "nextcloud/coding-standard": "^1.5",
+    "nextcloud/ocp": "34.0.3",
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^11.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "OCA\\Bestatter\\": "lib/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "OCA\\Bestatter\\Tests\\": "tests/php/"
+    }
+  },
+  "scripts": {
+    "lint": "php tests/php-lint.php",
+    "test": "@test:unit",
+    "test:unit": "phpunit --configuration phpunit.xml",
+	"test:integration": "phpunit --configuration phpunit-integration.xml",
+    "analyse": "phpstan analyse --configuration phpstan.neon --memory-limit=1G",
+    "cs:check": "php-cs-fixer fix --dry-run --diff",
+    "cs:fix": "php-cs-fixer fix",
+    "check": [
+      "@lint",
+      "@test:unit",
+      "@analyse",
+      "@cs:check"
+    ]
+  },
+  "config": {
+    "allow-plugins": {
+      "php-http/discovery": false
+    },
+    "optimize-autoloader": true,
+    "sort-packages": true
+  }
+}

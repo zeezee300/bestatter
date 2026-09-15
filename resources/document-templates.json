@@ -1,0 +1,423 @@
+{
+  "schema_version": 4,
+  "seed_name": "document_templates",
+  "templates": [
+    {
+      "key": "STERBEFALLANZEIGE_STANDESAMT",
+      "name": "Sterbefallanzeige – Arbeitsentwurf für das Standesamt",
+      "category": "Behörde",
+      "file": "STERBEFALLANZEIGE_STANDESAMT_BEARBEITBAR.docx",
+      "template_version": 3,
+      "description": "Zweiseitiger, klar gegliederter DOCX-Arbeitsentwurf nach dem Layoutprinzip einer schriftlichen Sterbefallanzeige. Kein amtliches Universalformular und kein elektronischer Behördenversand.",
+      "active": true,
+      "sort_order": 1,
+      "layout": "sterbefallanzeige_form_v2",
+      "fields": [
+        {
+          "key": "standesamt",
+          "label": "Zuständiges Standesamt",
+          "source": "case.registry_office",
+          "required": true
+        },
+        {
+          "key": "anzeigende_person",
+          "label": "Anzeigende / beauftragte Person",
+          "source": "order.client_name",
+          "required": false
+        },
+        {
+          "key": "anzeigende_anschrift",
+          "label": "Anschrift der anzeigenden Person",
+          "source": "order.billing_recipient_address",
+          "required": false
+        },
+        {
+          "key": "nachweise",
+          "label": "Vorliegende bzw. nachzureichende Nachweise",
+          "default": "Todesbescheinigung; Geburtsurkunde; Nachweis zum letzten Wohnsitz; ggf. Ehe-/Lebenspartnerschaftsurkunde und Auflösungsnachweis",
+          "required": false
+        },
+        {
+          "key": "religion",
+          "label": "Religions- oder Weltanschauungsgemeinschaft",
+          "required": false
+        },
+        {
+          "key": "beruf",
+          "label": "Beruf",
+          "required": false
+        },
+        {
+          "key": "minderjaehrige_kinder",
+          "label": "Anzahl hinterlassener minderjähriger Kinder",
+          "required": false
+        },
+        {
+          "key": "todesort_anschrift",
+          "label": "Todesort, Straße und Hausnummer",
+          "source": "case.place_of_death",
+          "required": false
+        },
+        {
+          "key": "eingang_am",
+          "label": "Eingang am (vom Standesamt)",
+          "required": false
+        },
+        {
+          "key": "sterberegister_nr",
+          "label": "Sterberegister-Nr. (vom Standesamt)",
+          "required": false
+        },
+        {
+          "key": "geburtsregister_hinweis",
+          "label": "Geburtseintrag / Registrierungsdaten",
+          "required": false
+        },
+        {
+          "key": "ehe_register_hinweis",
+          "label": "Eheschließung: Tag, Ort, Registerdaten / Familienbuch",
+          "required": false
+        },
+        {
+          "key": "lebenspartnerschaft_register_hinweis",
+          "label": "Lebenspartnerschaft: Tag, Ort, Registerdaten",
+          "required": false
+        },
+        {
+          "key": "urkunden_gebuehrenfrei",
+          "label": "Gewünschte gebührenfreie Urkunden",
+          "required": false
+        },
+        {
+          "key": "urkunden_gebuehrenpflichtig",
+          "label": "Gewünschte gebührenpflichtige Urkunden",
+          "required": false
+        },
+        {
+          "key": "pruefvermerk",
+          "label": "Prüfvermerk / Hinweise des Bestattungsinstituts",
+          "required": false
+        },
+        {
+          "key": "ort_datum",
+          "label": "Ort, Datum",
+          "required": false
+        }
+      ],
+      "sections": [],
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "date_of_death_or_interval",
+        "registry_office",
+        "place_of_death"
+      ],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": true
+    },
+    {
+      "key": "STAMMDATENBLATT",
+      "name": "Stammdatenblatt",
+      "category": "Stammdaten",
+      "description": "Zentrale bearbeitbare DOCX-Vorlage und verbindliches A4-Drucklayout für die Stammdaten eines Sterbefalls.",
+      "active": true,
+      "sort_order": 2,
+      "layout": "stammdatenblatt_v1",
+      "fields": [
+        {
+          "label": "Anrede",
+          "key": "salutation",
+          "source": "case.salutation",
+          "required": true
+        },
+        {
+          "label": "Nachname",
+          "key": "last_name",
+          "source": "case.last_name",
+          "required": true
+        },
+        {
+          "label": "Vorname",
+          "key": "first_name",
+          "source": "case.first_name",
+          "required": true
+        },
+        {
+          "label": "Todeszeitraum von",
+          "key": "death_time_from",
+          "source": "case.death_time_from",
+          "required": false
+        },
+        {
+          "label": "Todeszeitraum bis / exakt",
+          "key": "death_time_to",
+          "source": "case.death_time_to",
+          "required": false
+        },
+        {
+          "label": "Standesamt Sterbeort",
+          "key": "registry_office",
+          "source": "case.registry_office",
+          "required": false
+        },
+        {
+          "label": "Bestattungsart",
+          "key": "funeral_type",
+          "source": "case.funeral_type",
+          "required": false
+        },
+        {
+          "label": "Verantwortlicher Mitarbeiter",
+          "key": "responsible_employee",
+          "source": "case.responsible_employee",
+          "required": false
+        },
+        {
+          "label": "Niederlassung",
+          "key": "branch",
+          "source": "case.branch",
+          "required": false
+        }
+      ],
+      "sections": [],
+      "file": "STAMMDATENBLATT.docx",
+      "required_fields": [
+        "first_name",
+        "last_name"
+      ],
+      "output_subfolder": "01 Stammdaten",
+      "supports_pdf": true
+    },
+    {
+      "category": "Auftrag",
+      "active": true,
+      "layout": "bestattungsauftrag_v2",
+      "description": "Dynamische DOCX-Vorlage mit Auftraggeber, Mobilfunknummer, detaillierten Leistungspositionen, Mehrwertsteuer, Gesamtsumme und Unterschriftsbereich.",
+      "key": "BESTATTUNGSAUFTRAG",
+      "fields": [
+        {
+          "key": "service_lines",
+          "label": "Beauftragte Leistungen",
+          "source": "case.services",
+          "required": true
+        },
+        {
+          "key": "total_net",
+          "label": "Summe netto",
+          "source": "case.service_totals.net",
+          "required": true
+        },
+        {
+          "key": "total_vat",
+          "label": "Mehrwertsteuer",
+          "source": "case.service_totals.vat",
+          "required": true
+        },
+        {
+          "key": "total_gross",
+          "label": "Gesamtsumme",
+          "source": "case.service_totals.gross",
+          "required": true
+        }
+      ],
+      "name": "Kostenvoranschlag / Bestattungsauftrag",
+      "sort_order": 3,
+      "file": "BESTATTUNGSAUFTRAG.docx",
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "order_client_name",
+        "order_client_address",
+        "order_number",
+        "order_date",
+        "services"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
+      "category": "Auftrag",
+      "active": true,
+      "layout": "bestattungsvollmacht_v1",
+      "description": "Unterschriftsfähige DOCX-Vorlage zur Bevollmächtigung des Bestattungsunternehmens.",
+      "key": "BESTATTUNGSVOLLMACHT",
+      "fields": [],
+      "name": "Bestattungsvollmacht",
+      "sort_order": 4,
+      "file": "BESTATTUNGSVOLLMACHT.docx",
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "order_client_name",
+        "order_client_address",
+        "order_number",
+        "order_date"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
+      "key": "ABMELDUNG_STANDARD_EMAIL",
+      "name": "Abmeldung – E-Mail-Text",
+      "category": "Abmeldung",
+      "description": "Bearbeitbare Textvorlage ohne automatischen Versand.",
+      "file": "ABMELDUNG_STANDARD_EMAIL.txt",
+      "active": true,
+      "sort_order": 5,
+      "fields": [],
+      "sections": [],
+      "required_fields": [],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": false
+    },
+    {
+      "key": "ABMELDUNG_STANDARD_BRIEF",
+      "name": "Abmeldung – Brieftext",
+      "category": "Abmeldung",
+      "description": "Bearbeitbare Textvorlage ohne automatischen Versand.",
+      "file": "ABMELDUNG_STANDARD_BRIEF.txt",
+      "active": true,
+      "sort_order": 6,
+      "fields": [],
+      "sections": [],
+      "required_fields": [],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": false
+    },
+    {
+      "key": "RENTENSERVICE_ABMELDUNG",
+      "name": "Rentenservice – Abmeldung und Vorschussprüfung",
+      "category": "Abmeldung",
+      "description": "Bearbeitbare Textvorlage ohne automatischen Versand.",
+      "file": "RENTENSERVICE_ABMELDUNG.txt",
+      "active": true,
+      "sort_order": 7,
+      "fields": [],
+      "sections": [],
+      "required_fields": [],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": false
+    },
+    {
+      "key": "RENTENSERVICE_AENDERUNGSFORMULAR",
+      "name": "Rentenservice – Änderungsanzeige im Sterbefall",
+      "category": "Abmeldung",
+      "file": "DP_RS_AENDERUNGSFORMULAR_BEARBEITBAR.docx",
+      "template_version": 1,
+      "description": "Bearbeitbare Nextcloud-Office-Vorlage für die gesonderte Abmeldung beim Rentenservice.",
+      "active": true,
+      "sort_order": 8,
+      "layout": "rentenservice_aenderungsformular_v1",
+      "fields": [],
+      "sections": [],
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "date_of_death_or_interval",
+        "pension_insurance_number"
+      ],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": true
+    },
+    {
+      "key": "RECHNUNG",
+      "name": "Rechnung",
+      "category": "Abrechnung",
+      "file": "RECHNUNG.docx",
+      "template_version": 1,
+      "description": "Versionierte Rechnungsausgabe aus den geprüften und abrechenbaren Leistungen eines Falls.",
+      "active": true,
+      "sort_order": 9,
+      "layout": "rechnung_v1",
+      "fields": [],
+      "sections": [],
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "services"
+      ],
+      "output_subfolder": "06 Abrechnung",
+      "supports_pdf": true
+    },
+    {
+      "key": "KONDOLENZLISTE_DECKBLATT",
+      "name": "Kondolenzliste – Deckblatt",
+      "category": "Trauerfeier",
+      "file": "KONDOLENZLISTE_DECKBLATT.docx",
+      "template_version": 1,
+      "description": "Deckblatt des Kondolenzlisten-Pakets. Die Trauerfeier-Daten stammen aus dem stabil verknüpften bestätigten Termin.",
+      "active": true,
+      "sort_order": 10,
+      "layout": "kondolenzliste_deckblatt_v1",
+      "fields": [],
+      "sections": [],
+      "required_fields": ["first_name", "last_name", "funeral_event_date"],
+      "output_subfolder": "05 Trauerdruck",
+      "supports_pdf": true
+    },
+    {
+      "key": "KONDOLENZLISTE_LISTE",
+      "name": "Kondolenzliste – Liste",
+      "category": "Trauerfeier",
+      "file": "KONDOLENZLISTE.docx",
+      "template_version": 1,
+      "description": "Eigentliche Kondolenzliste als zweiter Bestandteil des Pakets.",
+      "active": true,
+      "sort_order": 11,
+      "layout": "kondolenzliste_liste_v1",
+      "fields": [],
+      "sections": [],
+      "required_fields": ["first_name", "last_name", "funeral_event_date"],
+      "output_subfolder": "05 Trauerdruck",
+      "supports_pdf": true
+    },
+    {
+      "key": "RUNDFUNKBEITRAG_ABMELDUNG",
+      "name": "Rundfunkbeitrag – Abmeldung im Sterbefall",
+      "category": "Abmeldung",
+      "file": "RUNDFUNKBEITRAG_ABMELDUNG.docx",
+      "template_version": 1,
+      "description": "Eigenes vorbereitendes Anschreiben mit Beitragsnummer und Sterbeurkundenhinweis; kein Ersatz für das offizielle Portal des Beitragsservice.",
+      "active": true,
+      "sort_order": 20,
+      "layout": "standard_business_brief_a4",
+      "fields": [], "sections": [],
+      "required_fields": ["first_name", "last_name", "date_of_death_or_interval", "broadcast_contribution_number", "recipient_name", "recipient_address"],
+      "output_subfolder": "03 Behörden",
+      "supports_pdf": true
+    },
+    {
+      "key": "VERTRAGSABMELDUNG_STANDARD",
+      "name": "Allgemeine Vertragsabmeldung im Sterbefall",
+      "category": "Abmeldung",
+      "file": "VERTRAGSABMELDUNG_STANDARD.docx",
+      "template_version": 1,
+      "description": "Allgemeine, anpassbare Mitteilung für Versorger, Telekommunikation, Vereine und sonstige Vertragspartner.",
+      "active": true, "sort_order": 21, "layout": "standard_business_brief_a4", "fields": [], "sections": [],
+      "required_fields": ["first_name", "last_name", "date_of_death_or_interval", "contract_reference", "recipient_name", "recipient_address"],
+      "output_subfolder": "03 Behörden", "supports_pdf": true
+    },
+    {
+      "key": "NACHLASSMITTEILUNG_BANK",
+      "name": "Sterbefallmitteilung an ein Kreditinstitut",
+      "category": "Korrespondenz",
+      "file": "NACHLASSMITTEILUNG_BANK.docx",
+      "template_version": 1,
+      "description": "Vorbereitende Mitteilung ohne Kontovollmacht oder Zahlungsauftrag.",
+      "active": true, "sort_order": 22, "layout": "standard_business_brief_a4", "fields": [], "sections": [],
+      "required_fields": ["first_name", "last_name", "date_of_death_or_interval", "recipient_name", "recipient_address"],
+      "output_subfolder": "04 Korrespondenz", "supports_pdf": true
+    },
+    {
+      "key": "ARBEITGEBER_STERBEFALLMITTEILUNG",
+      "name": "Sterbefallmitteilung an den Arbeitgeber",
+      "category": "Korrespondenz",
+      "file": "ARBEITGEBER_STERBEFALLMITTEILUNG.docx",
+      "template_version": 1,
+      "description": "Mitteilung mit Hinweis auf Berechtigungs- und Nachweisprüfung.",
+      "active": true, "sort_order": 23, "layout": "standard_business_brief_a4", "fields": [], "sections": [],
+      "required_fields": ["first_name", "last_name", "date_of_death_or_interval", "recipient_name", "recipient_address"],
+      "output_subfolder": "04 Korrespondenz", "supports_pdf": true
+    }
+  ]
+}

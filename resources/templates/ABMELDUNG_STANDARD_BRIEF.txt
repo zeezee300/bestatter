@@ -1,0 +1,16 @@
+{{branch.name}}
+{{branch.address}}
+
+{{recipient.name}}
+{{recipient.address}}
+
+Abmeldung wegen Sterbefall – {{case.last_name}}, {{case.first_name}}
+
+Sehr geehrte Damen und Herren,
+
+hiermit teilen wir den Tod von {{case.first_name}} {{case.last_name}}, geboren am {{case.date_of_birth}}, verstorben am {{case.date_of_death}}, mit.
+
+Bitte bestätigen Sie die Bearbeitung und teilen Sie uns mit, falls weitere Unterlagen benötigt werden.
+
+Mit freundlichen Grüßen
+{{branch.name}}

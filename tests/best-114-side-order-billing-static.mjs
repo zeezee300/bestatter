@@ -1,0 +1,30 @@
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+
+const read = (file) => fs.readFileSync(file, 'utf8')
+const commercial = read('lib/Service/CommercialService.php')
+const controller = read('lib/Controller/CommercialApiController.php')
+const sideOrderService = read('lib/Service/SideOrderService.php')
+const sideOrderController = read('lib/Controller/SideOrderApiController.php')
+const reporting = read('lib/Service/ReportingService.php')
+const migration = read('lib/Migration/Version3500Date20260915000000.php')
+const routes = read('appinfo/routes.php')
+const cases = read('src/modules/cases.js')
+const administration = read('src/modules/administration.js')
+const documents = read('src/modules/documents.js')
+const main = read('src/main.js')
+const bundle = read('js/main.js')
+
+for (const marker of ['sideOrderId', 'billingCheckForScope', 'selectInvoiceServices(int $caseId, string $invoiceType, array $selections, ?int $sideOrderId = null)', 'sideOrderRecipient', "'side_order_id'"]) assert.ok(commercial.includes(marker), `Commercial marker missing: ${marker}`)
+for (const marker of ['?int $sideOrderId = null', 'overview($caseId, $sideOrderId)', 'billingCheckForScope($caseId, $invoiceType, $sideOrderId)']) assert.ok(controller.includes(marker), `Controller marker missing: ${marker}`)
+for (const marker of ['side_order_number', "'Nebenauftrag'"]) assert.ok(reporting.includes(marker), `Reporting marker missing: ${marker}`)
+for (const marker of ['bestatter_invoices', 'side_order_id', 'bestatter_commercial_docs']) assert.ok(migration.includes(marker), `Schema marker missing: ${marker}`)
+for (const marker of ['BEAUFTRAGT', 'ABGESCHLOSSEN', 'assertCommissionable', 'assertClosable', 'assertCancellable', 'transition(']) assert.ok(sideOrderService.includes(marker), `Side-order lifecycle marker missing: ${marker}`)
+assert.ok(sideOrderController.includes('transitionSideOrder'), 'Side-order transition controller missing')
+assert.ok(routes.includes('sideOrderApi#transitionSideOrder'), 'Side-order transition route missing')
+for (const marker of ['Nebenauftrag anlegen', 'side-order-edit-form', 'data-side-order-view', 'data-side-order-status']) assert.ok(cases.includes(marker), `Side-order management UI marker missing: ${marker}`)
+assert.ok(documents.includes("['side-orders', 'Nebenaufträge']") && documents.includes('body = sideOrdersPanel()'), 'Dedicated side-order case tab missing')
+for (const marker of ['activeSideOrderId', 'sideOrderQuery', 'back-to-side-orders-finances']) assert.ok(administration.includes(marker) || main.includes(marker), `Side-order finance UI marker missing: ${marker}`)
+for (const marker of ['Nebenauftrag anlegen', 'data-side-order-view', 'side-order-edit-form']) assert.ok(bundle.includes(marker), `Production bundle missing: ${marker}`)
+
+console.log('BEST-114 Nebenaufträge: Erfassung, Verwaltung, Statusablauf, Abrechnung und Produktionsbundle statisch geprüft.')

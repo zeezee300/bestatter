@@ -1,0 +1,410 @@
+[
+  {
+    "label": "Weitere Vornamen",
+    "key": "additional_first_names"
+  },
+  {
+    "label": "Geburtsname",
+    "key": "birth_name"
+  },
+  {
+    "label": "Beruf",
+    "key": "profession"
+  },
+  {
+    "label": "Geburtsort",
+    "key": "birth_place"
+  },
+  {
+    "label": "Geburtsstandesamt",
+    "key": "birth_registry_office"
+  },
+  {
+    "label": "Niederlassung",
+    "key": "branch"
+  },
+  {
+    "label": "Fallnummer",
+    "key": "case_number"
+  },
+  {
+    "label": "Familienstand",
+    "key": "civil_status"
+  },
+  {
+    "label": "Vorname Ehepartner/in",
+    "key": "spouse_first_name"
+  },
+  {
+    "label": "Nachname Ehepartner/in",
+    "key": "spouse_last_name"
+  },
+  {
+    "label": "Geburtsdatum Ehepartner/in",
+    "key": "spouse_date_of_birth"
+  },
+  {
+    "label": "Geburtsort Ehepartner/in",
+    "key": "spouse_birth_place"
+  },
+  {
+    "label": "Wohnort Ehepartner/in",
+    "key": "spouse_residence"
+  },
+  {
+    "label": "Todesdatum Ehepartner/in (falls vorverstorben)",
+    "key": "spouse_date_of_death"
+  },
+  {
+    "label": "Sterbeort Ehepartner/in",
+    "key": "spouse_death_place"
+  },
+  {
+    "label": "Datum der Eheschließung",
+    "key": "marriage_date"
+  },
+  {
+    "label": "Ort der Eheschließung",
+    "key": "marriage_place"
+  },
+  {
+    "label": "Datum der Begründung der Lebenspartnerschaft",
+    "key": "partnership_date"
+  },
+  {
+    "label": "Datum der Scheidung / Aufhebung",
+    "key": "divorce_date"
+  },
+  {
+    "label": "Abschlussgrund",
+    "key": "close_reason"
+  },
+  {
+    "label": "Abgeschlossen am",
+    "key": "closed_at"
+  },
+  {
+    "label": "Sarg- / Urnengröße",
+    "key": "coffin_urn_size"
+  },
+  {
+    "label": "Aktueller Aufenthaltsort des Leichnams",
+    "key": "current_body_location"
+  },
+  {
+    "label": "Geburtsdatum",
+    "key": "date_of_birth"
+  },
+  {
+    "label": "Sterbedatum",
+    "key": "date_of_death"
+  },
+  {
+    "label": "Todesbescheinigung",
+    "key": "death_certificate_status"
+  },
+  {
+    "label": "Angabe des Todeszeitpunkts",
+    "key": "death_time_mode"
+  },
+  {
+    "label": "Feststellung des Todes",
+    "key": "death_determination"
+  },
+  {
+    "label": "Zwischen / exakt ab",
+    "key": "death_time_from"
+  },
+  {
+    "label": "Und / exakt bis",
+    "key": "death_time_to"
+  },
+  {
+    "label": "Vorname",
+    "key": "first_name"
+  },
+  {
+    "label": "Funddatum / Fundzeit",
+    "key": "found_at"
+  },
+  {
+    "label": "Bemerkung",
+    "key": "funeral_notes"
+  },
+  {
+    "label": "Bestattungsart",
+    "key": "funeral_type"
+  },
+  {
+    "label": "Geschlecht",
+    "key": "gender"
+  },
+  {
+    "label": "Grabtiefe",
+    "key": "grave_depth"
+  },
+  {
+    "label": "Grabinhaber",
+    "key": "grave_holder"
+  },
+  {
+    "label": "Inschrift auf Grabmal",
+    "key": "grave_inscription"
+  },
+  {
+    "label": "Grablage",
+    "key": "grave_location"
+  },
+  {
+    "label": "Grabnummer",
+    "key": "grave_number"
+  },
+  {
+    "label": "Grabart",
+    "key": "grave_type"
+  },
+  {
+    "label": "E-Mail",
+    "key": "guardian_email"
+  },
+  {
+    "label": "Name",
+    "key": "guardian_name"
+  },
+  {
+    "label": "Telefon",
+    "key": "guardian_phone"
+  },
+  {
+    "label": "PLZ / Ort",
+    "key": "guardian_postal_city"
+  },
+  {
+    "label": "Straße",
+    "key": "guardian_street"
+  },
+  {
+    "label": "Betreuungsgericht",
+    "key": "guardianship_court"
+  },
+  {
+    "label": "Anmerkung",
+    "key": "guardianship_notes"
+  },
+  {
+    "label": "Betreuung",
+    "key": "guardianship_status"
+  },
+  {
+    "label": "Ausstellungsdatum",
+    "key": "identity_document_issue_date"
+  },
+  {
+    "label": "Ausstellende Behörde",
+    "key": "identity_document_issuer"
+  },
+  {
+    "label": "Ausweisnummer",
+    "key": "identity_document_number"
+  },
+  {
+    "label": "Ausweis",
+    "key": "identity_document_type"
+  },
+  {
+    "label": "Nachname",
+    "key": "last_name"
+  },
+  {
+    "label": "Letzter Partnerschaftsname",
+    "key": "last_partnership_name"
+  },
+  {
+    "label": "Letzter Partnerschaftsort",
+    "key": "last_partnership_place"
+  },
+  {
+    "label": "Letzter Wohnsitz",
+    "key": "last_residence"
+  },
+  {
+    "label": "Todesart",
+    "key": "manner_of_death"
+  },
+  {
+    "label": "Arzt / Totenbeschauer",
+    "key": "medical_examiner"
+  },
+  {
+    "label": "Staatsangehörigkeit",
+    "key": "nationality"
+  },
+  {
+    "label": "Lebensdauer in Stunden (Neugeborene)",
+    "key": "newborn_lifetime_hours"
+  },
+  {
+    "label": "Interne Notizen",
+    "key": "notes"
+  },
+  {
+    "label": "Weitere frühere Namen",
+    "key": "other_previous_names"
+  },
+  {
+    "label": "Fundort",
+    "key": "place_found"
+  },
+  {
+    "label": "Sterbeort / Einrichtung",
+    "key": "place_of_death"
+  },
+  {
+    "label": "Frist der Sterbefallanzeige",
+    "key": "registry_due_date"
+  },
+  {
+    "label": "Standesamt Sterbeort",
+    "key": "registry_office"
+  },
+  {
+    "label": "Aktenzeichen / Urkundenreferenz",
+    "key": "registry_reference"
+  },
+  {
+    "label": "Status Sterbefallanzeige",
+    "key": "registry_status"
+  },
+  {
+    "label": "Ärztliche / behördliche Freigabe",
+    "key": "release_status"
+  },
+  {
+    "label": "Religion",
+    "key": "religion"
+  },
+  {
+    "label": "Religionsangabe",
+    "key": "religion_disclosure"
+  },
+  {
+    "label": "Verantwortlicher Mitarbeiter",
+    "key": "responsible_employee"
+  },
+  {
+    "label": "Anrede",
+    "key": "salutation"
+  },
+  {
+    "label": "Fallstatus",
+    "key": "status"
+  },
+  {
+    "label": "Sterbezeit",
+    "key": "time_of_death"
+  },
+  {
+    "label": "Titel",
+    "key": "title"
+  },
+  {
+    "label": "Überführung von",
+    "key": "transfer_from"
+  },
+  {
+    "label": "Überführungsstatus",
+    "key": "transfer_status"
+  },
+  {
+    "label": "Überführung nach",
+    "key": "transfer_to"
+  },
+  {
+    "label": "Urnenübergabedatum",
+    "key": "urn_handover_date"
+  },
+  {
+    "label": "Übergabe der Urne",
+    "key": "urn_handover_type"
+  },
+  {
+    "label": "Friedhof aus Nextcloud-Kontakten",
+    "key": "cemetery_contact"
+  },
+  {
+    "label": "PLZ des letzten Wohnsitzes",
+    "key": "last_residence_postal_code"
+  },
+  {
+    "label": "Ort des letzten Wohnsitzes",
+    "key": "last_residence_city"
+  },
+  {
+    "label": "Land des letzten Wohnsitzes",
+    "key": "last_residence_country"
+  },
+  {
+    "label": "Land des Betreuers",
+    "key": "guardian_country"
+  },
+  {
+    "label": "Land des Auftraggebers",
+    "key": "order_client_country"
+  },
+  {
+    "label": "Land des Rechnungsempfängers",
+    "key": "invoice_country"
+  },
+  {
+    "label": "Rundfunk-Beitragsnummer",
+    "key": "broadcast_contribution_number"
+  },
+  {
+    "label": "Kunden- / Vertragsnummer für Abmeldungen",
+    "key": "contract_reference"
+  },
+  {
+    "label": "Kunden- / Kontoreferenz der Bank",
+    "key": "bank_customer_reference"
+  },
+  {
+    "label": "Arbeitgeber / Personalnummer",
+    "key": "employer_reference"
+  },
+  {
+    "label": "Empfänger der vorbereiteten Korrespondenz",
+    "key": "recipient_name"
+  },
+  {
+    "label": "Empfängeranschrift der vorbereiteten Korrespondenz",
+    "key": "recipient_address"
+  },
+  {
+    "label": "Zahlungsart (Überweisung / SEPA-Lastschrift)",
+    "key": "payment_method"
+  },
+  {
+    "label": "SEPA-Mandatsreferenz",
+    "key": "sepa_mandate_reference"
+  },
+  {
+    "label": "Datum des SEPA-Mandats",
+    "key": "sepa_mandate_date"
+  },
+  {
+    "label": "Geplantes Einzugsdatum",
+    "key": "sepa_collection_date"
+  },
+  {
+    "label": "Kontoinhaber/in des SEPA-Mandats",
+    "key": "sepa_debtor_name"
+  },
+  {
+    "label": "IBAN des SEPA-Mandats",
+    "key": "sepa_debtor_iban"
+  },
+  {
+    "label": "BIC des SEPA-Mandats",
+    "key": "sepa_debtor_bic"
+  }
+]

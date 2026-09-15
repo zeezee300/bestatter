@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>bestatter</id>
+    <name>Bestatter</name>
+    <summary>Fachakte und Vorgangssteuerung für Bestattungsunternehmen</summary>
+    <description>Native Nextcloud-Oberfläche für Sterbefälle, Aufgaben, Vorlagen und fachliches Customizing.</description>
+	<version>0.59.0</version>
+    <licence>AGPL-3.0-or-later</licence>
+    <author>Bestatterplattform</author>
+    <category>tools</category>
+    <dependencies>
+        <nextcloud min-version="34" max-version="34" />
+    </dependencies>
+    <commands>
+        <command>OCA\Bestatter\Command\DevelopmentReset</command>
+		<command>OCA\Bestatter\Command\AcceptanceCheck</command>
+		<command>OCA\Bestatter\Command\PaperlessAcceptanceCheck</command>
+		<command>OCA\Bestatter\Command\Backup</command>
+		<command>OCA\Bestatter\Command\Restore</command>
+		<command>OCA\Bestatter\Command\Retention</command>
+		<command>OCA\Bestatter\Command\Purge</command>
+    </commands>
+	<background-jobs>
+		<job>OCA\Bestatter\BackgroundJob\MaintenanceJob</job>
+		<job>OCA\Bestatter\BackgroundJob\PaperlessSyncJob</job>
+	</background-jobs>
+	<activity>
+		<settings>
+			<setting>OCA\Bestatter\Activity\Setting\CaseAssignedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\TaskChangedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\ScheduleChangedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\DocumentFinalizedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\ProcessAttentionSetting</setting>
+		</settings>
+		<providers>
+			<provider>OCA\Bestatter\Activity\Provider</provider>
+		</providers>
+	</activity>
+    <navigations>
+        <navigation>
+            <id>bestatter</id>
+            <name>Bestatter</name>
+            <route>bestatter.page.index</route>
+            <icon>app.svg</icon>
+            <order>30</order>
+            <type>link</type>
+        </navigation>
+    </navigations>
+</info>

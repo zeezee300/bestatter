@@ -1,0 +1,714 @@
+{
+  "schema_version": 1,
+  "seed_name": "master_data_value_lists",
+  "lists": [
+    {
+      "key": "SALUTATION",
+      "name": "Anrede",
+      "items": [
+        [
+          "Frau",
+          "Frau"
+        ],
+        [
+          "Herr",
+          "Herr"
+        ]
+      ]
+    },
+    {
+      "key": "TITLE",
+      "name": "Titel",
+      "items": [
+        [
+          "Dr.",
+          "Dr."
+        ],
+        [
+          "Dr. med.",
+          "Dr. med."
+        ],
+        [
+          "Dipl.-Ing.",
+          "Dipl.-Ing."
+        ],
+        [
+          "Prof.",
+          "Prof."
+        ],
+        [
+          "Prof. Dr.",
+          "Prof. Dr."
+        ]
+      ]
+    },
+    {
+      "key": "GENDER",
+      "name": "Geschlecht",
+      "items": [
+        [
+          "männlich",
+          "männlich"
+        ],
+        [
+          "weiblich",
+          "weiblich"
+        ],
+        [
+          "divers",
+          "divers"
+        ],
+        [
+          "ohne Angabe",
+          "ohne Angabe"
+        ]
+      ]
+    },
+    {
+      "key": "CIVIL_STATUS",
+      "name": "Familienstand",
+      "items": [
+        [
+          "ledig",
+          "ledig"
+        ],
+        [
+          "verheiratet",
+          "verheiratet"
+        ],
+        [
+          "verwitwet",
+          "verwitwet"
+        ],
+        [
+          "geschieden",
+          "geschieden"
+        ],
+        [
+          "Lebenspartnerschaft",
+          "Lebenspartnerschaft"
+        ]
+      ]
+    },
+    {
+      "key": "RELIGION",
+      "name": "Religion / Weltanschauung",
+      "items": [
+        [
+          "evangelisch",
+          "evangelisch"
+        ],
+        [
+          "katholisch",
+          "katholisch"
+        ],
+        [
+          "Islam",
+          "Islam"
+        ],
+        [
+          "jüdisch",
+          "jüdisch"
+        ]
+      ]
+    },
+    {
+      "key": "YES_NO",
+      "name": "Ja / Nein",
+      "items": [
+        [
+          "JA",
+          "Ja"
+        ],
+        [
+          "NEIN",
+          "Nein"
+        ]
+      ]
+    },
+    {
+      "key": "IDENTITY_DOCUMENT_TYPE",
+      "name": "Ausweisart",
+      "items": [
+        [
+          "Personalausweis",
+          "Personalausweis"
+        ],
+        [
+          "Reisepass",
+          "Reisepass"
+        ],
+        [
+          "Identitätskarte",
+          "Identitätskarte"
+        ]
+      ]
+    },
+    {
+      "key": "DEATH_DETERMINATION",
+      "name": "Kenntnis des Todeszeitpunkts",
+      "items": [
+        [
+          "EXAKT",
+          "Exakt bekannt"
+        ],
+        [
+          "ZEITRAUM",
+          "Nur als Zeitraum bekannt"
+        ],
+        [
+          "UNBEKANNT",
+          "Noch unbekannt"
+        ]
+      ]
+    },
+    {
+      "key": "MANNER_OF_DEATH",
+      "name": "Todesart",
+      "items": [
+        [
+          "natürlicher Tod",
+          "natürlicher Tod"
+        ],
+        [
+          "nicht aufgeklärt",
+          "nicht aufgeklärt"
+        ],
+        [
+          "nicht natürlicher Tod",
+          "nicht natürlicher Tod"
+        ],
+        [
+          "Suizid",
+          "Suizid"
+        ],
+        [
+          "Tötung",
+          "Tötung"
+        ],
+        [
+          "Unglücksfall",
+          "Unglücksfall"
+        ],
+        [
+          "Verdacht auf strafbare Handlung",
+          "Verdacht auf strafbare Handlung"
+        ]
+      ]
+    },
+    {
+      "key": "TRANSFER_STATUS",
+      "name": "Überführungsstatus",
+      "items": [
+        [
+          "OFFEN",
+          "offen"
+        ],
+        [
+          "BEAUFTRAGT",
+          "beauftragt"
+        ],
+        [
+          "DURCHGEFUEHRT",
+          "durchgeführt"
+        ]
+      ]
+    },
+    {
+      "key": "DEATH_CERTIFICATE_STATUS",
+      "name": "Todesbescheinigung",
+      "items": [
+        [
+          "OFFEN",
+          "offen"
+        ],
+        [
+          "VORHANDEN",
+          "vorhanden"
+        ],
+        [
+          "GEPRUEFT",
+          "geprüft"
+        ]
+      ]
+    },
+    {
+      "key": "RELEASE_STATUS",
+      "name": "Ärztliche / behördliche Freigabe",
+      "items": [
+        [
+          "OFFEN",
+          "offen"
+        ],
+        [
+          "FREIGEGEBEN",
+          "freigegeben"
+        ],
+        [
+          "GESPERRT",
+          "gesperrt"
+        ]
+      ]
+    },
+    {
+      "key": "REGISTRY_STATUS",
+      "name": "Status Sterbefallanzeige",
+      "items": [
+        [
+          "OFFEN",
+          "offen"
+        ],
+        [
+          "VORBEREITET",
+          "vorbereitet"
+        ],
+        [
+          "ANGEZEIGT",
+          "angezeigt"
+        ],
+        [
+          "BEURKUNDET",
+          "beurkundet"
+        ]
+      ]
+    },
+    {
+      "key": "GUARDIANSHIP_STATUS",
+      "name": "Betreuung",
+      "items": [
+        [
+          "NEIN",
+          "Nein"
+        ],
+        [
+          "JA",
+          "Ja"
+        ],
+        [
+          "UNBEKANNT",
+          "Unbekannt"
+        ]
+      ]
+    },
+    {
+      "key": "FUNERAL_TYPE",
+      "name": "Bestattungsart",
+      "items": [
+        [
+          "Erdbestattung",
+          "Erdbestattung"
+        ],
+        [
+          "Feuerbestattung",
+          "Feuerbestattung"
+        ],
+        [
+          "Seebestattung",
+          "Seebestattung"
+        ],
+        [
+          "Baumbestattung",
+          "Baumbestattung"
+        ],
+        [
+          "Andere",
+          "Andere"
+        ]
+      ]
+    },
+    {
+      "key": "GRAVE_TYPE",
+      "name": "Grabart",
+      "items": [
+        [
+          "Anonymes Urnenfeld",
+          "Anonymes Urnenfeld"
+        ],
+        [
+          "Doppelgrab",
+          "Doppelgrab"
+        ],
+        [
+          "Einzelgrab",
+          "Einzelgrab"
+        ],
+        [
+          "Gruft",
+          "Gruft"
+        ],
+        [
+          "Reihengrab",
+          "Reihengrab"
+        ],
+        [
+          "Urnenfach",
+          "Urnenfach"
+        ],
+        [
+          "Urnenstelle",
+          "Urnenstelle"
+        ],
+        [
+          "Urnengrab",
+          "Urnengrab"
+        ]
+      ]
+    },
+    {
+      "key": "GRAVE_DEPTH",
+      "name": "Grabtiefe",
+      "items": [
+        [
+          "doppelt tief",
+          "doppelt tief"
+        ],
+        [
+          "einfach tief",
+          "einfach tief"
+        ]
+      ]
+    },
+    {
+      "key": "GRAVE_LOCATION",
+      "name": "Grablage",
+      "items": [
+        [
+          "links",
+          "links"
+        ],
+        [
+          "Mitte",
+          "Mitte"
+        ],
+        [
+          "oben links",
+          "oben links"
+        ],
+        [
+          "oben rechts",
+          "oben rechts"
+        ],
+        [
+          "rechts",
+          "rechts"
+        ],
+        [
+          "unten links",
+          "unten links"
+        ],
+        [
+          "unten rechts",
+          "unten rechts"
+        ]
+      ]
+    },
+    {
+      "key": "COFFIN_URN_SIZE",
+      "name": "Sarg- / Urnengröße",
+      "items": [
+        [
+          "Standardgröße",
+          "Standardgröße"
+        ],
+        [
+          "Überbreite 1,00 m",
+          "Überbreite 1,00 m"
+        ],
+        [
+          "Überbreite 2,20 m",
+          "Überbreite 2,20 m"
+        ],
+        [
+          "Holzurne Ø 45 cm",
+          "Holzurne Ø 45 cm"
+        ]
+      ]
+    },
+    {
+      "key": "URN_HANDOVER_TYPE",
+      "name": "Übergabe der Urne",
+      "items": [
+        [
+          "Versand",
+          "Versand"
+        ],
+        [
+          "persönliche Übergabe",
+          "persönliche Übergabe"
+        ],
+        [
+          "Durch unser Unternehmen",
+          "Durch unser Unternehmen"
+        ],
+        [
+          "Durch Krematorium",
+          "Durch Krematorium"
+        ],
+        [
+          "Durch Gemeinde / Friedhofsverwaltung",
+          "Durch Gemeinde / Friedhofsverwaltung"
+        ]
+      ]
+    },
+    {
+      "key": "SCHEDULE_TITLE",
+      "name": "Terminbezeichnung",
+      "items": [
+        [
+          "Trauergespräch",
+          "Trauergespräch"
+        ],
+        [
+          "Verabschiedung",
+          "Verabschiedung"
+        ],
+        [
+          "Aufbahrung",
+          "Aufbahrung"
+        ],
+        [
+          "Trauerfeier",
+          "Trauerfeier"
+        ],
+        [
+          "Beisetzung",
+          "Beisetzung"
+        ],
+        [
+          "Abholung",
+          "Abholung"
+        ],
+        [
+          "Überführung",
+          "Überführung"
+        ]
+      ]
+    },
+    {
+      "key": "MUSIC_ACCOMPANIMENT",
+      "name": "Musikbegleitung",
+      "items": [
+        [
+          "keine",
+          "keine"
+        ],
+        [
+          "Chor",
+          "Chor"
+        ],
+        [
+          "Musikanlage",
+          "Musikanlage"
+        ],
+        [
+          "Musiker",
+          "Musiker"
+        ],
+        [
+          "Orgel",
+          "Orgel"
+        ],
+        [
+          "Sänger",
+          "Sänger"
+        ],
+        [
+          "Streichquartett",
+          "Streichquartett"
+        ]
+      ]
+    },
+    {
+      "key": "RELATIONSHIP_DECEASED",
+      "name": "Beziehung zum Verstorbenen",
+      "items": [
+        [
+          "Ehepartner",
+          "Ehepartner"
+        ],
+        [
+          "Tochter",
+          "Tochter"
+        ],
+        [
+          "Sohn",
+          "Sohn"
+        ],
+        [
+          "Bruder",
+          "Bruder"
+        ],
+        [
+          "Schwester",
+          "Schwester"
+        ],
+        [
+          "Vater",
+          "Vater"
+        ],
+        [
+          "Mutter",
+          "Mutter"
+        ],
+        [
+          "Amt",
+          "Amt"
+        ],
+        [
+          "Betreuer",
+          "Betreuer"
+        ],
+        [
+          "Onkel",
+          "Onkel"
+        ],
+        [
+          "Tante",
+          "Tante"
+        ],
+        [
+          "Nichte",
+          "Nichte"
+        ],
+        [
+          "Neffe",
+          "Neffe"
+        ],
+        [
+          "Vormund",
+          "Vormund"
+        ]
+      ]
+    },
+    {
+      "key": "ORDER_COMMISSIONING_METHOD",
+      "name": "Art der Beauftragung",
+      "items": [
+        [
+          "unterschriebener Bestattungsauftrag",
+          "unterschriebener Bestattungsauftrag"
+        ],
+        [
+          "Mündliche Beauftragung",
+          "Mündliche Beauftragung"
+        ],
+        [
+          "Telefonische Beauftragung",
+          "Telefonische Beauftragung"
+        ],
+        [
+          "Digitale Beauftragung",
+          "Digitale Beauftragung"
+        ]
+      ]
+    },
+    {
+      "key": "ARTICLE_CATEGORY",
+      "name": "Artikelkategorien",
+      "items": [
+        [
+          "Dienstleistung",
+          "Dienstleistung"
+        ],
+        [
+          "Lagerartikel",
+          "Lagerartikel"
+        ],
+        [
+          "Bestellartikel",
+          "Bestellartikel"
+        ]
+      ]
+    },
+    {
+      "key": "ARTICLE_GROUP",
+      "name": "Leistungsgruppen",
+      "items": [
+        [
+          "Sarg",
+          "Sarg"
+        ],
+        [
+          "Bekleidung",
+          "Bekleidung"
+        ],
+        [
+          "Überführung",
+          "Überführung"
+        ],
+        [
+          "Auslagen",
+          "Auslagen"
+        ],
+        [
+          "Beerdigung/Trauerfeier",
+          "Beerdigung/Trauerfeier"
+        ],
+        [
+          "Drucksachen",
+          "Drucksachen"
+        ],
+        [
+          "Gebühren",
+          "Gebühren"
+        ],
+        [
+          "Leistungen für externe",
+          "Leistungen für externe"
+        ]
+      ]
+    },
+    {
+      "key": "POSITION_TYPE",
+      "name": "Positionstypen",
+      "items": [
+        [
+          "EL",
+          "eigene Leistung"
+        ],
+        [
+          "FK",
+          "Fremdkosten/Fremdleistung"
+        ],
+        [
+          "DP",
+          "echter durchlaufender Posten"
+        ]
+      ]
+    },
+    {
+      "key": "QUANTITY_UNIT",
+      "name": "Mengeneinheiten",
+      "items": [
+        [
+          "STK",
+          "Stück"
+        ],
+        [
+          "PAUSCHAL",
+          "Pauschale"
+        ],
+        [
+          "STD",
+          "Stunden"
+        ],
+        [
+          "KM",
+          "Kilometer"
+        ],
+        [
+          "TAG",
+          "Tage"
+        ],
+        [
+          "KG",
+          "Kilogramm"
+        ],
+        [
+          "L",
+          "Liter"
+        ]
+      ]
+    }
+  ]
+}

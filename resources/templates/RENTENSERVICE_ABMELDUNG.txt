@@ -1,0 +1,13 @@
+Rentenabmeldung – {{case.last_name}}, {{case.first_name}}
+
+Postrentennummer: {{case.pension_number}}
+Weitere Postrentennummer: {{case.pension_number_2}}
+Sterbedatum: {{case.date_of_death}}
+
+Vorschussantrag für Witwe/Witwer: {{advance.application}}
+Antragsteller/in: {{advance.applicant_name}}
+Geburtsdatum: {{advance.applicant_birth_date}}
+Anschrift: {{advance.applicant_address}}
+Eigene Renten-/Versicherungsnummer: {{advance.applicant_pension_number}}
+
+Vor einer Übermittlung sind die Angaben und Nachweise vollständig zu prüfen. Diese Vorlage löst keinen automatischen Versand aus.

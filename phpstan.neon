@@ -1,0 +1,11 @@
+parameters:
+    # Durchsetzbarer Einstieg; nach Bereinigung des Bestands schrittweise anheben.
+    level: 3
+    paths:
+        - lib
+    tmpDir: .phpstan-cache
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
+    excludePaths:
+        analyse:
+            - lib/Migration/*

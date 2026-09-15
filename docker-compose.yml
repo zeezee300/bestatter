@@ -1,0 +1,145 @@
+# Isolierte Nextcloud-Testumgebung fuer die Bestatter-App.
+#
+# 1. Diese Datei nach deployment/nextcloud-test kopieren bzw. dort verwenden.
+# 2. .env.example nach .env kopieren und alle mit CHANGE_ME markierten Werte ersetzen.
+# 3. NEXTCLOUD_IMAGE auf genau die eingesetzte Nextcloud-Version festlegen.
+#
+# Die Umgebung teilt nur das externe Reverse-Proxy-Netz mit Nginx Proxy Manager.
+# Datenbank, Redis, Datenordner, Testbenutzer und AppAPI/HaRP bleiben von der
+# Produktivumgebung getrennt.
+
+name: nextcloud-bestatter-test-001
+
+services:
+  database:
+    image: mariadb:11.4
+    container_name: nextcloud-bestatter-test-db
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW --innodb-read-only-compressed=OFF
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      MARIADB_DATABASE: ${MYSQL_DATABASE:-nextcloud_test}
+      MARIADB_USER: ${MYSQL_USER:-nextcloud_test}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD muss in .env gesetzt sein}
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD muss in .env gesetzt sein}
+    volumes:
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/database:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: nextcloud-bestatter-test-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_HOST_PASSWORD:?REDIS_HOST_PASSWORD muss in .env gesetzt sein}
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      REDIS_HOST_PASSWORD: ${REDIS_HOST_PASSWORD:?REDIS_HOST_PASSWORD muss in .env gesetzt sein}
+    volumes:
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/redis:/data
+    networks:
+      internal:
+        aliases:
+          - nextcloud-test-redis
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_HOST_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nextcloud:
+    image: ${NEXTCLOUD_IMAGE:-nextcloud:latest}
+    container_name: nextcloud-bestatter-test
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      MYSQL_HOST: database
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nextcloud_test}
+      MYSQL_USER: ${MYSQL_USER:-nextcloud_test}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD muss in .env gesetzt sein}
+      REDIS_HOST: nextcloud-test-redis
+      REDIS_HOST_PASSWORD: ${REDIS_HOST_PASSWORD:?REDIS_HOST_PASSWORD muss in .env gesetzt sein}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-nc-test-admin}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:?NEXTCLOUD_ADMIN_PASSWORD muss in .env gesetzt sein}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TEST_DOMAIN:?NEXTCLOUD_TEST_DOMAIN muss in .env gesetzt sein}
+      OVERWRITEHOST: ${NEXTCLOUD_TEST_DOMAIN:?NEXTCLOUD_TEST_DOMAIN muss in .env gesetzt sein}
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://${NEXTCLOUD_TEST_DOMAIN:?NEXTCLOUD_TEST_DOMAIN muss in .env gesetzt sein}
+      NEXTCLOUD_INIT_HTACCESS: "true"
+    volumes:
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/config:/var/www/html/config
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/data:/var/www/html/data
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/custom_apps:/var/www/html/custom_apps
+    networks:
+      - internal
+      - exapps
+      - npm
+    healthcheck:
+      test: ["CMD-SHELL", "php occ status --output=json | grep -q '\"installed\":true'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  cron:
+    image: ${NEXTCLOUD_IMAGE:-nextcloud:latest}
+    container_name: nextcloud-bestatter-test-cron
+    restart: unless-stopped
+    entrypoint: /cron.sh
+    depends_on:
+      nextcloud:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/config:/var/www/html/config
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/data:/var/www/html/data
+      - ${NC_TEST_APPDATA:?NC_TEST_APPDATA muss in .env gesetzt sein}/custom_apps:/var/www/html/custom_apps
+    networks:
+      - internal
+
+  appapi-harp:
+    image: ghcr.io/nextcloud/nextcloud-appapi-harp:release
+    container_name: nextcloud-bestatter-test-harp
+    hostname: appapi-harp-test
+    restart: unless-stopped
+    environment:
+      HP_SHARED_KEY: ${APPAPI_HARP_SHARED_KEY:?APPAPI_HARP_SHARED_KEY muss in .env gesetzt sein}
+      NC_INSTANCE_URL: https://${NEXTCLOUD_TEST_DOMAIN:?NEXTCLOUD_TEST_DOMAIN muss in .env gesetzt sein}
+      # Optional, aber fuer korrekte Client-IP-Auswertung hinter NPM empfohlen.
+      # Beispiel: 172.20.0.0/16 (Subnetz des externen NPM-Netzes).
+      HP_TRUSTED_PROXY_IPS: ${APPAPI_HARP_TRUSTED_PROXY_IPS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      exapps:
+        aliases:
+          - appapi-harp-test
+      npm:
+        aliases:
+          - appapi-harp-test
+
+networks:
+  internal:
+    name: nextcloud-bestatter-test-internal
+    internal: true
+  exapps:
+    name: nextcloud-bestatter-test-exapps
+  npm:
+    name: ${NPM_NETWORK:-proxy_net}
+    external: true

@@ -1,0 +1,25 @@
+import fs from 'node:fs'
+import path from 'node:path'
+const root = path.resolve(process.argv[2] || '.')
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const assert = (value, message) => { if (!value) throw new Error(message) }
+
+const migration = read('lib/Migration/Version1800Date20260906000000.php')
+for (const marker of ['bestatter_invoice_settings', 'bestatter_invoice_sequences', 'account_holder', 'iban', 'bic', 'payment_term_days']) assert(migration.includes(marker), `Migration fehlt: ${marker}`)
+const config = read('lib/Service/ConfigurationService.php')
+for (const token of ['{PREFIX}', '{YYYY}', '{SEQ}', 'YEAR_GLOBAL', 'YEAR_BRANCH']) assert(config.includes(token), `Nummernkreis fehlt: ${token}`)
+const commercial = read('lib/Service/CommercialService.php')
+assert(commercial.includes('bestatter_invoice_sequences') && commercial.includes('forUpdate'), 'Transaktionssicherer Rechnungszähler fehlt.')
+const electronic = read('lib/Service/EInvoiceService.php')
+for (const marker of ['CrossIndustryInvoice', 'urn:cen.eu:en16931:2017', 'IBANID', "'BCD'", "'SCT'"]) assert(electronic.includes(marker), `E-Rechnungsmerkmal fehlt: ${marker}`)
+const document = read('lib/Service/DocumentService.php')
+assert(document.includes('factur-x.xml') && document.includes('paymentQr'), 'E-Rechnungsdatei oder Zahlungs-QR fehlt.')
+const ui = ['src/main.js', 'src/modules/cases.js', 'src/modules/records.js', 'src/modules/commercial.js', 'src/modules/documents.js', 'src/modules/administration.js', 'src/modules/customizing.js'].map(read).join('\n')
+for (const marker of ['Rechnungswesen', 'Aufbau der Rechnungsnummer', 'Kontoinhaber', 'E-Rechnungs-Adresse']) assert(ui.includes(marker), `Administrationsfeld fehlt: ${marker}`)
+for (const marker of ['Das Rechnungsjahr mit vier Stellen', 'Die fortlaufende Rechnungsnummer', 'Bank- und Unternehmensdaten speichern', 'wurden gespeichert']) assert(ui.includes(marker), `Formularverbesserung 0.20.1 fehlt: ${marker}`)
+assert(ui.includes('/bank-data') && ui.includes('save-branch-bank'), 'Separater Bankdaten-Endpunkt 0.20.2 fehlt in der Oberfläche.')
+const routes = read('appinfo/routes.php')
+assert(routes.includes('saveBranchBankData') && routes.includes('/bank-data'), 'Bankdatenroute 0.20.2 fehlt.')
+assert(config.includes('saveBranchBankData') && config.includes('account_holder') && config.includes('executeStatement'), 'Persistente Bankdatenspeicherung 0.20.2 fehlt.')
+assert(fs.existsSync(path.join(root, 'resources/templates/RECHNUNG.docx')), 'Rechnungsvorlage fehlt.')
+console.log('Rechnungswesen 0.20.0: statischer Vertrag OK')
