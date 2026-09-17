@@ -11,6 +11,8 @@ use OCA\Bestatter\Service\TeamService;
 use OCA\Bestatter\Service\TemplateFieldCatalogService;
 use OCA\Bestatter\Service\InstallationConfigService;
 use OCA\Bestatter\Service\AuditService;
+use OCA\Bestatter\Service\SurchargeRuleService;
+use OCA\Bestatter\Service\BurialVariantRuleService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -18,7 +20,7 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class CatalogApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private CustomizingService $customizingService, private ArticleService $articles, private ConfigurationService $configuration, private TeamService $teamService, private TemplateFieldCatalogService $templateFields, private InstallationConfigService $installationConfig, private AuditService $audit) {
+	public function __construct(string $appName, IRequest $request, private CustomizingService $customizingService, private ArticleService $articles, private ConfigurationService $configuration, private TeamService $teamService, private TemplateFieldCatalogService $templateFields, private InstallationConfigService $installationConfig, private AuditService $audit, private SurchargeRuleService $surcharges, private BurialVariantRuleService $burialRules) {
 		parent::__construct($appName, $request);
 	}
 
@@ -29,9 +31,51 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function updateCustomizingItem(int $id, string $value = '', string $label = ''): DataResponse {
+	public function surchargeRules(): DataResponse {
+		return new DataResponse($this->surcharges->all());
+	}
+
+	#[NoAdminRequired]
+	public function createSurchargeRule(string $rule = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->customizingService->updateItem($id, $value, $label));
+		$saved = $this->surcharges->save(json_decode($rule, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('SURCHARGE_RULE', 'CREATED', $saved);
+		return new DataResponse($saved, 201);
+	}
+
+	#[NoAdminRequired]
+	public function updateSurchargeRule(int $id, string $rule = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$saved = $this->surcharges->save(json_decode($rule, true, 512, JSON_THROW_ON_ERROR), $id);
+		$this->audit->logSystem('SURCHARGE_RULE', 'UPDATED', $saved);
+		return new DataResponse($saved);
+	}
+
+	#[NoAdminRequired]
+	public function burialVariantRules(): DataResponse {
+		return new DataResponse($this->burialRules->all());
+	}
+
+	#[NoAdminRequired]
+	public function createBurialVariantRule(string $rule = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$saved = $this->burialRules->save(json_decode($rule, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('BURIAL_VARIANT_RULE', 'CREATED', $saved);
+		return new DataResponse($saved, 201);
+	}
+
+	#[NoAdminRequired]
+	public function updateBurialVariantRule(int $id, string $rule = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$saved = $this->burialRules->save(json_decode($rule, true, 512, JSON_THROW_ON_ERROR), $id);
+		$this->audit->logSystem('BURIAL_VARIANT_RULE', 'UPDATED', $saved);
+		return new DataResponse($saved);
+	}
+
+	#[NoAdminRequired]
+	public function updateCustomizingItem(int $id, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = ''): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		return new DataResponse($this->customizingService->updateItem($id, $value, $label, $parentValue, $funeralScope));
 	}
 
 	#[NoAdminRequired]
@@ -42,9 +86,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function addCustomizingItem(string $key, string $value = '', string $label = ''): DataResponse {
+	public function addCustomizingItem(string $key, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->customizingService->addItem($key, $value, $label), 201);
+		return new DataResponse($this->customizingService->addItem($key, $value, $label, $parentValue, $funeralScope), 201);
 	}
 
 	#[NoAdminRequired]

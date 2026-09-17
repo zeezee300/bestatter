@@ -5,7 +5,7 @@ import { join } from 'node:path'
 const root = process.argv[2] || '.'
 const read = (file) => readFileSync(join(root, file), 'utf8')
 const migrations = readdirSync(join(root, 'lib', 'Migration')).filter((name) => name.endsWith('.php'))
-assert.deepEqual(migrations, ['Version1800Date20260906000000.php', 'Version3000Date20260907000000.php', 'Version3100Date20260909000000.php', 'Version3200Date20260910000000.php', 'Version3300Date20260911000000.php', 'Version3400Date20260911010000.php', 'Version3500Date20260915000000.php', 'Version3600Date20260915010000.php'], 'konsolidierte Baseline sowie alle additiven Upgrade-Schritte werden erwartet')
+assert.deepEqual(migrations, ['Version1800Date20260906000000.php', 'Version3000Date20260907000000.php', 'Version3100Date20260909000000.php', 'Version3200Date20260910000000.php', 'Version3300Date20260911000000.php', 'Version3400Date20260911010000.php', 'Version3500Date20260915000000.php', 'Version3600Date20260915010000.php', 'Version3700Date20260916000000.php', 'Version3800Date20260917000000.php', 'Version3900Date20260917010000.php', 'Version4000Date20260917020000.php'], 'konsolidierte Baseline sowie alle additiven Upgrade-Schritte werden erwartet')
 
 const migration = read('lib/Migration/Version1800Date20260906000000.php')
 for (const table of ['bestatter_cases','bestatter_records','bestatter_articles','bestatter_case_services','bestatter_document_templates','bestatter_invoices','bestatter_audit_log']) assert.ok(migration.includes(`'${table}'`), `Baseline enthält ${table}`)

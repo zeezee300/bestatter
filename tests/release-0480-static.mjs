@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const read=(path)=>fs.readFileSync(path,'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
-assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.59.0'"))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
+assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.65.0'"))
 const migration=read('lib/Migration/Version1800Date20260906000000.php')
 for(const table of ['bestatter_external_documents','bestatter_integration_jobs'])assert(migration.includes(table),`${table} fehlt`)
 for(const column of ['external_document_id','nextcloud_file_id','document_sha256','sync_status','next_attempt_at','attempts'])assert(migration.includes(column),`${column} fehlt`)

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const read = (path) => fs.readFileSync(path, 'utf8')
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
 const migration=read('lib/Migration/Version1800Date20260906000000.php')
 const service=read('lib/Service/CaptureImportService.php')
 const paperless=read('lib/Service/PaperlessService.php')

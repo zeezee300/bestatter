@@ -12,6 +12,7 @@ use OCA\Bestatter\Service\RecordService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\FileDisplayResponse;
 use OCP\IDBConnection;
 use OCP\IRequest;
 
@@ -51,7 +52,8 @@ class DocumentApiController extends ApiController {
 	#[NoAdminRequired]
 	public function generateDocument(int $id, string $templateKey, string $documentStatus = 'ENTWURF', bool $createPdf = true, bool $allowIncomplete = false, int $scheduleId = 0): DataResponse {
 		$file = $this->documents->generateTemplate($this->caseService->getCase($id), $templateKey, $documentStatus, $createPdf, $allowIncomplete, null, $scheduleId);
-		$record = $this->recordService->saveDocument($id, $file['title'], $file['status'], $file);
+		try { $record = $this->recordService->saveDocument($id, $file['title'], $file['status'], $file); }
+		catch (\Throwable $error) { $this->documents->discardGeneratedOutput($file); throw $error; }
 		return new DataResponse(['file' => $file, 'record' => $record], 201);
 	}
 
@@ -62,10 +64,46 @@ class DocumentApiController extends ApiController {
 	public function allCaseFiles(): DataResponse { return new DataResponse($this->caseFiles->listAll($this->caseService->listCases())); }
 
 	#[NoAdminRequired]
+	public function displayCasePdf(int $caseId, int $fileId): FileDisplayResponse {
+		$file = $this->caseFiles->pdf($this->caseService->getCase($caseId), $fileId);
+		$fileName = str_replace(["\r", "\n", '"'], ['', '', "'"], $file->getName());
+		$response = new FileDisplayResponse($file);
+		$response->addHeader('Content-Type', 'application/pdf');
+		$response->addHeader('Content-Disposition', 'inline; filename="' . $fileName . '"');
+		$response->addHeader('Cache-Control', 'private, no-store');
+		$response->addHeader('X-Content-Type-Options', 'nosniff');
+		return $response;
+	}
+
+	#[NoAdminRequired]
+	public function displayCaseFile(int $caseId, int $fileId): FileDisplayResponse {
+		$file = $this->caseFiles->file($this->caseService->getCase($caseId), $fileId);
+		$fileName = str_replace(["\r", "\n", '"'], ['', '', "'"], $file->getName());
+		$response = new FileDisplayResponse($file);
+		$response->addHeader('Content-Type', $file->getMimeType() ?: 'application/octet-stream');
+		$response->addHeader('Content-Disposition', 'inline; filename="' . $fileName . '"');
+		$response->addHeader('Cache-Control', 'private, no-store');
+		$response->addHeader('X-Content-Type-Options', 'nosniff');
+		return $response;
+	}
+
+	#[NoAdminRequired]
 	public function uploadCaseFile(int $caseId, string $subfolder = '', string $documentType = 'Sonstiges', string $title = ''): DataResponse {
 		$upload = $this->apiRequest->getUploadedFile('file');
 		if (!is_array($upload)) throw new \InvalidArgumentException('Bitte eine Datei auswählen.');
 		return new DataResponse($this->caseFiles->upload($this->caseService->getCase($caseId), $upload, $subfolder, $documentType, $title), 201);
+	}
+
+	#[NoAdminRequired]
+	public function uploadPaperContract(int $caseId, string $source = '', int $sourceRecordId = 0): DataResponse {
+		$upload = $this->apiRequest->getUploadedFile('file');
+		if (!is_array($upload)) throw new \InvalidArgumentException('Bitte einen PDF-Scan auswählen.');
+		return new DataResponse($this->caseFiles->uploadPaperContract($this->caseService->getCase($caseId), $upload, $source, $sourceRecordId), 201);
+	}
+
+	#[NoAdminRequired]
+	public function confirmPaperContract(int $caseId, int $recordId, string $review = '{}'): DataResponse {
+		return new DataResponse($this->caseFiles->confirmPaperContract($this->caseService->getCase($caseId), $recordId, json_decode($review, true, 512, JSON_THROW_ON_ERROR)));
 	}
 
 	#[NoAdminRequired]

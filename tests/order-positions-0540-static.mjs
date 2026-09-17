@@ -11,7 +11,7 @@ const migration = read('lib/Migration/Version3300Date20260911000000.php')
 const css = read('css/style.css')
 const opList = read('docs/OP-LISTE.md')
 
-assert(info.includes('<version>0.59.0</version>') && app.includes("VERSION = '0.59.0'") && pkg.version === '0.59.0', 'Version 0.59.0 ist nicht konsistent.')
+assert(info.includes('<version>0.65.0</version>') && app.includes("VERSION = '0.65.0'") && pkg.version === '0.65.0', 'Version 0.65.0 ist nicht konsistent.')
 assert(article.includes('$activeItems') && article.includes("!== 'STORNIERT'"), 'Stornierte Positionen werden nicht sicher aus den Summen ausgeschlossen.')
 assert(article.includes("(int)$item['id'] !== (int)$current['id']") && article.includes('unset($existingItems)'), 'Aktualisierte Positionen werden nicht aus der Löschkandidatenliste entfernt.')
 assert(migration.includes("hasColumn('note')") && migration.includes("'notnull' => false"), 'Migration für Positionsbemerkungen fehlt oder ist nicht bestandsdatensicher.')

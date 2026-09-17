@@ -19,6 +19,6 @@ assert(main.includes("finalizeCommercialDocument('QUOTE')") && main.includes("fi
 assert(main.includes('select:not([name="order_status"])'), 'Festschreibungsstatus darf nicht normal autospeichern.')
 assert(main.includes("selected === 'KVA versendet'") && main.includes("selected === 'beauftragt'"))
 assert(docs.includes('Blockierende Regeln') && docs.includes('Bestätigungspflichtige Hinweise'))
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
 
 console.log('order finalization 0.55.0 static checks passed')

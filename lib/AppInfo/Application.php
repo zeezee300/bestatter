@@ -19,7 +19,7 @@ use OCP\DB\Events\AddMissingIndicesEvent;
 
 class Application extends App implements IBootstrap {
     public const APP_ID = 'bestatter';
-	public const VERSION = '0.59.0';
+	public const VERSION = '0.65.0';
 
 	public function __construct(array $urlParams = []) {
 		$vendorAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';

@@ -28,6 +28,7 @@ class DevelopmentResetService {
 		'bestatter_workflow_runs',
 		'bestatter_audit_log',
 		'bestatter_case_services',
+		'bestatter_mail_outbox',
 		'bestatter_records',
 		'bestatter_cases',
 		'bestatter_invoice_sequences',

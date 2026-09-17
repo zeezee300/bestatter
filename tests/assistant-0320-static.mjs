@@ -36,7 +36,7 @@ for (const marker of ['suggestPersonalDetails', 'suggestResidence', 'suggestCeme
 for (const marker of ['capture-speech-progress', 'setTranscriptionProgress', 'Transkription abgeschlossen']) {
 	if (!frontend.includes(marker)) throw new Error(`Transcription progress marker missing: ${marker}`)
 }
-for (const marker of ["'first_name' => 'Maria'", "'date_of_birth' => '1942-04-15'", "'spouse_first_name' => 'Gerd'", "'spouse_last_name' => 'Meier'", "'cemetery_contact' => 'Friedhof Borgfeld'"]) {
+for (const marker of ["'first_name' => 'Erika'", "'date_of_birth' => '1942-04-15'", "'spouse_first_name' => 'Georg'", "'spouse_last_name' => 'Beispiel'", "'cemetery_contact' => 'Friedhof Beispiel'"]) {
 	if (!fixture.includes(marker)) throw new Error(`0.32.2 text fixture marker missing: ${marker}`)
 }
 console.log('0.32.0 guided capture, speech adapter and confirmed intent contracts passed')

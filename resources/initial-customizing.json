@@ -291,32 +291,6 @@
       ]
     },
     {
-      "key": "FUNERAL_TYPE",
-      "name": "Bestattungsart",
-      "items": [
-        [
-          "Erdbestattung",
-          "Erdbestattung"
-        ],
-        [
-          "Feuerbestattung",
-          "Feuerbestattung"
-        ],
-        [
-          "Seebestattung",
-          "Seebestattung"
-        ],
-        [
-          "Baumbestattung",
-          "Baumbestattung"
-        ],
-        [
-          "Andere",
-          "Andere"
-        ]
-      ]
-    },
-    {
       "key": "GRAVE_TYPE",
       "name": "Grabart",
       "items": [
@@ -708,6 +682,31 @@
           "L",
           "Liter"
         ]
+      ]
+    },
+    {
+      "key": "BURIAL_VARIANT",
+      "name": "Bestattungsvarianten",
+      "items": [
+        {"value":"FIRE","label":"Feuerbestattung","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FIRE_URN_FAMILY","label":"Urnenbeisetzung mit Familie auf Friedhof","parent":"FIRE","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FIRE_URN_ANONYMOUS","label":"Urnenbeisetzung anonym","parent":"FIRE","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"TREE","label":"Baumbestattung","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FOREST_BASIC","label":"Basisplatz im FriedWald®","parent":"TREE","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FOREST_COMMUNITY","label":"Gemeinschaftsbaum im FriedWald®","parent":"TREE","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FOREST","label":"Waldbestattung","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"FOREST_ANONYMOUS","label":"Anonyme Waldbestattung","parent":"FOREST","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA","label":"Seebestattung","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA_BALTIC_FAMILY","label":"In der Ostsee mit Familie","parent":"SEA","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA_NORTH_FAMILY","label":"In der Nordsee mit Familie","parent":"SEA","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA_NORTH_SHIP_1","label":"Mit Schiff 1","parent":"SEA_NORTH_FAMILY","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA_NORTH_SHIP_2","label":"Mit Schiff 2","parent":"SEA_NORTH_FAMILY","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"SEA_ANONYMOUS","label":"Anonym","parent":"SEA","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"URN_HANDOVER","label":"Urne an Angehörige","metadata":{"funeralScope":"CREMATION"}},
+        {"value":"ALPINE_MEADOW","label":"Almwiesenbestattung","metadata":{"classificationPending":true}},
+        {"value":"CRYSTAL","label":"Kristallbestattung","metadata":{"classificationPending":true}},
+        {"value":"EARTH","label":"Erdbestattung","metadata":{"funeralScope":"BURIAL"}},
+        {"value":"MEADOW","label":"Wiesenbestattung","metadata":{"classificationPending":true}}
       ]
     }
   ]

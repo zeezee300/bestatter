@@ -14,7 +14,7 @@ class DocumentService {
 	private const REGIONAL_TEMPLATE_REQUIRED = [
 		'STERBEFALLANZEIGE_STANDESAMT',
 	];
-	private const STATUSES = ['ENTWURF', 'FINAL', 'UNTERSCHRIEBEN'];
+	private const STATUSES = ['ENTWURF', 'FINAL'];
 	/** Only byte-identical former package defaults may be refreshed automatically. */
 	private const REPLACEABLE_STANDARD_TEMPLATE_HASHES = [
 		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad'],
@@ -429,6 +429,17 @@ class DocumentService {
 		if ($statusLabel === '') $statusLabel = match ($status) { 'FINAL' => 'Final', 'UNTERSCHRIEBEN' => 'Unterschrieben', default => 'Entwurf' };
 		$statusLabel = $this->safeOutputTitle($statusLabel);
 		$prefix = sprintf('%s - %s%s - ', $safeTitle, $case['caseNumber'], $contextLabel !== '' ? ' - ' . $contextLabel : '');
+		$version = 1;
+		if ($status === 'FINAL' && $templateKey === 'BESTATTUNGSAUFTRAG') {
+			foreach ($targetFolder->getDirectoryListing() as $existing) {
+				$name = $existing->getName();
+				if (!str_starts_with($name, $prefix . 'Final')) continue;
+				if (preg_match('/ - Final - R(\d+)\.pdf$/', $name, $match)) $version = max($version, (int)$match[1] + 1);
+				elseif (str_ends_with($name, ' - Final.pdf')) $version = max($version, 2);
+			}
+			$statusLabel = sprintf('Final - R%02d', $version);
+			$replaceExistingOutput = false;
+		}
 		if ($replaceExistingOutput) {
 			$existingOutputs = array_values(array_filter($targetFolder->getDirectoryListing(), static fn($existing): bool => str_starts_with($existing->getName(), $prefix)));
 			foreach ($existingOutputs as $existing) {
@@ -437,7 +448,6 @@ class DocumentService {
 			}
 			foreach ($existingOutputs as $existing) $existing->delete();
 		}
-		$version = 1;
 		$baseName = sprintf('%s - %s%s - %s', $safeTitle, $case['caseNumber'], $contextLabel !== '' ? ' - ' . $contextLabel : '', $statusLabel);
 		$docxName = $baseName . '.docx';
 		// A previous interrupted workflow may have written the file before its

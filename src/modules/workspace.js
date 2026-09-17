@@ -27,7 +27,11 @@ export async function restoreWorkspace(ctx) {
 			state.caseCompleteness = await api(`${apiBase}/cases/${state.currentCaseId}/completeness`, { feedback: false })
 			state.assistantSidebar.caseId = state.currentCaseId
 			if (['task', 'schedule', 'document', 'history'].includes(state.caseTab)) await loadRecordType(state.caseTab === 'history' ? 'activity' : state.caseTab, state.currentCaseId)
-			if (state.caseTab === 'document') await loadCaseFiles(state.currentCaseId)
+			if (state.caseTab === 'document') await Promise.all([
+				loadCaseFiles(state.currentCaseId),
+				api(`${apiBase}/cases/${state.currentCaseId}/business-mail/availability`, { feedback: false }).then((result) => { state.businessMailAvailability = result }),
+				api(`${apiBase}/cases/${state.currentCaseId}/business-mail`, { feedback: false }).then((result) => { state.businessMailHistory = result; state.businessMailCaseId = Number(state.currentCaseId) }),
+			])
 			if (state.caseTab === 'contact') await Promise.all([loadRecordType('contact'), loadRecordType('case_contact', state.currentCaseId)])
 			if (state.caseTab === 'deregistration') await Promise.all([loadRecordType('contact'), loadRecordType('document', state.currentCaseId), loadCaseFiles(state.currentCaseId), api(deregistrationUrl(state.currentCaseId), { feedback: false }).then((items) => { state.records.deregistration = items })])
 			if (['order', 'services', 'finances'].includes(state.caseTab)) await loadCommercial()

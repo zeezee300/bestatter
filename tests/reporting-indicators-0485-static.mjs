@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const read = (path) => fs.readFileSync(path, 'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
 const ui = read('src/modules/administration.js')
 assert(!ui.includes('Empfohlene nächste Kennzahlen'), 'Konzeptionelle Kennzahlen dürfen nicht sichtbar angezeigt werden.')
 for (const marker of ['Kennzahlenbericht', 'data-report="indicators"', "['indicators','Kennzahlenbericht'"]) assert(ui.includes(marker), `Abrufbarer Kennzahlenbericht fehlt: ${marker}`)

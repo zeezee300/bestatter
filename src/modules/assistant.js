@@ -16,7 +16,33 @@ export function createAssistantModule(ctx) {
 		place_of_death: 'Sterbeort / Einrichtung', birth_place: 'Geburtsort', birth_registry_office: 'Geburtsstandesamt', profession: 'Beruf', pension_insurance_number: 'Postrentennummer', last_residence_city: 'Letzter Wohnort',
 		last_residence: 'Straße / Hausnummer', last_residence_postal_code: 'PLZ', civil_status: 'Familienstand', spouse_first_name: 'Vorname Ehepartner/in', spouse_last_name: 'Nachname Ehepartner/in', spouse_date_of_birth: 'Geburtsdatum Ehepartner/in', spouse_birth_place: 'Geburtsort Ehepartner/in', spouse_residence: 'Wohnort Ehepartner/in', spouse_date_of_death: 'Todesdatum Ehepartner/in (falls vorverstorben)', spouse_death_place: 'Sterbeort Ehepartner/in',
 		marriage_date: 'Datum der Eheschließung', marriage_place: 'Ort der Eheschließung', partnership_date: 'Datum der Begründung der Lebenspartnerschaft', divorce_date: 'Datum der Scheidung / Aufhebung', religion: 'Religion', cemetery_contact: 'Friedhof',
-		funeral_type: 'Bestattungsart', order_client_relation: 'Beziehung Auftraggeber/in', order_client_first_name: 'Vorname Auftraggeber/in', order_client_name: 'Nachname Auftraggeber/in', order_client_mobile: 'Mobilfunknummer Auftraggeber/in', certificate_free_count: 'Sterbeurkunden gebührenfrei', certificate_paid_count: 'Sterbeurkunden gebührenpflichtig', branch: 'Niederlassung', responsible_employee: 'Zuständiger Mitarbeiter', notes: 'Gesprächsnotiz',
+		burial_variant_code: 'Bestattungsart / Variante', order_client_relation: 'Beziehung Auftraggeber/in', order_client_first_name: 'Vorname Auftraggeber/in', order_client_name: 'Nachname Auftraggeber/in', order_client_mobile: 'Mobilfunknummer Auftraggeber/in', certificate_free_count: 'Sterbeurkunden gebührenfrei', certificate_paid_count: 'Sterbeurkunden gebührenpflichtig', branch: 'Niederlassung', responsible_employee: 'Zuständiger Mitarbeiter', notes: 'Gesprächsnotiz',
+	}
+	const variantTree = () => state.customizing.find((list) => list.key === 'BURIAL_VARIANT')?.tree || []
+	function variantPath(code, level = variantTree(), ancestors = []) {
+		for (const item of level) {
+			const path = [...ancestors, item]
+			if (item.value === code) return path
+			const nested = variantPath(code, item.children || [], path)
+			if (nested.length) return nested
+		}
+		return []
+	}
+	function burialChoice(data) {
+		const code = String(data.burial_variant_code || '')
+		const path = variantPath(code)
+		let level = variantTree()
+		const fields = []
+		for (let depth = 0; level.length; depth++) {
+			const selected = path[depth]?.value || ''
+			fields.push(`<label><span>${depth ? `Unterauswahl ${depth}` : 'Bestattungsart'}</span><select data-capture-burial-level="${depth}"><option value="">${depth ? 'Noch offen' : 'Bitte auswählen'}</option>${level.map((item) => `<option value="${esc(item.value)}" ${item.value === selected ? 'selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>`)
+			level = path[depth]?.children || []
+		}
+		return `<input type="hidden" name="burial_variant_code" value="${esc(code)}">${fields.join('')}`
+	}
+	function suggestedVariant(value) {
+		const normalized = String(value || '').toLocaleLowerCase('de').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+		return variantTree().find((item) => [item.value, item.label].some((candidate) => String(candidate).toLocaleLowerCase('de').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '') === normalized))?.value || ''
 	}
 
 	function guidedCaptureView() {
@@ -76,7 +102,7 @@ export function createAssistantModule(ctx) {
 				${captureField('birth_place')}${captureField('birth_registry_office')}${captureField('profession')}${captureField('pension_insurance_number')}${captureField('place_of_death')}${captureField('civil_status')}${captureField('spouse_first_name')}${captureField('spouse_last_name')}${captureField('spouse_date_of_birth', 'date')}${captureField('spouse_birth_place')}${captureField('spouse_residence')}${captureField('spouse_date_of_death', 'date')}${captureField('spouse_death_place')}${captureField('marriage_date', 'date')}${captureField('marriage_place')}${captureField('partnership_date', 'date')}${captureField('divorce_date', 'date')}${captureField('religion')}
 				${captureField('last_residence')}${captureField('last_residence_postal_code')}${captureField('last_residence_city')}${captureField('cemetery_contact')}
 				${captureField('order_client_relation')}${captureField('order_client_first_name')}${captureField('order_client_name')}${captureField('order_client_mobile', 'tel')}${captureField('certificate_free_count', 'number')}${captureField('certificate_paid_count', 'number')}
-				<label><span>Bestattungsart</span><select name="funeral_type"><option value=""></option><option value="FEUERBESTATTUNG" ${data.funeral_type === 'FEUERBESTATTUNG' ? 'selected' : ''}>Feuerbestattung</option><option value="ERDBESTATTUNG" ${data.funeral_type === 'ERDBESTATTUNG' ? 'selected' : ''}>Erdbestattung</option><option value="UEBERFUEHRUNG" ${data.funeral_type === 'UEBERFUEHRUNG' ? 'selected' : ''}>Überführung</option></select></label>
+				${burialChoice(data)}
 				<label><span>Niederlassung</span><select name="branch"><option value=""></option>${branchOptions}</select></label>
 				<label><span>Zuständiger Mitarbeiter</span><select name="responsible_employee"><option value=""></option>${memberOptions}</select></label>
 				<label class="bp-span-2"><span>Interne Gesprächsnotiz</span><textarea name="notes" rows="4">${esc(data.notes || capture().transcript)}</textarea></label>
@@ -91,7 +117,7 @@ export function createAssistantModule(ctx) {
 	}
 
 	function captureReview(data) {
-		const rows = Object.entries(data).filter(([, value]) => String(value || '').trim() !== '').map(([key, value]) => `<div><dt>${esc(fieldLabels[key] || key)}</dt><dd>${esc(value)}</dd></div>`).join('')
+		const rows = Object.entries(data).filter(([key, value]) => key !== 'funeral_type' && String(value || '').trim() !== '').map(([key, value]) => `<div><dt>${esc(fieldLabels[key] || key)}</dt><dd>${esc(key === 'burial_variant_code' ? variantPath(value).map((item) => item.label).join(' → ') || value : value)}</dd></div>`).join('')
 		return `<section class="bp-panel bp-capture-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Schritt 3</p><h3>Entwurf verbindlich anlegen</h3></div><span class="bp-status">Noch nicht gespeichert</span></div>
 			<p>Bitte kontrolliere besonders Namen, Datumsangaben, Bestattungsart, Niederlassung und Zuständigkeit. Der Assistent legt erst nach dem folgenden Klick einen Fall an.</p>
 			<dl class="bp-capture-review">${rows || '<div><dd>Keine Angaben vorhanden.</dd></div>'}</dl>
@@ -196,7 +222,12 @@ export function createAssistantModule(ctx) {
 		})
 		document.getElementById('capture-transcript')?.addEventListener('input', (event) => { capture().transcript = event.target.value; persist() })
 		document.getElementById('capture-analyze')?.addEventListener('click', analyzeTranscript)
-		document.getElementById('capture-apply-suggestions')?.addEventListener('click', () => { applySuggestions(); render() })
+		document.getElementById('capture-apply-suggestions')?.addEventListener('click', () => { persistFields(); applySuggestions(); render() })
+		document.querySelectorAll('[data-capture-burial-level]').forEach((select) => select.addEventListener('change', () => {
+			persistFields()
+			capture().data.burial_variant_code = select.value || (Number(select.dataset.captureBurialLevel) ? variantPath(capture().data.burial_variant_code)[Number(select.dataset.captureBurialLevel) - 1]?.value || '' : '')
+			persist(); render()
+		}))
 		document.querySelectorAll('[data-focus-capture-field]').forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); document.querySelector(`#capture-fields [name="${CSS.escape(link.dataset.focusCaptureField)}"]`)?.focus() }))
 		document.getElementById('capture-review')?.addEventListener('click', () => {
 			const form = document.getElementById('capture-fields')
@@ -305,7 +336,12 @@ export function createAssistantModule(ctx) {
 		const selected = all ? capture().suggestions.map((_, index) => index) : [...document.querySelectorAll('[data-suggestion]:checked')].map((input) => Number(input.dataset.suggestion))
 		for (const index of selected) {
 			const item = capture().suggestions[index]
-			if (item) capture().data[item.field] = item.value
+			if (!item) continue
+			if (item.field === 'funeral_type') {
+				const code = suggestedVariant(item.value)
+				if (code) capture().data.burial_variant_code = code
+				else if (!capture().warnings.includes('Bestattungsart bitte anhand der Variantenliste selbst auswählen.')) capture().warnings.push('Bestattungsart bitte anhand der Variantenliste selbst auswählen.')
+			} else capture().data[item.field] = item.value
 		}
 		if (!capture().data.notes) capture().data.notes = capture().transcript
 		persist()
@@ -321,6 +357,7 @@ export function createAssistantModule(ctx) {
 		try {
 			const scanImport = capture().scanImport ? { ...capture().scanImport } : null
 			const data = { ...capture().data, status: 'NEU' }
+			delete data.funeral_type // Ausschließlich der Variantenbaum bestimmt die Bestattungsart.
 			const corrections = (capture().suggestions || []).filter((item) => String(data[item.field] || '').trim() && String(data[item.field]).trim() !== String(item.value || '').trim()).map((item) => ({ field: item.field, source: item.source, observedValue: item.value, confirmedValue: data[item.field] }))
 			if (corrections.length) await api(`${ctx.apiBase}/assistant/corrections`, { method: 'POST', feedback: false, loadingLabel: 'Bestätigte Korrekturen werden für die fachliche Prüfung vorgemerkt …', body: new URLSearchParams({ corrections: JSON.stringify(corrections) }) })
 			const result = await api(ctx.urls.cases, { method: 'POST', feedback: false, loadingLabel: 'Geprüfter Fall wird angelegt …', body: new URLSearchParams({ masterData: JSON.stringify(data), firstName: data.first_name, lastName: data.last_name, creationToken: capture().creationToken }) })
@@ -449,7 +486,7 @@ export function createAssistantModule(ctx) {
 	}
 
 	function emptyCapture() {
-		return { step: 1, maxStep: 1, transcript: '', suggestions: [], warnings: [], questions: [], conflicts: [], scanImport: null, recording: false, recordingStartedAt: null, transcriptionTaskId: null, transcriptionProgress: { visible: false, progress: null, label: '', status: 'idle' }, data: { salutation: '', title: '', first_name: '', last_name: '', birth_name: '', date_of_birth: '', date_of_death: '', funeral_type: '', place_of_death: '', birth_place: '', birth_registry_office: '', profession: '', pension_insurance_number: '', civil_status: '', spouse_first_name: '', spouse_last_name: '', spouse_date_of_birth: '', spouse_birth_place: '', spouse_residence: '', spouse_date_of_death: '', spouse_death_place: '', marriage_date: '', marriage_place: '', partnership_date: '', divorce_date: '', religion: '', last_residence: '', last_residence_postal_code: '', last_residence_city: '', cemetery_contact: '', order_client_relation: '', order_client_first_name: '', order_client_name: '', order_client_mobile: '', certificate_free_count: '', certificate_paid_count: '', branch: defaultBranch(), responsible_employee: currentUser(), notes: '' }, command: '', assistantCaseId: 0, intentPreview: null, creationToken: ctx.createToken() }
+		return { step: 1, maxStep: 1, transcript: '', suggestions: [], warnings: [], questions: [], conflicts: [], scanImport: null, recording: false, recordingStartedAt: null, transcriptionTaskId: null, transcriptionProgress: { visible: false, progress: null, label: '', status: 'idle' }, data: { salutation: '', title: '', first_name: '', last_name: '', birth_name: '', date_of_birth: '', date_of_death: '', burial_variant_code: '', place_of_death: '', birth_place: '', birth_registry_office: '', profession: '', pension_insurance_number: '', civil_status: '', spouse_first_name: '', spouse_last_name: '', spouse_date_of_birth: '', spouse_birth_place: '', spouse_residence: '', spouse_date_of_death: '', spouse_death_place: '', marriage_date: '', marriage_place: '', partnership_date: '', divorce_date: '', religion: '', last_residence: '', last_residence_postal_code: '', last_residence_city: '', cemetery_contact: '', order_client_relation: '', order_client_first_name: '', order_client_name: '', order_client_mobile: '', certificate_free_count: '', certificate_paid_count: '', branch: defaultBranch(), responsible_employee: currentUser(), notes: '' }, command: '', assistantCaseId: 0, intentPreview: null, creationToken: ctx.createToken() }
 	}
 
 	function defaultBranch() { return state.branches.find((item) => item.active && (item.memberUids || []).includes(currentUser()))?.key || state.branches.find((item) => item.active)?.key || '' }

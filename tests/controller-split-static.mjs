@@ -7,10 +7,10 @@ const routesSource = await readFile(path.join(root, 'appinfo', 'routes.php'), 'u
 const routePattern = /\['name' => '([^'#]+)#([^']+)'/g
 const routes = [...routesSource.matchAll(routePattern)]
 
-assert.equal(routes.length, 142, 'Die erwarteten 142 Seiten-, API- und Webhook-Routen müssen registriert sein.')
+assert.equal(routes.length, 159, 'Die erwarteten 159 Seiten-, API- und Webhook-Routen müssen registriert sein.')
 
 const apiRoutes = routes.filter(([, controller]) => !['page','paperlessWebhook'].includes(controller))
-assert.equal(apiRoutes.length, 140, 'Alle 140 geschützten JSON-/Download-API-Routen müssen erfasst sein.')
+assert.equal(apiRoutes.length, 157, 'Alle 157 geschützten JSON-/Download-API-Routen müssen erfasst sein.')
 
 const controllerSources = new Map()
 for (const [, controller, method] of apiRoutes) {
@@ -25,7 +25,7 @@ for (const [, controller, method] of apiRoutes) {
 	assert.match(source, new RegExp(`public\\s+function\\s+${method}\\s*\\(`), `${className}::${method} fehlt.`)
 }
 
-assert.equal(controllerSources.size, 11, 'Die geschützte API muss in elf fachliche Controller aufgeteilt bleiben.')
+assert.equal(controllerSources.size, 13, 'Die geschützte API muss in dreizehn fachliche Controller aufgeteilt bleiben.')
 
 const baseSource = await readFile(path.join(root, 'lib', 'Controller', 'ApiController.php'), 'utf8')
 assert.match(baseSource, /abstract\s+class\s+ApiController\s+extends\s+Controller/)
@@ -34,4 +34,4 @@ assert.doesNotMatch(baseSource, /#\[NoAdminRequired\]/, 'Der Marker-Controller d
 const webhookSource = await readFile(path.join(root, 'lib', 'Controller', 'PaperlessWebhookController.php'), 'utf8')
 assert.match(webhookSource, /class\s+PaperlessWebhookController\s+extends\s+Controller\b/)
 assert.match(webhookSource, /public\s+function\s+receive\s*\(/)
-console.log('Controller-Split, 135 geschützte API-Routen und separater Paperless-Webhook geprüft.')
+console.log('Controller-Split, 151 geschützte API-Routen und separater Paperless-Webhook geprüft.')

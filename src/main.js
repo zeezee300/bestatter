@@ -1,5 +1,7 @@
 /* global OC */ import { createCasesModule } from './modules/cases.js'; import { createRecordsModule } from './modules/records.js'; import { createCommercialModule } from './modules/commercial.js'; import { createDocumentsModule } from './modules/documents.js'; import { createAdministrationModule } from './modules/administration.js'; import { createCustomizingModule } from './modules/customizing.js'; import { createUi } from './modules/ui.js'; import { createAssistantModule } from './modules/assistant.js'; import { readWorkspace, rememberWorkspace, restoreWorkspace } from './modules/workspace.js'
 import { createPaperlessModule } from './modules/paperless.js'
+import { prepareDocumentMail, printNextcloudPdf } from './modules/document-actions.js'
+import { createHelpModule } from './modules/help.js'
 (function () {
 	'use strict'; const root = document.getElementById('bestatter-app'); if (!root) return
 	const appVersion = root.dataset.appVersion || ''; const urls = {
@@ -37,6 +39,8 @@ import { createPaperlessModule } from './modules/paperless.js'
 		team: { currentUid: '', members: [] },
 		cases: [],
 		customizing: [],
+		surchargeRules: [],
+		burialVariantRules: [],
 		checklists: [],
 		articles: [],
 		articleGroupRules: [],
@@ -57,6 +61,9 @@ import { createPaperlessModule } from './modules/paperless.js'
 		documentTemplateOptions: { files: [], subfolders: [], requiredFields: [] },
 		deregistrationTemplates: [],
 		caseFiles: { folders: [], documentTypes: [], files: [] },
+		businessMailAvailability: { enabled: false, sender: '', reason: 'Geschäfts-Postfach wird geprüft.' },
+		businessMailHistory: [],
+		businessMailCaseId: 0,
 		allCaseFiles: [],
 		branches: [],
 		invoiceSettings: { prefix: 'RE', pattern: '{PREFIX}-{YYYY}-{SEQ}', sequenceLength: 6, sequenceScope: 'YEAR_GLOBAL', caseReference: true, zugferdEnabled: true, zugferdVersion: '2.5.2', zugferdProfile: 'EN16931', xrechnungEnabled: false, normativeValidationRequired: false, qrEnabled: true, preview: 'RE-2026-000001' },
@@ -65,6 +72,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 		paperlessInbox: { enabled: false, mode: 'OFF', items: [], manualFallback: true }, paperlessConfiguration: null,
 		assistantCapture: null,
 		assistantSidebar: { open: false, command: '', caseId: Number(globalThis.localStorage?.getItem('bestatter-assistant-case-id') || 0), preview: null },
+		help: { available: false, open: false, pending: false, draft: '', entries: [] },
 		personalDay: { openCases: [], tasksToday: [], overdueTasks: [], schedulesToday: [], nextTasks: [], counts: { openCases: 0, tasksToday: 0, overdueTasks: 0, schedulesToday: 0 } },
 		caseCompleteness: null,
 		systemCheck: null,
@@ -181,7 +189,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 			['Betreuerkontakt', ['guardian_contact', 'guardian_name', 'guardian_street', 'guardian_postal_city', 'guardian_country', 'guardian_phone', 'guardian_email', 'guardianship_court', 'guardianship_notes']],
 		],
 		'Bestattung / Grab': [
-			['Bestattung', ['funeral_type', 'cemetery_contact']],
+			['Bestattung', ['funeral_type', 'with_funeral_ceremony', 'pickup_time', 'surcharge_pickup_rule_key', 'body_height_cm', 'surcharge_height_rule_key', 'body_weight_kg', 'surcharge_weight_rule_key', 'surcharge_other_rule_key', 'cemetery_contact']],
 			['Grab', ['grave_number', 'grave_type', 'grave_holder', 'grave_depth', 'grave_location', 'coffin_urn_size', 'grave_inscription']],
 			['Urne und Hinweise', ['urn_handover_type', 'urn_handover_date', 'funeral_notes']],
 		],
@@ -209,7 +217,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 		registry_due_date: 'Frist der Sterbefallanzeige', registry_reference: 'Aktenzeichen / Urkundenreferenz',
 		guardianship_status: 'Betreuung vorhanden?', guardian_contact: 'Kontakt aus Adressbuch', guardian_name: 'Name', guardian_street: 'Straße',
 		guardian_postal_city: 'PLZ / Ort', guardian_country: 'Land', guardian_phone: 'Telefon', guardian_email: 'E-Mail', guardianship_court: 'Betreuungsgericht',
-		guardianship_notes: 'Hinweise', funeral_type: 'Bestattungsart', cemetery_contact: 'Friedhof aus Nextcloud-Kontakten',
+		guardianship_notes: 'Hinweise', funeral_type: 'Bestattungsart', with_funeral_ceremony: 'Trauerfeier', pickup_time: 'Abholzeit', body_height_cm: 'Körpergröße (cm)', body_weight_kg: 'Körpergewicht (kg)', surcharge_pickup_rule_key: 'Zuschlagsstaffel Abholung', surcharge_height_rule_key: 'Zuschlagsstaffel Größe', surcharge_weight_rule_key: 'Zuschlagsstaffel Gewicht', surcharge_other_rule_key: 'Weitere Zuschlagsstaffel', cemetery_contact: 'Friedhof aus Nextcloud-Kontakten',
 		grave_number: 'Grabnummer', grave_type: 'Grabart', grave_holder: 'Grabinhaber', grave_depth: 'Grabtiefe', grave_location: 'Grablage',
 		coffin_urn_size: 'Sarg- / Urnengröße', grave_inscription: 'Inschrift auf Grabmal', urn_handover_type: 'Übergabe der Urne',
 		urn_handover_date: 'Urnenübergabedatum', funeral_notes: 'Bemerkung', responsible_employee: 'Verantwortlicher Mitarbeiter',
@@ -220,7 +228,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 		religion_disclosure: 'YES_NO', identity_document_type: 'IDENTITY_DOCUMENT_TYPE', death_determination: 'DEATH_DETERMINATION',
 		manner_of_death: 'MANNER_OF_DEATH', transfer_status: 'TRANSFER_STATUS', death_certificate_status: 'DEATH_CERTIFICATE_STATUS',
 		release_status: 'RELEASE_STATUS', registry_status: 'REGISTRY_STATUS', guardianship_status: 'GUARDIANSHIP_STATUS',
-		funeral_type: 'FUNERAL_TYPE', grave_type: 'GRAVE_TYPE', grave_depth: 'GRAVE_DEPTH', grave_location: 'GRAVE_LOCATION',
+		grave_type: 'GRAVE_TYPE', grave_depth: 'GRAVE_DEPTH', grave_location: 'GRAVE_LOCATION',
 		coffin_urn_size: 'COFFIN_URN_SIZE', urn_handover_type: 'URN_HANDOVER_TYPE', branch: 'BRANCH',
 	}
 	const fixedOptions = { death_time_mode: [['EXAKT', 'Exakter Zeitpunkt'], ['ZEITRAUM', 'Zeitraum von/bis']] }
@@ -230,6 +238,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 	const assistantModule = createAssistantModule(context)
 	Object.assign(context, assistantModule)
 	const { guidedCaptureView, assistantSidebarView, bindAssistant, initializeAssistantCapture } = assistantModule
+	const { helpView, bindHelp } = createHelpModule(context)
 	const casesModule = createCasesModule(context)
 	Object.assign(context, casesModule)
 	const { currentUser, assigneeOptions, listOptions, contactsByCategory, fieldType, field, masterDataForm, caseList, overview, dashboardView, caseOverview, sideOrdersPanel, checklistPanel, loadCaseSearch, bindCaseSearch, bindSideOrders } = casesModule
@@ -241,7 +250,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 	const { orderField, funeralScope, hydrateServiceDraft, loadCaseServices, serviceConflictMessages, saveCaseServices, serviceSelectionPanel, orderPanel, bindServiceSelection, showInvoiceDraftForm, finalizeCommercialDocument, relationOptions, orderTypes, commissioningTypes, euro, formatMoney, costTypeLabels, unitLabels, quantityStep, formatQuantity, serviceSaveTimer } = commercialModule
 	const documentsModule = createDocumentsModule(context)
 	Object.assign(context, documentsModule)
-	const { caseContactsPanel, showCaseContactForm, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, documentPanel, showFilePreview, showOrderDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog } = documentsModule
+	const { caseContactsPanel, showCaseContactForm, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, documentPanel, showBusinessMailDialog, showPaperContractUpload, showPaperContractReview, showFilePreview, showOrderDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog } = documentsModule
 	const administrationModule = createAdministrationModule(context)
 	Object.assign(context, administrationModule)
 	const { branchesView, invoiceSettingsView, assistantSettingsView, reportingView, loadReportingSummary, loadOperationsCockpit, bindOperationsCockpit, bindReporting, loadCommercial, commercialVersionPanel, financesPanel, administration, articleOptions, packageComponentRows, supplierOptions, showArticleForm, bindArticleAdministration, bindIncomingInvoices, bindAssistantSettings, loadSystemCheck, bindSystemCheck, loadBackups, bindBackupRestore, loadOnboarding, bindOnboarding } = administrationModule
@@ -278,7 +287,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 		else if (state.view === 'customizing') content = customizing()
 		else if (state.view === 'administration') content = administration()
 		const setupNotice = Boolean(state.team.isBestatterAdmin && state.onboarding?.ready === false)
-		root.innerHTML = `<div class="bp-app-shell"><nav class="bp-app-nav" aria-label="Bestatter-Navigation">${mainNavigation.filter((item) => (item[0] !== 'capture' || state.assistantConfiguration.guidedCaptureEnabled) && (state.team.isBestatterAdmin || !['customizing', 'administration'].includes(item[0]))).map((item) => `<button class="${state.view === item[0] ? 'active' : ''}" data-view="${item[0]}">${item[1]}</button>`).join('')}</nav><main class="bp-main">${setupNotice ? '<aside class="bp-warning"><b>Einrichtungshinweis:</b> Mindestens eine Bereitschaftsprüfung ist noch offen. Der laufende Fachbetrieb bleibt zugänglich; Details stehen unter Administration → Ersteinrichtung.</aside>' : ''}<header class="bp-topbar"><div><p class="bp-eyebrow">Arbeitsbereich</p><h1>${esc(title())}</h1></div><div class="bp-user">${esc(currentUser() || 'Angemeldet')}</div></header><section class="bp-content"><div class="bp-workspace bp-view-${esc(state.view)}">${content}</div></section></main></div>${assistantSidebarView()}`
+		root.innerHTML = `<div class="bp-app-shell"><nav class="bp-app-nav" aria-label="Bestatter-Navigation">${mainNavigation.filter((item) => (item[0] !== 'capture' || state.assistantConfiguration.guidedCaptureEnabled) && (state.team.isBestatterAdmin || !['customizing', 'administration'].includes(item[0]))).map((item) => `<button class="${state.view === item[0] ? 'active' : ''}" data-view="${item[0]}">${item[1]}</button>`).join('')}</nav><main class="bp-main">${setupNotice ? '<aside class="bp-warning"><b>Einrichtungshinweis:</b> Mindestens eine Bereitschaftsprüfung ist noch offen. Der laufende Fachbetrieb bleibt zugänglich; Details stehen unter Administration → Ersteinrichtung.</aside>' : ''}<header class="bp-topbar"><div><p class="bp-eyebrow">Arbeitsbereich</p><h1>${esc(title())}</h1></div>${state.help.available ? `<button type="button" class="bp-secondary bp-help-topbar" id="help-toggle" aria-controls="bestatter-help" aria-expanded="${state.help.open}">Bedienhilfe</button>` : ''}<div class="bp-user">${esc(currentUser() || 'Angemeldet')}</div></header><section class="bp-content"><div class="bp-workspace bp-view-${esc(state.view)}">${content}</div></section></main></div>${assistantSidebarView()}${helpView()}`
 		renderedLocationKey = nextLocationKey
 		rememberWorkspace(state)
 		bind()
@@ -344,7 +353,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 			if (state.view === 'administration') { const catalog = await api(articleUrl()); state.articles = catalog.articles || []; state.articleGroupRules = catalog.groupRules || []; state.allowedVatRates = catalog.allowedVatRates || state.allowedVatRates; state.countryProfiles = catalog.countryProfiles || state.countryProfiles; state.branches = await api(branchUrl()); if (state.administrationTab === 'system') await loadSystemCheck(); if (state.administrationTab === 'cockpit') await loadOperationsCockpit(); if (state.administrationTab === 'backup') await loadBackups(); if (state.administrationTab === 'paperless') await loadPaperlessConfiguration() }
 			render()
 		}))
-		const openCase = async (caseId, sideOrderId = 0) => { state.currentCase = await api(`${urls.cases}/${caseId}`); state.currentCaseId = Number(caseId); state.caseCompleteness = await api(`${apiBase}/cases/${caseId}/completeness`); await loadSideOrders(state.currentCase.id); state.activeSideOrderId = Number(sideOrderId); state.sideOrderView = sideOrderId ? 'header' : 'list'; state.assistantSidebar.caseId = Number(caseId); globalThis.localStorage?.setItem('bestatter-assistant-case-id', String(state.assistantSidebar.caseId)); state.view = 'case-detail'; state.caseTab = sideOrderId ? 'side-orders' : 'overview'; render() }
+		const openCase = async (caseId, sideOrderId = 0) => { state.currentCase = await api(`${urls.cases}/${caseId}`); state.currentCaseId = Number(caseId); state.caseCompleteness = await api(`${apiBase}/cases/${caseId}/completeness`); await loadSideOrders(state.currentCase.id); state.activeSideOrderId = Number(sideOrderId); await loadCaseServices(); state.sideOrderView = sideOrderId ? 'header' : 'list'; state.assistantSidebar.caseId = Number(caseId); globalThis.localStorage?.setItem('bestatter-assistant-case-id', String(state.assistantSidebar.caseId)); state.view = 'case-detail'; state.caseTab = sideOrderId ? 'side-orders' : 'overview'; render() }
 		root.querySelectorAll('tr[data-case-id]').forEach((row) => {
 			const open = async () => openCase(row.dataset.caseId)
 			row.addEventListener('click', open)
@@ -358,12 +367,30 @@ import { createPaperlessModule } from './modules/paperless.js'
 			state.caseTab = button.dataset.caseTab
 			if (['overview', 'side-orders'].includes(state.caseTab)) await Promise.all([api(`${apiBase}/cases/${state.currentCase.id}/completeness`, { feedback: false }).then((result) => { state.caseCompleteness = result }), loadSideOrders(state.currentCase.id)])
 			if (['task', 'schedule', 'document', 'history'].includes(state.caseTab)) await loadRecordType(state.caseTab === 'history' ? 'activity' : state.caseTab, state.currentCase.id)
-			if (state.caseTab === 'document') await loadCaseFiles(state.currentCase.id)
+			if (state.caseTab === 'document') await Promise.all([
+				loadCaseFiles(state.currentCase.id),
+				api(`${apiBase}/cases/${state.currentCase.id}/business-mail/availability`).then((result) => { state.businessMailAvailability = result }),
+				api(`${apiBase}/cases/${state.currentCase.id}/business-mail`, { feedback: false }).then((result) => { state.businessMailHistory = result; state.businessMailCaseId = Number(state.currentCase.id) }).catch(() => { state.businessMailHistory = []; state.businessMailCaseId = Number(state.currentCase.id) }),
+			])
 			if (state.caseTab === 'contact') await Promise.all([loadRecordType('contact'), loadRecordType('case_contact', state.currentCase.id)])
 			if (state.caseTab === 'deregistration') await Promise.all([loadRecordType('contact'), loadRecordType('document', state.currentCase.id), loadCaseFiles(state.currentCase.id), api(deregistrationUrl(state.currentCase.id)).then((items) => { state.records.deregistration = items }), api(deregistrationTemplateUrl()).then((items) => { state.deregistrationTemplates = items })])
 			if (state.caseTab === 'task') state.checklists = await api(checklistUrl())
 			if (['order', 'services', 'finances'].includes(state.caseTab)) await loadCommercial()
 			render()
+		}))
+		root.querySelectorAll('[data-burial-defer]').forEach((button) => button.addEventListener('click', async () => {
+			const id = Number(button.dataset.burialDefer || 0)
+			const master = state.currentCase?.masterData || {}
+			const deferred = [...new Set([...(Array.isArray(master.burial_deferred_rule_ids) ? master.burial_deferred_rule_ids : []), id])]
+			try {
+				state.currentCase = await api(`${urls.cases}/${state.currentCase.id}/master-data`, { method:'PUT', body:new URLSearchParams({ masterData: JSON.stringify({...master, burial_deferred_rule_ids:deferred}) }) })
+				render()
+			} catch (error) { notifyError(error.message) }
+		}))
+		root.querySelectorAll('[data-burial-find-article]').forEach((button) => button.addEventListener('click', async () => {
+			const article = state.articles.find((entry) => Number(entry.id) === Number(button.dataset.burialFindArticle))
+			if (!article) return
+			state.caseTab = 'services'; await loadCommercial(); state.serviceCatalogOpen = true; state.serviceQuery = article.articleNumber; render()
 		}))
 		bindSideOrders()
 		root.querySelectorAll('[data-master-tab]').forEach((button) => button.addEventListener('click', () => { state.masterTab = button.dataset.masterTab; render() }))
@@ -372,6 +399,8 @@ import { createPaperlessModule } from './modules/paperless.js'
 			if (state.customizingTab === 'checklists') state.checklistAdmin = await api(checklistManageUrl())
 			if (state.customizingTab === 'workflows') state.workflowAdmin = await api(workflowUrl())
 			if (state.customizingTab === 'scheduling') state.scheduling = await api(schedulingUrl())
+			if (state.customizingTab === 'surcharges') state.surchargeRules = await api(`${apiBase}/customizing/surcharges`)
+			if (state.customizingTab === 'burial-rules') state.burialVariantRules = await api(`${apiBase}/customizing/burial-rules`)
 			if (state.customizingTab === 'documents') [state.documentTemplates, state.documentTemplateOptions] = await Promise.all([api(documentTemplateUrl()), api(documentTemplateOptionsUrl())])
 			if (state.customizingTab === 'deregistration') state.deregistrationTemplates = await api(deregistrationTemplateUrl())
 			render()
@@ -449,7 +478,14 @@ import { createPaperlessModule } from './modules/paperless.js'
 		root.querySelectorAll('.preview-deregistration').forEach((button) => button.addEventListener('click', async () => { const item = (state.records.deregistration || []).find((entry) => entry.id === Number(button.dataset.id)); if(!item)return; const preview=await api(`${deregistrationUrl(state.currentCase.id)}/preview`,{method:'POST',body:new URLSearchParams({deregistration:JSON.stringify(item.data||{})})}); if(preview.previewMode==='LETTER')showLetterPreview(preview);else showTextPreview(item.title,preview.subject,preview.body,preview.missingFields) }))
 		root.querySelectorAll('.transition-deregistration').forEach((button) => button.addEventListener('click', async () => { const item=(state.records.deregistration||[]).find((entry)=>entry.id===Number(button.dataset.id)); if(!item)return; try { await showDeregistrationTransitionForm(item,button.dataset.status) } catch(error){ notifyError(error.message) } }))
 		root.querySelectorAll('.create-document').forEach((button)=>button.addEventListener('click',()=>showDocumentDialog(button.dataset.templateKey)))
+		root.querySelectorAll('.business-mail-send').forEach((button) => button.addEventListener('click', () => showBusinessMailDialog(Number(button.dataset.recordId))))
+		root.querySelector('#paper-contract-external')?.addEventListener('click', () => showPaperContractUpload('EXTERNAL'))
+		root.querySelector('#paper-contract-generated')?.addEventListener('click', () => showPaperContractUpload('GENERATED'))
+		root.querySelector('#paper-contract-create-final')?.addEventListener('click', () => showDocumentDialog('BESTATTUNGSAUFTRAG'))
+		root.querySelectorAll('.review-paper-contract').forEach((button) => button.addEventListener('click', () => showPaperContractReview(button.dataset.recordId)))
 		root.querySelectorAll('.open-nextcloud-file').forEach((button)=>button.addEventListener('click',()=>window.open(OC.generateUrl(`/f/${button.dataset.fileId}`),'_blank','noopener')))
+		root.querySelectorAll('.print-nextcloud-pdf').forEach((button)=>button.addEventListener('click',()=>printNextcloudPdf(button, notifyWarning)))
+		root.querySelectorAll('.mail-nextcloud-file').forEach((button)=>button.addEventListener('click',()=>prepareDocumentMail(button, notifyWarning, notifySuccess)))
 		root.querySelectorAll('.bp-document-thumb img').forEach((image) => { const unavailable = () => { image.hidden = true; image.closest('.bp-document-thumb')?.classList.add('preview-unavailable') }; if (image.complete && image.naturalWidth === 0) unavailable(); else image.addEventListener('error', unavailable, { once: true }) })
 		root.querySelectorAll('.preview-nextcloud-file').forEach((button)=>button.addEventListener('click',()=>showFilePreview(button.dataset.fileId, button.getAttribute('aria-label') || 'Dokumentvorschau')))
 		document.getElementById('upload-case-documents')?.addEventListener('click', () => document.getElementById('case-document-files')?.click())
@@ -482,6 +518,7 @@ import { createPaperlessModule } from './modules/paperless.js'
 		bindWorkflowAdmin()
 		bindConfigurationAdministration()
 		bindAssistant()
+		bindHelp()
 		root.querySelectorAll('[data-calendar-date]').forEach((button) => button.addEventListener('click', () => { state.dashboardDate = button.dataset.calendarDate; render() }))
 	}
 	function bindMasterForm() {
@@ -502,6 +539,14 @@ import { createPaperlessModule } from './modules/paperless.js'
 			} catch (error) { stateLabel.textContent = error.message; stateLabel.dataset.state = 'error' } finally { state.createInFlight = false }
 		}
 		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550) })))
+		form.querySelectorAll('[data-burial-level]').forEach((select) => select.addEventListener('change', async () => {
+			const depth = Number(select.dataset.burialLevel || 0)
+			const parentCode = depth ? form.querySelector(`[data-burial-level="${depth - 1}"]`)?.value || '' : ''
+			form.elements.burial_variant_code.value = select.value || parentCode
+			clearTimeout(timer)
+			await save()
+			render()
+		}))
 		;['guardianship_status', 'death_time_mode', 'civil_status'].forEach((name) => form.elements[name]?.addEventListener('change', () => {
 			state.currentCase.masterData = { ...(state.currentCase.masterData || {}), ...Object.fromEntries(new FormData(form)) }
 			clearTimeout(timer)
@@ -673,9 +718,9 @@ import { createPaperlessModule } from './modules/paperless.js'
 			return false
 		}
 	}
-	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0`), api(urls.customizing), api(checklistUrl()), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false }))])
-		.then(async ([dashboard, personalDay, team, caseResult, customizingData, checklists, tasks, schedules, contacts, articleData, branches, documentTemplates, documentTemplateOptions, deregistrationTemplates, invoiceSettings, schedulePresets, scheduling, assistantConfiguration, onboarding]) => {
-			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.checklists = checklists; state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; state.articles = articleData.articles || []; state.articleGroupRules = articleData.groupRules || []; state.positionTypes = articleData.positionTypes || []; state.quantityUnits = articleData.quantityUnits || []; state.allowedVatRates = articleData.allowedVatRates || state.allowedVatRates; state.countryProfiles = articleData.countryProfiles || []; state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
+	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0`), api(urls.customizing), api(checklistUrl()), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false })), api(`${apiBase}/customizing/burial-rules`), api(`${apiBase}/customizing/surcharges`), api(`${apiBase}/assistant/help/availability`, {feedback:false}).catch(() => ({available:false}))])
+		.then(async ([dashboard, personalDay, team, caseResult, customizingData, checklists, tasks, schedules, contacts, articleData, branches, documentTemplates, documentTemplateOptions, deregistrationTemplates, invoiceSettings, schedulePresets, scheduling, assistantConfiguration, onboarding, burialRules, surcharges, helpAvailability]) => {
+			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; state.help.available = Boolean(helpAvailability?.available); state.checklists = checklists; state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; state.articles = articleData.articles || []; state.articleGroupRules = articleData.groupRules || []; state.positionTypes = articleData.positionTypes || []; state.quantityUnits = articleData.quantityUnits || []; state.allowedVatRates = articleData.allowedVatRates || state.allowedVatRates; state.countryProfiles = articleData.countryProfiles || []; state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
 			initializeAssistantCapture()
 			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, checklistManageUrl, workflowUrl, schedulingUrl, deregistrationUrl, notifyWarning }); render() }
 			refreshGroupwareSilently().catch(() => {})

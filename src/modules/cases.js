@@ -1,3 +1,5 @@
+import { burialGuidance } from './burial-guidance.js'
+
 export function createCasesModule(ctx) {
 	const { state, sections, labels, listMap, fixedOptions } = ctx
 	const customizing = (...args) => ctx.customizing(...args)
@@ -49,6 +51,8 @@ export function createCasesModule(ctx) {
 	}
 
 	function fieldType(key) {
+		if (key === 'pickup_time') return 'datetime-local'
+		if (['body_height_cm', 'body_weight_kg'].includes(key)) return 'number'
 		if (key === 'newborn_lifetime_hours') return 'number'
 		if (['time_of_death'].includes(key)) return 'time'
 		if (['death_time_from', 'death_time_to'].includes(key)) return 'datetime-local'
@@ -59,10 +63,36 @@ export function createCasesModule(ctx) {
 
 	function field(key, data) {
 		let value = data[key] ?? ''
+		if (key === 'funeral_type') {
+			const variants = state.customizing.find((list) => list.key === 'BURIAL_VARIANT')?.tree || []
+			if (variants.length) {
+				const code = String(data.burial_variant_code || '')
+				const path = []
+				const locate = (items) => { for (const item of items) { if (item.value === code) { path.unshift(item); return true } if (locate(item.children || [])) { path.unshift(item); return true } } return false }
+				if (code) locate(variants)
+				let level = variants
+				const selects = []
+				for (let depth = 0; level.length; depth++) {
+					const chosen = path[depth]?.value || ''
+					selects.push(`<label><span>${depth ? `Unterauswahl ${depth}` : 'Bestattungsvariante'}</span><select class="bp-field" data-burial-level="${depth}"><option value="">${depth ? 'Noch offen' : 'Bitte auswählen'}</option>${level.map((item) => `<option value="${esc(item.value)}" ${item.value === chosen ? 'selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>`)
+					level = path[depth]?.children || []
+				}
+				const selected = path[path.length - 1]
+				const hint = selected?.metadata?.classificationPending ? '<small>Fachliche Katalogzuordnung noch offen; es werden keine Leistungen abgeleitet.</small>' : selected?.children?.length ? '<small>Unterauswahl noch offen; der Zwischenstand darf gespeichert werden.</small>' : ''
+				return `<div class="bp-span-2" data-field="funeral_type"><input type="hidden" name="burial_variant_code" value="${esc(code)}"><div class="bp-form-grid">${selects.join('')}</div>${!code && value ? `<small>Bisherige Angabe: ${esc(value)}. Sie bleibt erhalten, bis eine Variante gewählt wird.</small>` : ''}${hint}</div>`
+			}
+		}
+		if (key === 'with_funeral_ceremony') return `<label data-field="${key}"><span>${esc(labels[key])}</span><select class="bp-field" name="${key}">${[['','Noch offen'],['1','Mit Trauerfeier'],['0','Ohne Trauerfeier']].map(([option,label])=>`<option value="${option}" ${String(value)===option?'selected':''}>${label}</option>`).join('')}</select></label>`
+		const surchargeDimensions = {surcharge_pickup_rule_key:'PICKUP', surcharge_height_rule_key:'HEIGHT_CM', surcharge_weight_rule_key:'WEIGHT_KG', surcharge_other_rule_key:'OTHER'}
+		if (surchargeDimensions[key]) {
+			const tiers = (state.surchargeRules || []).filter((item) => item.dimension === surchargeDimensions[key] && (item.active || item.ruleKey === value))
+			const locked = Boolean(state.caseServices?.contractProtection?.active)
+			return `<label data-field="${key}"><span>${esc(labels[key])}</span><select class="bp-field" name="${key}" ${locked ? 'disabled' : ''}><option value="">Keine Staffel / noch offen</option>${tiers.map((item) => `<option value="${esc(item.ruleKey)}" ${item.ruleKey === value ? 'selected' : ''}>${esc(item.label)}${item.active ? '' : ' (inzwischen inaktiv)'}</option>`).join('')}</select><small>${locked ? 'Vertrag festgeschrieben: Zuschläge nur als begründeten Positionsnachtrag erfassen.' : 'Nur manuelle Vormerkung; kein automatischer Preis oder Vertragsnachtrag.'}</small></label>`
+		}
 		if (key === 'guardianship_status' && value === '') value = 'NEIN'
 		if (key === 'death_time_mode' && value === '') value = 'EXAKT'
 		if (key.endsWith('_country') && value === '') value = 'Deutschland'
-		if (key === 'responsible_employee' && value === '') value = currentUser()
+		if (key === 'responsible_employee' && value === '' && state.newCase) value = currentUser()
 		if (key === 'branch' && value === '') value = state.branches.find((entry) => entry.active && (entry.memberUids || []).includes(currentUser()))?.key || state.branches.find((entry) => entry.active)?.key || ''
 
 		if (key === 'branch') {
@@ -76,16 +106,17 @@ export function createCasesModule(ctx) {
 			return `<label data-field="${key}"><span>${esc(labels[key] || key)}</span><select class="bp-field" name="${key}"><option value=""></option>${listOptions(listMap[key], value)}</select></label>`
 		}
 		if (key === 'responsible_employee') {
-			const users = contactsByCategory('Bestatter')
-			const options = users.map((item) => `<option value="${esc(item.title)}" ${item.title === value ? 'selected' : ''}>${esc(item.title)}</option>`).join('')
-			return `<label data-field="${key}"><span>${labels[key]}</span><select class="bp-field" name="${key}"><option value="${esc(currentUser())}">${esc(currentUser())}</option>${options}</select></label>`
+			const known = (state.team.members || []).some((member) => member.uid === value)
+			const legacy = value && !known ? `<option value="${esc(value)}" selected>${esc(value)} (Altdaten – bitte zuordnen)</option>` : ''
+			const locked = !state.newCase && !state.team.isBestatterAdmin
+			return `<label data-field="${key}"><span>${esc(labels[key])}</span><select class="bp-field" name="${key}" ${locked ? 'disabled' : ''}><option value="" ${!value ? 'selected' : ''}>Nicht zugeordnet</option>${legacy}${assigneeOptions(value)}</select>${locked ? `<input type="hidden" name="${key}" value="${esc(value)}">` : ''}</label>`
 		}
 		if (['birth_registry_office', 'registry_office', 'guardian_contact', 'cemetery_contact'].includes(key)) {
 			const category = ['birth_registry_office', 'registry_office'].includes(key) ? 'Standesämter' : key === 'cemetery_contact' ? 'Friedhöfe' : 'Betreuer'
 			const options = contactsByCategory(category).map((item) => `<option value="${esc(item.title)}" ${item.title === value ? 'selected' : ''}>${esc(item.title)}</option>`).join('')
 			return `<label data-field="${key}"><span>${esc(labels[key])}</span><div class="bp-contact-field"><select class="bp-field" name="${key}"><option value=""></option>${options}</select><button type="button" class="bp-secondary bp-add-contact" data-contact-category="${category}" data-contact-target="${key}">Neu</button></div></label>`
 		}
-		return `<label data-field="${key}"><span>${esc(labels[key] || key)}</span><input class="bp-field" name="${key}" type="${fieldType(key)}" ${key === 'newborn_lifetime_hours' ? 'min="0" step="1"' : ''} value="${esc(value)}"></label>`
+		return `<label data-field="${key}"><span>${esc(labels[key] || key)}</span><input class="bp-field" name="${key}" type="${fieldType(key)}" ${key === 'newborn_lifetime_hours' ? 'min="0" step="1"' : ['body_height_cm','body_weight_kg'].includes(key) ? 'min="1" step="1"' : ''} value="${esc(value)}"></label>`
 	}
 
 	function masterDataForm(data) {
@@ -119,7 +150,8 @@ export function createCasesModule(ctx) {
 		const tableRows = rows.map((item) => {
 			const summary = item.sideOrderSummary || { total:0, open:0, items:[] }; const expanded = Boolean(state.expandedCaseIds?.[item.id])
 			const disclosure = summary.total ? `<button type="button" class="bp-disclosure" data-expand-case="${item.id}" aria-expanded="${expanded}" aria-controls="case-side-orders-${item.id}" title="Nebenaufträge ${expanded?'einklappen':'aufklappen'}">${expanded?'▾':'▸'}</button>` : '<span class="bp-disclosure-spacer"></span>'
-			const main = `<tr data-case-id="${item.id}" tabindex="0"><td data-label="Fallnummer"><span class="bp-case-number-cell">${disclosure}${esc(item.caseNumber)}</span></td><td data-label="Verstorbene Person">${esc(item.lastName)}, ${esc(item.firstName)}</td><td data-label="Sterbedatum">${item.dateOfDeath ? esc(new Date(`${item.dateOfDeath}T12:00:00`).toLocaleDateString('de-DE')) : '–'}</td><td data-label="Bestattungsart">${esc(item.funeralType || '–')}</td><td data-label="Status"><span class="bp-status">${esc(item.status)}</span></td><td data-label="Nebenaufträge">${summary.total ? `<span class="bp-side-order-count">${summary.total} Nebenauftrag${summary.total===1?'':'e'}${summary.open?` · ${summary.open} offen`:''}</span>` : '–'}</td></tr>`
+			const sideOrderCountLabel = summary.total === 1 ? '1 Nebenauftrag' : `${summary.total} Nebenaufträge`
+			const main = `<tr data-case-id="${item.id}" tabindex="0"><td data-label="Fallnummer"><span class="bp-case-number-cell">${disclosure}${esc(item.caseNumber)}</span></td><td data-label="Verstorbene Person">${esc(item.lastName)}, ${esc(item.firstName)}</td><td data-label="Sterbedatum">${item.dateOfDeath ? esc(new Date(`${item.dateOfDeath}T12:00:00`).toLocaleDateString('de-DE')) : '–'}</td><td data-label="Bestattungsart">${esc(item.funeralType || '–')}</td><td data-label="Status"><span class="bp-status">${esc(item.status)}</span></td><td data-label="Nebenaufträge">${summary.total ? `<span class="bp-side-order-count">${sideOrderCountLabel}${summary.open?` · ${summary.open} offen`:''}</span>` : '–'}</td></tr>`
 			const children = expanded ? (summary.items || []).map((order,index) => `<tr class="bp-side-order-child ${order.matched?'is-match':''}" ${index===0?`id="case-side-orders-${item.id}"`:''} data-parent-case-id="${item.id}"><td colspan="6"><button type="button" data-open-side-order="${order.id}" data-side-order-case="${item.id}"><span><b>${esc(order.sideOrderNumber)}</b><small>${esc(order.customerName || 'Auftraggeber nicht vollständig')}</small></span><span class="bp-status">${esc(statusLabels[order.status] || order.status)}</span>${order.nextAction?`<small>${esc(order.nextAction)}</small>`:''}</button></td></tr>`).join('') : ''
 			return main + children
 		}).join('')
@@ -185,7 +217,9 @@ export function createCasesModule(ctx) {
 		const data = item.masterData || {}
 		const completeness = state.caseCompleteness
 		const phaseCards = completeness?.phases?.map((phase) => `<article class="bp-completeness-phase ${phase.ready ? 'ready' : ''}"><div><b>${esc(phase.label)}</b><span>${phase.complete} von ${phase.required} vollständig</span></div><progress max="100" value="${phase.percentage}">${phase.percentage} %</progress>${!phase.ready ? `<ul>${phase.checks.filter((check) => !check.complete).map((check) => `<li>${esc(check.label)}</li>`).join('')}</ul>` : '<small>Alle Voraussetzungen erfüllt.</small>'}</article>`).join('') || ''
-		return `<section class="bp-panel bp-completeness" aria-labelledby="case-completeness-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Prozessqualität</p><h3 id="case-completeness-title">Vollständigkeit ${completeness?.percentage ?? 0} %</h3></div><span class="bp-status ${completeness?.ready ? 'ready' : ''}">${completeness?.ready ? 'Vollständig' : 'Offene Angaben'}</span></div><div class="bp-completeness-grid">${phaseCards || '<p class="bp-muted">Prüfung wird geladen.</p>'}</div></section><section class="bp-case-summary"><article><p class="bp-eyebrow">Auftrag / KVA</p><h3>${esc(data.order_status || 'Noch nicht angelegt')}</h3><button class="bp-primary" data-case-tab="order">Auftrag öffnen</button></article><article><p class="bp-eyebrow">Aufgaben</p><h3>${(state.records.task || []).filter((record) => record.caseId === item.id && record.status !== 'ERLEDIGT').length} offen</h3><button class="bp-secondary" data-case-tab="task">Aufgaben öffnen</button></article><article><p class="bp-eyebrow">Fallnotiz</p><h3>${esc(data.notes || 'Keine Fallnotiz hinterlegt.')}</h3><button class="bp-secondary" data-case-tab="master">Stammdaten bearbeiten</button></article></section>${sideOrdersPanel()}`
+		const notices = burialGuidance(state)
+		const guidance = notices.length ? `<aside class="bp-compliance-note"><b>Bestattungsvariante – offene Entscheidungen</b><ul>${notices.map((notice)=>`<li>${esc(notice.text)}${notice.ruleId?` <button type="button" class="bp-secondary" data-burial-defer="${Number(notice.ruleId)}">Später entscheiden</button>`:''}</li>`).join('')}</ul></aside>` : ''
+		return `${guidance}<section class="bp-panel bp-completeness" aria-labelledby="case-completeness-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Prozessqualität</p><h3 id="case-completeness-title">Vollständigkeit ${completeness?.percentage ?? 0} %</h3></div><span class="bp-status ${completeness?.ready ? 'ready' : ''}">${completeness?.ready ? 'Vollständig' : 'Offene Angaben'}</span></div><div class="bp-completeness-grid">${phaseCards || '<p class="bp-muted">Prüfung wird geladen.</p>'}</div></section><section class="bp-case-summary"><article><p class="bp-eyebrow">Auftrag / KVA</p><h3>${esc(data.order_status || 'Noch nicht angelegt')}</h3><button class="bp-primary" data-case-tab="order">Auftrag öffnen</button></article><article><p class="bp-eyebrow">Aufgaben</p><h3>${(state.records.task || []).filter((record) => record.caseId === item.id && record.status !== 'ERLEDIGT').length} offen</h3><button class="bp-secondary" data-case-tab="task">Aufgaben öffnen</button></article><article><p class="bp-eyebrow">Fallnotiz</p><h3>${esc(data.notes || 'Keine Fallnotiz hinterlegt.')}</h3><button class="bp-secondary" data-case-tab="master">Stammdaten bearbeiten</button></article></section>${sideOrdersPanel()}`
 	}
 
 	function sideOrdersPanel() {

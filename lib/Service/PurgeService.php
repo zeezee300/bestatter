@@ -20,8 +20,8 @@ class PurgeService {
 	private const DELETE_TABLES = [
 		'bestatter_integration_jobs','bestatter_external_documents','bestatter_capture_imports','bestatter_incoming_items','bestatter_incoming_invoices',
 		'bestatter_invoice_items','bestatter_invoices','bestatter_commercial_docs','bestatter_workflow_runs','bestatter_schedule_history',
-		'bestatter_case_services','bestatter_records','bestatter_cases','bestatter_invoice_sequences','bestatter_assistant_rules',
-		'bestatter_article_components','bestatter_articles','bestatter_article_groups','bestatter_checklist_items','bestatter_checklist_templates',
+		'bestatter_case_automation','bestatter_case_services','bestatter_mail_outbox','bestatter_records','bestatter_cases','bestatter_invoice_sequences','bestatter_assistant_rules',
+		'bestatter_burial_variant_rules','bestatter_surcharge_rules','bestatter_article_components','bestatter_articles','bestatter_article_groups','bestatter_checklist_items','bestatter_checklist_templates',
 		'bestatter_choice_items','bestatter_choice_lists','bestatter_document_templates','bestatter_dereg_templates','bestatter_workflows',
 		'bestatter_resources','bestatter_schedule_types','bestatter_branches','bestatter_country_profiles','bestatter_invoice_settings','bestatter_audit_log',
 	];

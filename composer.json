@@ -10,7 +10,7 @@
   },
   "require-dev": {
     "nextcloud/coding-standard": "^1.5",
-    "nextcloud/ocp": "34.0.3",
+    "nextcloud/ocp": "^34.0 || 35.0.0.x-dev",
     "phpstan/phpstan": "^2.1",
     "phpunit/phpunit": "^11.5"
   },

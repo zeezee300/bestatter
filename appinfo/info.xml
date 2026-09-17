@@ -5,12 +5,12 @@
     <name>Bestatter</name>
     <summary>Fachakte und Vorgangssteuerung für Bestattungsunternehmen</summary>
     <description>Native Nextcloud-Oberfläche für Sterbefälle, Aufgaben, Vorlagen und fachliches Customizing.</description>
-	<version>0.59.0</version>
+	<version>0.65.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author>Bestatterplattform</author>
     <category>tools</category>
     <dependencies>
-        <nextcloud min-version="34" max-version="34" />
+        <nextcloud min-version="34" max-version="35" />
     </dependencies>
     <commands>
         <command>OCA\Bestatter\Command\DevelopmentReset</command>

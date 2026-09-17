@@ -40,7 +40,11 @@ foreach ($relativePath in $requiredFiles) {
 }
 
 $runtimeDirectories = @('appinfo', 'css', 'img', 'js', 'lib', 'resources', 'templates', 'vendor')
-$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bestatter-release-' + [guid]::NewGuid().ToString('N'))
+$tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+$stagingRoot = [System.IO.Path]::GetFullPath((Join-Path $tempRoot ('bestatter-release-' + [guid]::NewGuid().ToString('N'))))
+if (-not $stagingRoot.StartsWith($tempRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+	throw 'Release-Staging liegt außerhalb des temporären Verzeichnisses.'
+}
 $stagingApp = Join-Path $stagingRoot 'bestatter'
 New-Item -ItemType Directory -Path $stagingApp -Force | Out-Null
 
@@ -48,7 +52,9 @@ try {
 	foreach ($directory in $runtimeDirectories) {
 		Copy-Item -LiteralPath (Join-Path $appRoot $directory) -Destination $stagingApp -Recurse -Force
 	}
-	Get-ChildItem -LiteralPath $stagingApp -Recurse -File -Filter '*.md' | Remove-Item -Force
+	Get-ChildItem -LiteralPath $stagingApp -Recurse -File -Filter '*.md' |
+		Where-Object { $_.FullName -ne (Join-Path $stagingApp 'resources/help/BEDIENUNG.md') } |
+		Remove-Item -Force
 	Get-ChildItem -LiteralPath $stagingApp -Recurse -Directory |
 		Sort-Object FullName -Descending |
 		Where-Object { (Get-ChildItem -LiteralPath $_.FullName -Force).Count -eq 0 } |
@@ -65,7 +71,7 @@ try {
 	$archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
 	try {
 		$forbidden = $archive.Entries | Where-Object {
-			$_.FullName -match '^(docs|tests|tools|output|tmp)/' -or $_.FullName -match '(^|/)(OP-LISTE|TICKET-|.*-QA\.)' -or $_.FullName -match '\.md$'
+			$_.FullName -match '^(docs|tests|tools|output|tmp)/' -or $_.FullName -match '(^|/)(OP-LISTE|TICKET-|.*-QA\.)' -or ($_.FullName -match '\.md$' -and $_.FullName -ne 'resources/help/BEDIENUNG.md')
 		}
 	} finally {
 		$archive.Dispose()

@@ -17,6 +17,8 @@ assert(!cases.includes("${orders.length ? '' : 'open'}"), 'Das Anlageformular da
 for (const marker of ['sideOrderView', 'data-select-side-order', 'data-side-order-view', 'Kopfdaten', 'Finanzen / Abrechnung', 'case-side-order-filter', 'data-open-side-order']) assert(cases.includes(marker) || main.includes(marker), `Frontend-Marker fehlt: ${marker}`)
 assert(commercial.includes('scopeLabel') && commercial.includes('activeSideOrder.firstName') && commercial.includes("caseTab = 'side-orders'"), 'Positionskopf oder Rücknavigation verliert den Nebenauftragskontext.')
 for (const marker of ['sideOrderSummary', 'sideOrderCaseIdsForSearch', 'sideOrderCaseIdsForFilter', 'BILLING_OPEN', 'assertClosable', 'Offene Nebenaufträge']) assert(caseService.includes(marker), `CaseService-Marker fehlt: ${marker}`)
+assert(caseService.includes('searchTerms($search)') && caseService.includes("preg_split('/\\s+/u'"), 'Mehrteilige Namen werden in der Fall- und Nebenauftragssuche nicht feldübergreifend gesucht.')
+assert(cases.includes("summary.total === 1 ? '1 Nebenauftrag' : `${summary.total} Nebenaufträge`"), 'Die Mehrzahl Nebenaufträge wird in der Fallliste nicht korrekt dargestellt.')
 assert(controller.includes("string $sideOrders = 'ALL'"), 'Der Nebenauftragsfilter fehlt im API-Vertrag.')
 assert(sideOrders.includes('abgeschlossenen oder stornierten Fall'), 'Die Anlagesperre für geschlossene Fälle fehlt.')
 assert(operations.includes('sideOrderCheck'), 'Die Vollständigkeitsprüfung berücksichtigt Nebenaufträge nicht.')

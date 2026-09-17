@@ -11,8 +11,8 @@ const [info, app, routes, backup, restore, purge, onboarding, operations, main, 
 	read('docs/BETRIEBSHANDBUCH.md'), read('docs/OP-LISTE.md'),
 ])
 
-assert(info.includes('<version>0.59.0</version>'))
-assert(app.includes("VERSION = '0.59.0'"))
+assert(info.includes('<version>0.65.0</version>'))
+assert(app.includes("VERSION = '0.65.0'"))
 assert(info.includes('OCA\\Bestatter\\Command\\Purge'))
 assert(routes.includes("operationsApi#onboarding"))
 assert(routes.includes("operationsApi#completeOnboarding"))

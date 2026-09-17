@@ -70,8 +70,11 @@ class RecordService {
 		string $data = '{}',
 		int $caseId = 0,
 		?string $ownerUid = null,
+		bool $allowPaperSignature = false,
 	): array {
 		$payload = $this->validate($title, $data);
+		if ($type === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN') throw new \InvalidArgumentException('Unterschriebene Papierdokumente müssen mit geprüftem Scan bestätigt werden.');
+		if ($type === 'document' && isset($payload['paperSignature']) && !$allowPaperSignature) throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
 		$ownerUid = $this->ownerUid($ownerUid);
 		$query = $this->db->getQueryBuilder();
 		$now = date('c');
@@ -105,6 +108,7 @@ class RecordService {
 
 	public function saveDocument(int $caseId, string $title, string $status, array $payload, bool $allowInvoiceReplacement = false): array {
 		$key = (string)($payload['templateKey'] ?? '');
+		if ($key === 'BESTATTUNGSAUFTRAG' && strtoupper($status) === 'FINAL') return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
 		$contextKey = (string)($payload['documentContextKey'] ?? '');
 		$invoiceId = (int)($payload['invoiceId'] ?? 0);
 		foreach ($this->list('document', $caseId) as $existing) {
@@ -116,7 +120,7 @@ class RecordService {
 			if ($this->isImmutableDocumentStatus((string)$existing['status']) && !$allowInvoiceReplacement) throw new \InvalidArgumentException('Das Dokument ist final oder versendet und kann nicht ersetzt werden.');
 			return $this->update((int)$existing['id'], $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId, null, $allowInvoiceReplacement);
 		}
-		return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
+		return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId, null, isset($payload['paperSignature']));
 	}
 
 	public function update(
@@ -128,10 +132,14 @@ class RecordService {
 		int $caseId = 0,
 		?string $ownerUid = null,
 		bool $allowImmutableDocument = false,
+		bool $confirmPaperSignature = false,
 	): array {
 		$payload = $this->validate($title, $data);
 		$ownerUid = $this->ownerUid($ownerUid);
 		$existing = $this->get($id, $ownerUid);
+		if ($existing['type'] === 'document' && isset($payload['paperSignature']) && !isset($existing['data']['paperSignature']) && !$confirmPaperSignature) throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
+		if ($existing['type'] === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN' && !$confirmPaperSignature) throw new \InvalidArgumentException('Der Status „handschriftlich unterschrieben“ erfordert einen geprüften Scan.');
+		if (is_array($existing['data']['paperSignature'] ?? null) && !$confirmPaperSignature) throw new \InvalidArgumentException('Papierverträge können nur über die Unterschriftenprüfung bestätigt werden.');
 		if ($existing['type'] === 'activity') throw new \InvalidArgumentException('Der Fall-Verlauf ist ein unveränderbares Protokoll.');
 		if ($existing['type'] === 'document' && $this->isImmutableDocumentStatus((string)$existing['status']) && !$allowImmutableDocument) throw new \InvalidArgumentException('Finale oder versendete Dokumente können nicht bearbeitet werden.');
 		$sync = $this->syncColumns($payload);
@@ -158,6 +166,21 @@ class RecordService {
 		$updated = $this->get($id, (string)$existing['ownerUid']);
 		$this->audit->log((int)($updated['caseId'] ?? $caseId), (string)$updated['type'], $id, 'UPDATED', $existing, $updated);
 		return $updated;
+	}
+
+	public function confirmPaperContract(int $id, int $caseId, array $review): array {
+		$existing = $this->get($id);
+		$data = $existing['data'] ?? [];
+		if ($existing['type'] !== 'document' || (int)$existing['caseId'] !== $caseId || $existing['status'] !== 'SIGNATURE_REVIEW' || !is_array($data['paperSignature'] ?? null)) throw new \InvalidArgumentException('Der Papiervertrag ist nicht zur Unterschriftenprüfung vorgemerkt.');
+		$signers = trim((string)($review['signers'] ?? ''));
+		if ($signers === '' || mb_strlen($signers) > 500) throw new \InvalidArgumentException('Bitte die tatsächlich unterschreibenden Parteien angeben.');
+		$signatureDate = trim((string)($review['signatureDate'] ?? ''));
+		if ($signatureDate !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $signatureDate) || !checkdate((int)substr($signatureDate, 5, 2), (int)substr($signatureDate, 8, 2), (int)substr($signatureDate, 0, 4)))) throw new \InvalidArgumentException('Das Unterschriftsdatum ist ungültig.');
+		$paperLocation = trim((string)($review['paperLocation'] ?? ''));
+		if (mb_strlen($paperLocation) > 500) throw new \InvalidArgumentException('Der Ablageort des Papieroriginals ist zu lang.');
+		if (empty($review['complete']) || empty($review['signaturesPresent']) || empty($review['contentMatches'])) throw new \InvalidArgumentException('Bitte Vollständigkeit, Unterschriften und Vertragsinhalt ausdrücklich bestätigen.');
+		$data['paperSignature']['review'] = ['signers' => $signers, 'signatureDate' => $signatureDate, 'paperLocation' => $paperLocation, 'reviewedBy' => $this->actorUid(), 'reviewedAt' => date('c'), 'complete' => true, 'signaturesPresent' => true, 'contentMatches' => true];
+		return $this->update($id, $existing['title'], (string)$existing['date'], 'UNTERSCHRIEBEN', json_encode($data, JSON_THROW_ON_ERROR), $caseId, null, false, true);
 	}
 
 	public function upsertFromNextcloud(

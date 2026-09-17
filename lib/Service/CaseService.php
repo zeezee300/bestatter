@@ -17,6 +17,10 @@ class CaseService {
 		private FolderService $folders,
 		private AuditService $audit,
 		private CommercialStateService $commercialState,
+		private CustomizingService $customizing,
+		private RecordService $records,
+		private SurchargeRuleService $surcharges,
+		private TeamService $team,
 	) {}
 
 	public function dashboard(): array {
@@ -84,6 +88,9 @@ class CaseService {
 			throw new \InvalidArgumentException('Vor- und Nachname sind Pflichtfelder.');
 		}
 		$data = $this->normalizeMasterDates($data);
+		$data = $this->normalizeBurialChoices($data);
+		$responsibleUid = trim((string)($data['responsible_employee'] ?? $values['responsibleEmployee'] ?? ''));
+		$data['responsible_employee'] = $this->team->assignee($responsibleUid)['uid'];
 		$validationWarnings = $this->validateFamilyData($data);
 
 		$creationToken = trim((string)($values['creationToken'] ?? ''));
@@ -104,8 +111,14 @@ class CaseService {
 
 		for ($attempt = 0; $attempt < self::NUMBER_RETRIES; $attempt++) {
 			$number = $this->nextCaseNumber($year);
+			$transactionOpen = false;
 			try {
+				$this->db->beginTransaction();
+				$transactionOpen = true;
 				$id = $this->insertCase($number, $creationToken, $firstName, $lastName, $data, $values);
+				if ($data['with_funeral_ceremony'] === '1') $this->ensureCeremonyTask($id);
+				$this->db->commit();
+				$transactionOpen = false;
 				$case = $this->getCase($id);
 				$case['validationWarnings'] = $validationWarnings;
 				$case['folder'] = $this->createFolderSafely($number);
@@ -113,6 +126,7 @@ class CaseService {
 				$this->audit->log($id, 'CASE', $id, 'CREATED', null, $case);
 				return $case;
 			} catch (\Throwable $error) {
+				if ($transactionOpen) $this->db->rollBack();
 				$lastError = $error;
 				if ($creationToken !== '') {
 					$existing = $this->findByCreationToken($creationToken);
@@ -160,6 +174,12 @@ class CaseService {
 
 	public function updateMasterData(int $id, array $data): array {
 		$case = $this->getCase($id);
+		$responsibleUid = trim((string)($data['responsible_employee'] ?? $case['responsibleEmployee']));
+		if ($responsibleUid !== (string)$case['responsibleEmployee']) {
+			$this->team->requireBestatterAdmin();
+			if ($responsibleUid !== '') $this->team->assignee($responsibleUid);
+		}
+		$data['responsible_employee'] = $responsibleUid;
 		$commercialState = $this->commercialState->state($id);
 		$requestedOrderStatus = mb_strtolower(trim((string)($data['order_status'] ?? 'Entwurf')));
 		if ($commercialState['editable'] && in_array($requestedOrderStatus, ['beauftragt', 'kva versendet'], true)) {
@@ -172,6 +192,12 @@ class CaseService {
 			throw new \InvalidArgumentException('Vor- und Nachname sind Pflichtfelder.');
 		}
 		$data = $this->normalizeMasterDates($data);
+		$data = $this->normalizeBurialChoices($data, $case['masterData']);
+		if (!$commercialState['editable']) {
+			foreach (['surcharge_pickup_rule_key', 'surcharge_height_rule_key', 'surcharge_weight_rule_key', 'surcharge_other_rule_key'] as $field) {
+				if ($data[$field] !== (string)($case['masterData'][$field] ?? '')) throw new \InvalidArgumentException('Zuschläge nach Beauftragung bitte als begründeten Vertragsnachtrag in den Positionen erfassen.');
+			}
+		}
 		$validationWarnings = $this->validateFamilyData($data);
 
 		$data['first_name'] = $firstName;
@@ -182,12 +208,20 @@ class CaseService {
 		if ($requestedCaseStatus === 'ABGESCHLOSSEN' && strtoupper((string)$case['status']) !== 'ABGESCHLOSSEN') {
 			$this->assertClosable($id);
 		}
+		$activateCeremony = $data['with_funeral_ceremony'] === '1' && (string)($case['masterData']['with_funeral_ceremony'] ?? '') !== '1';
+		$this->db->beginTransaction();
+		try {
 		$query = $this->db->getQueryBuilder();
 		$query->update('bestatter_cases')
 			->set('first_name', $query->createNamedParameter($firstName))
 			->set('last_name', $query->createNamedParameter($lastName))
 			->set('date_of_death', $query->createNamedParameter($dateOfDeath))
 			->set('funeral_type', $query->createNamedParameter((string)($data['funeral_type'] ?? '')))
+			->set('burial_variant_code', $query->createNamedParameter($data['burial_variant_code'] ?: null))
+			->set('with_funeral_ceremony', $query->createNamedParameter($data['with_funeral_ceremony'] === '' ? null : (int)$data['with_funeral_ceremony']))
+			->set('pickup_time', $query->createNamedParameter($data['pickup_time'] ?: null))
+			->set('body_height_cm', $query->createNamedParameter($data['body_height_cm'] === '' ? null : (int)$data['body_height_cm']))
+			->set('body_weight_kg', $query->createNamedParameter($data['body_weight_kg'] === '' ? null : (int)$data['body_weight_kg']))
 			->set('status', $query->createNamedParameter((string)($data['status'] ?? $case['status'])))
 			->set('branch', $query->createNamedParameter((string)($data['branch'] ?? '')))
 			->set('responsible_employee', $query->createNamedParameter((string)($data['responsible_employee'] ?? '')))
@@ -195,6 +229,12 @@ class CaseService {
 			->set('updated_at', $query->createNamedParameter($this->now()))
 			->where($query->expr()->eq('id', $query->createNamedParameter($id)))
 			->executeStatement();
+		if ($activateCeremony) $this->ensureCeremonyTask($id);
+		$this->db->commit();
+		} catch (\Throwable $error) {
+			$this->db->rollBack();
+			throw $error;
+		}
 		$updated = $this->getCase($id);
 		$updated['validationWarnings'] = $validationWarnings;
 		$this->audit->log($id, 'CASE', $id, 'UPDATED', $case, $updated);
@@ -249,7 +289,7 @@ class CaseService {
 				$query = $this->db->getQueryBuilder();
 				$query->delete('bestatter_incoming_items')->where($query->expr()->eq('incoming_invoice_id', $query->createNamedParameter((int)$incomingId)))->executeStatement();
 			}
-			foreach (['bestatter_audit_log', 'bestatter_invoices', 'bestatter_commercial_docs', 'bestatter_incoming_invoices', 'bestatter_case_services', 'bestatter_records'] as $table) {
+			foreach (['bestatter_case_automation', 'bestatter_audit_log', 'bestatter_mail_outbox', 'bestatter_invoices', 'bestatter_commercial_docs', 'bestatter_incoming_invoices', 'bestatter_case_services', 'bestatter_records'] as $table) {
 				$query = $this->db->getQueryBuilder();
 				$query->delete($table)
 					->where($query->expr()->eq('case_id', $query->createNamedParameter($id)))
@@ -284,6 +324,11 @@ class CaseService {
 			'last_name' => $query->createNamedParameter($lastName),
 			'date_of_death' => $query->createNamedParameter($dateOfDeath),
 			'funeral_type' => $query->createNamedParameter((string)($data['funeral_type'] ?? $values['funeralType'] ?? '')),
+			'burial_variant_code' => $query->createNamedParameter($data['burial_variant_code'] ?: null),
+			'with_funeral_ceremony' => $query->createNamedParameter($data['with_funeral_ceremony'] === '' ? null : (int)$data['with_funeral_ceremony']),
+			'pickup_time' => $query->createNamedParameter($data['pickup_time'] ?: null),
+			'body_height_cm' => $query->createNamedParameter($data['body_height_cm'] === '' ? null : (int)$data['body_height_cm']),
+			'body_weight_kg' => $query->createNamedParameter($data['body_weight_kg'] === '' ? null : (int)$data['body_weight_kg']),
 			'status' => $query->createNamedParameter((string)($data['status'] ?? 'NEU')),
 			'branch' => $query->createNamedParameter((string)($data['branch'] ?? $values['branch'] ?? '')),
 			'responsible_employee' => $query->createNamedParameter((string)($data['responsible_employee'] ?? $values['responsibleEmployee'] ?? '')),
@@ -421,16 +466,18 @@ class CaseService {
 
 	private function applySearchConditions(mixed $query, string $search, string $status, string $branch, string $responsible, array $searchSideOrderCaseIds = [], string $sideOrders = 'ALL', array $filterSideOrderCaseIds = []): void {
 		if ($search !== '') {
-			$term = $query->createNamedParameter('%' . $search . '%');
-			$conditions = [
-				$query->expr()->like('case_number', $term),
-				$query->expr()->like('first_name', $term),
-				$query->expr()->like('last_name', $term),
-				$query->expr()->like('status', $term),
-				$query->expr()->like('branch', $term),
-			];
-			if ($searchSideOrderCaseIds !== []) $conditions[] = $query->expr()->in('id', $query->createNamedParameter($searchSideOrderCaseIds, IQueryBuilder::PARAM_INT_ARRAY));
-			$query->andWhere($query->expr()->orX(...$conditions));
+			foreach ($this->searchTerms($search) as $searchTerm) {
+				$term = $query->createNamedParameter('%' . $searchTerm . '%');
+				$conditions = [
+					$query->expr()->like('case_number', $term),
+					$query->expr()->like('first_name', $term),
+					$query->expr()->like('last_name', $term),
+					$query->expr()->like('status', $term),
+					$query->expr()->like('branch', $term),
+				];
+				if ($searchSideOrderCaseIds !== []) $conditions[] = $query->expr()->in('id', $query->createNamedParameter($searchSideOrderCaseIds, IQueryBuilder::PARAM_INT_ARRAY));
+				$query->andWhere($query->expr()->orX(...$conditions));
+			}
 		}
 		if ($status === 'OPEN') {
 			$query->andWhere($query->expr()->neq('status', $query->createNamedParameter('ABGESCHLOSSEN')));
@@ -453,14 +500,23 @@ class CaseService {
 
 	private function sideOrderCaseIdsForSearch(string $search): array {
 		$query = $this->db->getQueryBuilder();
-		$term = $query->createNamedParameter('%' . $search . '%');
-		$rows = $query->selectDistinct('case_id')->from('bestatter_side_orders')->where($query->expr()->orX(
-			$query->expr()->like('side_order_number', $term),
-			$query->expr()->like('first_name', $term),
-			$query->expr()->like('last_name', $term),
-			$query->expr()->like('status', $term),
-		))->executeQuery()->fetchFirstColumn();
+		$query->selectDistinct('case_id')->from('bestatter_side_orders');
+		foreach ($this->searchTerms($search) as $searchTerm) {
+			$term = $query->createNamedParameter('%' . $searchTerm . '%');
+			$query->andWhere($query->expr()->orX(
+				$query->expr()->like('side_order_number', $term),
+				$query->expr()->like('first_name', $term),
+				$query->expr()->like('last_name', $term),
+				$query->expr()->like('status', $term),
+			));
+		}
+		$rows = $query->executeQuery()->fetchFirstColumn();
 		return array_values(array_unique(array_map('intval', $rows)));
+	}
+
+	private function searchTerms(string $search): array {
+		$terms = preg_split('/\s+/u', trim($search)) ?: [];
+		return array_slice(array_values(array_filter($terms, static fn(string $term): bool => $term !== '')), 0, 10);
 	}
 
 	private function sideOrderCaseIdsForFilter(string $filter): array {
@@ -537,6 +593,11 @@ class CaseService {
 			'lastName' => (string)$row['last_name'],
 			'dateOfDeath' => (string)($row['date_of_death'] ?? ''),
 			'funeralType' => (string)($row['funeral_type'] ?? ''),
+			'burialVariantCode' => (string)($row['burial_variant_code'] ?? ''),
+			'withFuneralCeremony' => ($row['with_funeral_ceremony'] ?? null) === null ? null : (bool)$row['with_funeral_ceremony'],
+			'pickupTime' => (string)($row['pickup_time'] ?? ''),
+			'bodyHeightCm' => ($row['body_height_cm'] ?? null) === null ? null : (int)$row['body_height_cm'],
+			'bodyWeightKg' => ($row['body_weight_kg'] ?? null) === null ? null : (int)$row['body_weight_kg'],
 			'status' => (string)$row['status'],
 			'branch' => (string)($row['branch'] ?? ''),
 			'responsibleEmployee' => (string)($row['responsible_employee'] ?? ''),
@@ -549,5 +610,80 @@ class CaseService {
 			'anonymizedAt' => (string)($row['anonymized_at'] ?? ''),
 			'masterData' => json_decode((string)($row['master_data'] ?? '{}'), true) ?: [],
 		];
+	}
+
+	private function normalizeBurialChoices(array $data, array $previous = []): array {
+		$code = trim((string)($data['burial_variant_code'] ?? $previous['burial_variant_code'] ?? ''));
+		if ($code !== (string)($previous['burial_variant_code'] ?? '')) $data['burial_deferred_rule_ids'] = [];
+		if ($code !== '') {
+			$variants = $this->customizing->valuesForKey('BURIAL_VARIANT');
+			$chosen = null;
+			foreach ($variants as $variant) if ($variant['value'] === $code) { $chosen = $variant; break; }
+			if ($chosen === null) throw new \InvalidArgumentException('Die Bestattungsvariante ist unbekannt.');
+			$byId = array_column($variants, null, 'id');
+			$root = $chosen;
+			$visited = [];
+			while ($root['parentItemId'] !== null) {
+				if (isset($visited[$root['id']]) || !isset($byId[$root['parentItemId']])) throw new \InvalidArgumentException('Die Bestattungsvarianten sind nicht korrekt verknüpft.');
+				$visited[$root['id']] = true;
+				$root = $byId[$root['parentItemId']];
+			}
+			$data['funeral_type'] = $root['label'];
+			$data['burial_variant_label'] = $chosen['label'];
+		} elseif ((string)($previous['burial_variant_code'] ?? '') !== '') {
+			$data['funeral_type'] = '';
+			$data['burial_variant_label'] = '';
+		}
+		$data['burial_variant_code'] = $code;
+		$ceremony = (string)($data['with_funeral_ceremony'] ?? $previous['with_funeral_ceremony'] ?? '');
+		if (!in_array($ceremony, ['', '0', '1'], true)) throw new \InvalidArgumentException('Bitte Trauerfeier mit Ja, Nein oder noch offen angeben.');
+		$data['with_funeral_ceremony'] = $ceremony;
+		$pickup = trim((string)($data['pickup_time'] ?? $previous['pickup_time'] ?? ''));
+		$parsedPickup = $pickup === '' ? false : DateTimeImmutable::createFromFormat('!Y-m-d\\TH:i', $pickup);
+		if ($pickup !== '' && (!$parsedPickup || $parsedPickup->format('Y-m-d\\TH:i') !== $pickup)) throw new \InvalidArgumentException('Bitte eine gültige Abholzeit angeben.');
+		$data['pickup_time'] = $pickup;
+		foreach (['body_height_cm' => 300, 'body_weight_kg' => 600] as $key => $maximum) {
+			$value = (string)($data[$key] ?? $previous[$key] ?? '');
+			if ($value !== '' && (!ctype_digit($value) || (int)$value < 1 || (int)$value > $maximum)) throw new \InvalidArgumentException('Bitte einen plausiblen Wert für Größe und Gewicht eingeben.');
+			$data[$key] = $value;
+		}
+		$tiers = $this->surcharges->all();
+		foreach (['PICKUP' => 'surcharge_pickup_rule_key', 'HEIGHT_CM' => 'surcharge_height_rule_key', 'WEIGHT_KG' => 'surcharge_weight_rule_key', 'OTHER' => 'surcharge_other_rule_key'] as $dimension => $field) {
+			$value = trim((string)($data[$field] ?? $previous[$field] ?? ''));
+			if ($value !== '' && !array_filter($tiers, static fn(array $tier): bool => $tier['ruleKey'] === $value && $tier['dimension'] === $dimension && ($tier['active'] || $value === ($previous[$field] ?? '')))) {
+				throw new \InvalidArgumentException('Die gewählte Zuschlagsstaffel ist nicht aktiv oder passt nicht zum Merkmal.');
+			}
+			$data[$field] = $value;
+		}
+		return $data;
+	}
+
+	/** Called inside the case transaction; repeated saves and concurrent activation cannot duplicate the task. */
+	private function ensureCeremonyTask(int $caseId): void {
+		$q = $this->db->getQueryBuilder();
+		$records = $q->select('record_type', 'title', 'status', 'payload')->from('bestatter_records')
+			->where($q->expr()->eq('case_id', $q->createNamedParameter($caseId)))
+			->andWhere($q->expr()->in('record_type', $q->createNamedParameter(['schedule', 'task'], IQueryBuilder::PARAM_STR_ARRAY)))
+			->executeQuery()->fetchAllAssociative();
+		foreach ($records as $record) {
+			if ($record['record_type'] === 'task' && $record['title'] === 'Termin für Trauerfeier abstimmen') return;
+			if ($record['record_type'] !== 'schedule' || $record['status'] === 'ABGESAGT') continue;
+			$payload = json_decode((string)$record['payload'], true) ?: [];
+			if (in_array((string)($payload['scheduleTypeKey'] ?? $payload['schedulePresetKey'] ?? ''), ['TRAUERFEIER_1', 'TRAUERFEIER_2'], true)) return;
+		}
+		$marker = $this->db->getQueryBuilder();
+		try {
+			$marker->insert('bestatter_case_automation')->values([
+				'case_id' => $marker->createNamedParameter($caseId),
+				'trigger_key' => $marker->createNamedParameter('FUNERAL_CEREMONY_TASK'),
+				'record_id' => $marker->createNamedParameter(null),
+				'created_at' => $marker->createNamedParameter($this->now()),
+			])->executeStatement();
+		} catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException) { return; }
+		$created = $this->records->create('task', 'Termin für Trauerfeier abstimmen', '', 'OFFEN', json_encode(['description' => 'Mit Angehörigen den Termin der Trauerfeier abstimmen.', 'origin' => 'FUNERAL_CEREMONY'], JSON_THROW_ON_ERROR), $caseId);
+		$update = $this->db->getQueryBuilder();
+		$update->update('bestatter_case_automation')->set('record_id', $update->createNamedParameter((int)$created['id']))
+			->where($update->expr()->eq('case_id', $update->createNamedParameter($caseId)))
+			->andWhere($update->expr()->eq('trigger_key', $update->createNamedParameter('FUNERAL_CEREMONY_TASK')))->executeStatement();
 	}
 }

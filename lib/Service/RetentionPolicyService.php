@@ -149,7 +149,7 @@ class RetentionPolicyService {
 		$this->deleteWhere('bestatter_schedule_history','case_id',$caseId);
 		$invoiceIds=$this->ids('bestatter_invoices','case_id',$caseId); foreach($invoiceIds as $id)$this->deleteWhere('bestatter_invoice_items','invoice_id',$id);
 		$incomingIds=$this->ids('bestatter_incoming_invoices','case_id',$caseId); foreach($incomingIds as $id)$this->deleteWhere('bestatter_incoming_items','incoming_invoice_id',$id);
-		foreach (['bestatter_audit_log','bestatter_invoices','bestatter_commercial_docs','bestatter_incoming_invoices','bestatter_case_services','bestatter_records'] as $table) $this->deleteWhere($table,'case_id',$caseId);
+		foreach (['bestatter_audit_log','bestatter_mail_outbox','bestatter_invoices','bestatter_commercial_docs','bestatter_incoming_invoices','bestatter_case_services','bestatter_records'] as $table) $this->deleteWhere($table,'case_id',$caseId);
 	}
 
 	private function caseNumber(int $caseId): string { $q=$this->db->getQueryBuilder();$value=$q->select('case_number')->from('bestatter_cases')->where($q->expr()->eq('id',$q->createNamedParameter($caseId)))->executeQuery()->fetchOne();if($value===false)throw new \InvalidArgumentException('Fall wurde nicht gefunden.');return (string)$value; }

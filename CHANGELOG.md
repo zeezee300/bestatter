@@ -1,5 +1,94 @@
 # Änderungsstand
 
+## 0.65.0 – Nextcloud-35-Kompatibilität vorbereitet
+
+- Die App-Metadaten nennen Nextcloud 34 und 35 als technische Zielversionen; die Entwicklerabhängigkeit erlaubt OCP 34 oder 35.
+- Ein statischer Kompatibilitätstest prüft die in Nextcloud 35 dokumentierten entfernten APIs und die Rückgabetypen aller sieben OCC-Befehle.
+- Dies ist noch **keine Freigabe** für den Containerwechsel: PHP-/Integrations- und Browserabnahme auf einer isolierten Nextcloud-35-Instanz stehen aus (OP-038).
+
+## 0.64.2 – Nextcloud-Absender und Mitarbeiter-Antwortadresse
+
+- Der Bestatter-Mailversand verwendet die zentrale Nextcloud-Mailkonfiguration ohne separate App-Schalter oder App-Absender.
+- Die gültige Nextcloud-Profiladresse der sendenden Person wird als Antwortadresse verwendet und in Vorschau und Outbox dokumentiert; ohne sie bleibt der Systemabsender maßgeblich.
+- Migration 4000 ergänzt das optionale Feld `reply_to`. Live-Versand und Mehrbenutzer-Fallablage sind weiterhin gesondert abzunehmen.
+
+## 0.64.1 – Fallzuordnung und Geschäfts-Postfach
+
+- Die Zuständigkeit eines Falls wird bei Neuanlage als Nextcloud-Benutzerkennung aus der Bestatter-Gruppe gespeichert; bestehende Fälle dürfen nur Bestatter-Administratoren umbesetzen.
+- Zugeordnete Mitarbeitende dürfen finale, für ihr Konto zugängliche Fall-PDFs über das zentrale Geschäfts-Postfach versenden und den Versandverlauf einsehen. Nicht zugeordnete Mitarbeitende bleiben vom Versand ausgeschlossen.
+- Die benutzerabhängige Fallablage verhindert weiterhin verlässliche Bearbeitung fremd erzeugter Dateien; vollständige Mehrbenutzer-Fallrechte erfordern OP-040.
+
+## 0.64.0 – Kontrollierter Versand aus dem Geschäfts-Postfach (Stufe 1)
+
+- Finale, fallbezogene PDFs können von Bestatter-Administratoren nach Empfänger- und Anlagenprüfung über Nextclouds Mailer versendet werden; standardmäßig bleibt die Funktion deaktiviert.
+- Eine Outbox dokumentiert jeden Versuch vor dem SMTP-Aufruf, verhindert wiederholtes Senden mit derselben Versandkennung und verlangt bei erneutem Versand an dieselbe Adresse eine Begründung.
+- Die Anzeige unterscheidet „vom Mailserver angenommen“ und „Versandstatus unklar“ ausdrücklich von einer bestätigten Zustellung. Automatischer Versand und persönliche Mailkonten bleiben offen.
+
+## 0.63.1 – Papiervertrag und manuelle Unterschriftenprüfung
+
+- Separat unterschriebenen Vertrag oder unterschriebenen Scan einer finalen Bestattungsauftrag-PDF-Revision fallbezogen hochladen und einer manuellen Sichtprüfung zuführen.
+- Die Bestätigung erfasst unterschreibende Parteien, optionale Datums-/Papieroriginal-Angaben, Prüfer und Zeitpunkt; ein ungeprüfter Scan kann nicht über die Dokumenterzeugung als unterschrieben markiert werden.
+- Finale Bestattungsauftrag-PDFs werden mit fortlaufender Revisionsnummer erzeugt, ohne frühere finale Ausgaben zu ersetzen. Elektronische Signatur und revisionssichere Archivierung bleiben getrennte offene Themen.
+
+## 0.63.0 – Bestattungsart und Varianten zusammenführen
+
+- Einheitlicher Variantenbaum für Fallstammdaten und Aufnahmeassistent; die Bestattungsart wird aus dem obersten Knoten abgeleitet.
+- Baum- und Waldbestattung sind getrennte Hauptarten. Migration 3800 ordnet bestehende Baumplätze neu zu.
+- Die historische separate Bestattungsart-Liste ist in der Pflege ausgeblendet und wird bei Neuinstallationen nicht mehr angelegt.
+
+## 0.62.2 – Wertelisten alphabetisch anzeigen
+
+- Die Navigation der Wertelisten ist alphabetisch nach deutschen Bezeichnungen sortiert; die fachlich gepflegte Reihenfolge der Einträge innerhalb einer Liste bleibt unverändert.
+- Die Pflegeansicht erläutert die Herkunft der übergeordneten Varianten und die bislang nur teilweise Verbindung zur historischen Werteliste „Bestattungsart“.
+
+## 0.62.1 – Untervarianten selbst pflegen
+
+- Administratoren können Bestattungsvarianten und deren Unterauswahlen in der Werteliste ergänzen und die Elternzuordnung sowie die fachliche Einordnung bearbeiten. Bestehende technische Schlüssel bleiben fest.
+- Die Speicherung verhindert Zyklen und unpassende Elternzuordnungen; Löschungen mit Untervarianten, Leistungsregeln oder Fallbezügen werden abgewiesen.
+- Die Fallauswahl erhält den aktualisierten Variantenbaum. Der Entwicklungsreset bleibt getrennt und erhält die Wertelisten.
+
+## 0.62.0 – Dokumentationsbasierte Bedienhilfe
+
+- Eine eigene, rein lesende Bedienhilfe erscheint nur bei verfügbarem Nextcloud-Chat-Aufgabentyp `core:text2text:chat`. Der bestehende Fall- und Aktionsassistent bleibt unverändert.
+- Freigegebene Bedienhinweise liegen als benötigte Laufzeitressource bei. Interne Tickets, OP-Listen und Betriebs-/Testdaten gelangen nicht in Modellanfragen; ohne relevanten Dokumentationsabschnitt wird kein Task angelegt.
+- Aufgaben werden asynchron abgefragt; Statusabrufe prüfen Benutzer, App, Aufgabentyp und Kennung. Antworten zeigen den tatsächlich gefundenen Dateinamen und Abschnitt, weisen auf die Grenzen automatischer Ausgaben hin und führen keine Fachaktionen aus.
+
+## 0.61.1 – Datenbank-Upgrade der Variantenhierarchie korrigiert
+
+- Migration 3700 legt die Elternspalte und den Index ohne selbstreferenzierenden Fremdschlüssel an. Dies vermeidet den MariaDB-Fehler 1005/150 bei Tabellen mit Nextcloud-Präfix. Die Hierarchie wird bei Anlage in der Anwendung geprüft.
+- Die Migration bleibt bei einem teilweise angewendeten ersten Versuch wiederholbar; vorhandene Spalten und Indizes werden nicht erneut angelegt.
+
+## 0.61.0 – Bestattungsvarianten und Zuschlagsstaffeln
+
+- Hierarchische Bestattungsvarianten werden geführt; bislang freie Bestattungsarten bleiben in Bestandsfällen erhalten. Die Zuordnung von Almwiesen-, Kristall- und Wiesenbestattung zu Leistungsgruppen bleibt ausdrücklich offen.
+- Fallstammdaten erfassen Trauerfeier (ja/nein/offen), Abholzeit, Größe und Gewicht. Bei Aktivierung der Trauerfeier entsteht höchstens eine Abstimmungsaufgabe, sofern noch kein einschlägiger Termin existiert.
+- Interne, konfigurierbare Variantenhinweise unterstützen Pflichtgruppen, Standardartikel, Vorschläge und Ausschlüsse. Sie verändern weder Rechnung noch Vertrag automatisch.
+- Zuschlagsstaffeln für Abholzeiten, Größe und Gewicht sind als pflegbare Regeln mit Katalogleistung verknüpfbar und im Fall bewusst auswählbar. Die automatische Ermittlung und Berechnung bleibt offen; spätere Zuschläge werden nur über einen ausdrücklichen Vertragsnachtrag erfasst.
+
+## 0.60.2 – Geschützten Dokumentabruf im Browser korrigiert
+
+- Dateiübergabe und PDF-Druck übermitteln das erforderliche Nextcloud-Requesttoken; der bei der realen Abnahme erkannte Fehler „CSRF check failed“ tritt damit nicht mehr auf.
+- Die Fall- und Dateizugehörigkeitsprüfung der geschützten Ausgabeendpunkte bleibt unverändert aktiv.
+
+## 0.60.1 – Dokument an lokales Mailprogramm übergeben
+
+- „Mit Mailprogramm teilen“ lädt die ausgewählte Datei geschützt aus der Fallakte und übergibt sie als echten Anhang an den Systemdialog, sofern Browser und Betriebssystem die Web Share API für Dateien unterstützen.
+- Empfänger, Betreff und Nachrichtentext bleiben bewusst leer. Die lokale Übergabe setzt keinen Versandstatus und bleibt klar vom späteren automatischen Mailversand aus OP-002 getrennt.
+- Ohne Dateifreigabe-Unterstützung bleiben das Öffnen der Datei und eine leere `mailto:`-Nachricht als verständlich erklärter Rückfall erhalten.
+
+## 0.60.0 – Dokumentausgabe aus Übersicht und Fallakte
+
+- Dokumentzeilen bieten einheitliche, zugängliche Aktionen zum Drucken vorhandener PDFs und zum Vorbereiten einer E-Mail an.
+- Die Fallakte verwendet auch für direkt abgelegte Dateien dieselbe Ausgabezeile wie die zentrale Dokumentenübersicht.
+- Bei blockiertem Direktdruck wird die PDF geöffnet und eine klare Druckanweisung angezeigt; Office-Dateien werden nicht fälschlich als direkt druckbar angeboten.
+- Die Mailvorbereitung lässt den Empfänger leer, öffnet die Datei und weist transparent auf den manuell hinzuzufügenden Anhang hin. Ein automatischer Versand findet nicht statt.
+
+## 0.59.1 – Such- und Anzeige-Korrektur nach Fachabnahme
+
+- Mehrteilige Suchbegriffe werden wortweise und feldübergreifend ausgewertet. Dadurch findet die Fallsuche einen Nebenauftrag auch über den vollständigen Namen des Auftraggebers.
+- Die Mehrzahl „Nebenaufträge“ wird in der Fallübersicht korrekt mit Umlaut angezeigt.
+- Die Patchversion erzwingt nach der Nachkorrektur eine eindeutige Nextcloud-Aktualisierung und neue Frontend-Assetkennung.
+
 ## 0.59.0 – Nebenaufträge in Fallführung und Abschlussprüfung integriert
 
 - Nebenaufträge werden kompakt im eigenen Fallreiter geführt; Anlageformulare bleiben standardmäßig geschlossen und genau ein ausgewählter Auftrag zeigt Kopfdaten, Positionen oder Abrechnung.

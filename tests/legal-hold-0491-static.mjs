@@ -5,7 +5,7 @@ import path from 'node:path'
 const root = path.resolve(process.argv[2] || '.')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
 const migration = read('lib/Migration/Version1800Date20260906000000.php')
 for (const field of ['retention_hold_reason', 'retention_hold_responsible', 'retention_hold_set_at', 'retention_hold_review_at']) assert(migration.includes(field), `Legal-Hold-Feld fehlt: ${field}`)
 

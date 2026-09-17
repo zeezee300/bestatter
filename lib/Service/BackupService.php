@@ -21,9 +21,9 @@ class BackupService {
 	private const DEFAULT_PACKAGE_RETENTION_DAYS = 90;
 	private const TABLES = [
 		'bestatter_choice_lists','bestatter_choice_items','bestatter_checklist_templates','bestatter_checklist_items',
-		'bestatter_articles','bestatter_article_groups','bestatter_article_components','bestatter_workflows','bestatter_workflow_runs',
+		'bestatter_articles','bestatter_article_groups','bestatter_article_components','bestatter_burial_variant_rules','bestatter_surcharge_rules','bestatter_workflows','bestatter_workflow_runs',
 		'bestatter_branches','bestatter_document_templates','bestatter_dereg_templates','bestatter_invoice_settings','bestatter_invoice_sequences',
-		'bestatter_cases','bestatter_records','bestatter_case_services','bestatter_commercial_docs','bestatter_invoices','bestatter_invoice_items',
+		'bestatter_cases','bestatter_records','bestatter_mail_outbox','bestatter_case_automation','bestatter_case_services','bestatter_commercial_docs','bestatter_invoices','bestatter_invoice_items',
 		'bestatter_audit_log','bestatter_assistant_rules','bestatter_incoming_invoices','bestatter_incoming_items',
 		'bestatter_schedule_types','bestatter_resources','bestatter_schedule_history','bestatter_country_profiles',
 		'bestatter_capture_imports','bestatter_external_documents','bestatter_integration_jobs',

@@ -7,11 +7,17 @@
 - **Betroffene Bereiche:** Fallakte → Übersicht/Nebenaufträge, Positionsdaten, Finanzen, Fallliste, Fallsuche, Fallstatus, Vollständigkeitsprüfung, Dashboard
 - **Ausgangsversion:** 0.58.2
 - **Zielversion:** 0.59.0
-- **Status:** in Version 0.59.0 umgesetzt; automatisierte Regressionstests bestanden, reale Fachabnahme nach Installation auf dem Testsystem offen
+- **Status:** in Version 0.59.0 umgesetzt und fachlich abgenommen; Such-/Anzeige-Nachkorrektur als Patchversion 0.59.1 vorbereitet
 
 ## Umsetzungsstand 0.59.0
 
 Die kompakte Nebenauftragsnavigation, der durchgängige Auftraggeberkontext, die hierarchische Fallübersicht, die Nebenauftragssuche und -filterung sowie die serverseitige Fallabschlusssperre sind umgesetzt. Das Releasepaket wurde als schlanke Laufzeit-ZIP erzeugt; Entwicklungsdokumente, Tests und Testdaten sind nicht enthalten. Die lokale Testsammlung umfasst 103 bestandene JavaScript-/statische Regressionstests. Eine PHP-Laufzeit steht lokal nicht zur Verfügung. Migration, PHP-Laufzeit und die Abnahme mit zwei offenen Nebenaufträgen müssen deshalb unmittelbar nach der serverseitigen Installation des Pakets im verbundenen Nextcloud-Testsystem geprüft werden.
+
+## Reale Abnahme am 15.09.2026
+
+Das erste Paket 0.59.0 wurde erfolgreich auf Nextcloud 34.0.3 installiert. Im offen belassenen Testfall `2026-0008` wurden die Nebenaufträge `2026-0008-N1` (Anna Nebenauftrag, `ENTWURF`) und `2026-0008-N2` (Berta Nebenauftrag, `BEAUFTRAGT`) angelegt. N2 enthält die Freitextposition 10 „BEST-115 Testleistung“ über 10,00 Euro netto. Folgende Punkte wurden im Browser bestätigt: geschlossener Anlagebereich im Leerzustand, kompakte Liste, Kopf-/Positions-/Finanznavigation im Nebenauftragsreiter, Auftraggeberkontext, 10er-Positionsnummer, hierarchische Fallzeilen, gespeicherte Ansicht „Offene Nebenaufträge“, Suche nach Nebenauftragsnummer und einzelnen Namensbestandteilen sowie die serverseitige Abschlusssperre. Der abgewiesene Abschlussversuch nannte beide offenen Nebenaufträge samt Grund; nach Neuladen blieb der Fallstatus `NEU`.
+
+Bei der Abnahme wurde festgestellt, dass ein vollständiger mehrteiliger Auftraggebername noch keinen Treffer lieferte. Die Suche wurde daraufhin auf feldübergreifende UND-Verknüpfung einzelner Suchwörter korrigiert und die fehlerhafte Mehrzahl „Nebenauftrage“ berichtigt. Die betroffenen BEST-114-/BEST-115-/Sideorder-/Release-Regressionstests bestehen. Die Backendkorrektur wurde im Testsystem bereits bestätigt. Damit Nextcloud auch das korrigierte Frontend-Bundle eindeutig neu lädt, wird die Nachkorrektur als Patchversion 0.59.1 ausgeliefert; deren abschließende Browser-Nachprüfung erfolgt nach Installation.
 
 ## Anlass und Codeabgleich
 

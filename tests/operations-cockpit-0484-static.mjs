@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const read = (path) => fs.readFileSync(path, 'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
-assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.59.0'"))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
+assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.65.0'"))
 const service = read('lib/Service/OperationsCockpitService.php')
 for (const marker of ['bestatter_workflow_runs', 'bestatter_integration_jobs', 'bestatter_external_documents', 'retention->preview', 'maintenance_last_run', "'readOnly'=>true"]) assert(service.includes(marker), `Cockpit-Aggregat fehlt: ${marker}`)
 const controller = read('lib/Controller/OperationsApiController.php')

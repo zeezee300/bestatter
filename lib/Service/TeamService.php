@@ -76,6 +76,20 @@ class TeamService {
 		if (!$this->isBestatterAdmin()) throw new BestatterAccessDeniedException('Diese Funktion ist Bestatter-Administratoren vorbehalten.');
 	}
 
+	/** Case assignment is stored as a Nextcloud UID, never as a contact display name. */
+	public function canEditCase(array $case): bool {
+		if ($this->isBestatterAdmin()) return true;
+		$uid = $this->currentUser()->getUID();
+		return $this->hasBestatterRole($uid)
+			&& $uid === trim((string)($case['responsibleEmployee'] ?? ''));
+	}
+
+	public function requireCaseEditor(array $case): void {
+		if (!$this->canEditCase($case)) {
+			throw new BestatterAccessDeniedException('Diese Aktion ist nur für die zuständige Person oder Bestatter-Administratoren zulässig.');
+		}
+	}
+
 	public function assignee(string $uid = ''): array {
 		$uid = trim($uid);
 		if ($uid !== '') {

@@ -16,7 +16,7 @@ for (const marker of ['es\\s+geht\\s+um', 'letzte\\s+wohnsitz', 'suggestAdminist
 for (const marker of ['capture-transcription-retry', 'Status erneut prüfen', 'transcriptionTaskId', "'delayed'"]) {
 	if (!frontend.includes(marker)) throw new Error(`Delayed transcription marker missing: ${marker}`)
 }
-for (const marker of ["'first_name' => 'Maria'", "'date_of_death' => '2022-08-23'", "'cemetery_contact' => 'Riensberger Friedhof'", "'certificate_paid_count' => '3'"]) {
+for (const marker of ["'first_name' => 'Erika'", "'date_of_death' => '2022-08-23'", "'cemetery_contact' => 'Friedhof Beispiel'", "'certificate_paid_count' => '3'"]) {
 	if (!fixture.includes(marker)) throw new Error(`Current dictation fixture marker missing: ${marker}`)
 }
 if (!op.includes('OP-020 – Kontrollierte Übergabe aus Nextcloud Talk')) throw new Error('Talk handoff OP is missing')

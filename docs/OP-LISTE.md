@@ -9,10 +9,13 @@
 
 ## OP-002 – Automatischer E-Mail-Versand
 
-- Status: bewusst zurückgestellt; aktuell werden ausschließlich bearbeitbare Entwürfe erzeugt.
-- Ziel: Kontrollierter Versand aus einem geprüften Entwurf über die Nextcloud-Mail-Infrastruktur.
-- Vor Umsetzung festzulegen: Absenderkonten, Empfängerfreigabe, Anlagen, Versandbestätigung, Fehler-/Wiederholungsregeln, Zustellstatus, Datenschutz und Protokollierung.
-- Abnahmekriterium: Kein Versand ohne serverseitige Empfänger- und Berechtigungsprüfung; Versand und Fehler sind am Fall nachvollziehbar, Dubletten werden verhindert.
+- Status: Stufe 1 lokal umgesetzt, in 0.64.2 auf die zentrale Nextcloud-Mailkonfiguration umgestellt; Live-Abnahme mit echtem Geschäfts-Postfach und fachliche Freigabe stehen aus. Der spätere automatische Versand bleibt offen.
+- Stufe 1: Ein Bestatter-Administrator versendet eine registrierte finale PDF nach Vorschau und ausdrücklicher Empfänger-/Anlagenbestätigung über Nextclouds serverseitigen Mailer aus einer zentral konfigurierten Geschäftsadresse. Die App speichert jeden Versuch vor dem externen Versand in einer Outbox mit eindeutiger Versandkennung. Wiederholungen derselben Kennung senden nicht erneut; bei einem neuen Versuch an denselben Empfänger ist eine Begründung erforderlich. Status „ACCEPTED“ bedeutet nur Annahme durch den Mailserver, nicht Zustellung; „UNCERTAIN“ verlangt eine manuelle Prüfung des Postausgangs und wird nie automatisch wiederholt.
+- Konfiguration: Ab 0.64.2 wird der zentrale Nextcloud-Systemabsender verwendet; separate App-Werte `business_mail_from` und `business_mail_enabled` entfallen. Die gültige Nextcloud-Profiladresse der angemeldeten Person wird als `Reply-To` gesetzt, andernfalls bleibt die Systemadresse zuständig. Bei gültiger Mailkonfiguration ist der Versand für Bestatter-Administratoren und die per Nextcloud-UID zugeordnete Person verfügbar; der Zugriff auf PDFs bleibt bis OP-040 vom persönlichen Fallordner abhängig.
+- Abgrenzung zu BEST-116: Die lokale Aktion „Mit Mailprogramm teilen“ übergibt nur eine Datei an den Systemdialog und setzt weder Empfänger noch Versandstatus. Sie ist kein Versand und kein Versandnachweis; die hier geforderten Prüf-, Freigabe- und Protokollierungsregeln bleiben vollständig offen.
+- Offen: reales SMTP-/Mailbox- und Migrations-Abnahmetesting, Antwort- und Bounce-Bearbeitung, Zustellstatusabgleich, fachliche Freigabe von Rechnungs-/Vertragsversand, Aufbewahrung und Export der Nachrichten, Mehrbenutzer-/Fallberechtigung nach OP-040 sowie spätere automatische Workflows und optionaler Vier-Augen-Schritt nach OP-001.
+- Abnahmekriterium für Stufe 1: Kein Versand ohne serverseitige Empfänger-, Rollen-, Fall- und PDF-Prüfung; Versuch und unklarer Status sind am Fall nachvollziehbar; Doppelklick erzeugt keine zweite Nachricht. Vor Aktivierung im Echtbetrieb muss das Geschäfts-Postfach im Testsystem samt Postausgang und Fehlerszenarien manuell geprüft werden.
+- Detailticket: `docs/TICKET-BEST-119-GESCHAEFTSPOSTFACH-VERSAND.md`.
 
 ## OP-003 – Visueller DOCX-Vorlageneditor und Feldkatalog
 
@@ -310,7 +313,7 @@
 
 ## OP-038 – Nextcloud-Mehrversions-Kompatibilität und Testmatrix
 
-- Status: als eigenständiges Vorhaben aufgenommen; derzeit ist nur die eingesetzte Nextcloud-Hauptversion 34 verbindlich abgenommen.
+- Status: 0.65.0 bereitet die Metadaten und den statischen Bruchstellencheck für Nextcloud 35 vor; derzeit ist weiterhin nur Nextcloud 34 verbindlich abgenommen. PHP-/Integrations- und Browsermatrix für 34/35 sowie die Freigabe des Containerwechsels stehen aus.
 - Ziel: Die Bestatter-App unterstützt jeweils die aktuelle freigegebene Nextcloud-Hauptversion und mindestens deren direkte Vorgängerversion. Eine dritte Hauptversion wird aufgenommen, sofern Nextcloud-API, PHP-Laufzeit und abhängige Apps dies ohne unsichere Kompatibilitätsumgehungen erlauben.
 - Freigabemodell: Unterstützte Versionen werden ausdrücklich in `appinfo/info.xml`, Installationsdokumentation und Release Notes genannt. „Installierbar“ gilt nicht als „unterstützt“; jede Version benötigt einen erfolgreich ausgeführten Prüfstand.
 - Testmatrix: Für jede unterstützte Nextcloud-Hauptversion werden Neuinstallation, Upgrade der Bestatter-App, Datenbankmigration, Anmeldung und Rollenprüfung, Fallanlage/-bearbeitung, Aufgaben-/Terminsynchronisation, Dokumenterzeugung, KVA/Auftrag/Rechnung, Backup-Vorschau und ein vollständiger automatisierter Testlauf geprüft. Zusätzlich werden die jeweils zulässigen PHP- und Datenbankversionen dokumentiert.
@@ -331,7 +334,7 @@
 
 ## OP-040 – Zentrale gemeinsame Fallablage statt benutzerabhängiger Ordner
 
-- Status: Kritische Mehrbenutzer-Architekturlücke aufgenommen. `FolderService::userFolder()` sowie mehrere Dokument-, Workflow-, Assistenz-, Backup- und Löschpfade verwenden derzeit `getUserFolder()` des jeweils angemeldeten beziehungsweise übergebenen Benutzers. Dadurch können je Bearbeiter getrennte Fallordner entstehen. Ein gemeinsam verwendetes Login kaschiert dieses Verhalten, ist aber kein zulässiges Zielmodell.
+- Status: Kritische Mehrbenutzer-Architekturlücke aufgenommen; auch nach der fallbezogenen Mailfreigabe in 0.64.1 noch offen. `FolderService::userFolder()` sowie mehrere Dokument-, Workflow-, Assistenz-, Backup- und Löschpfade verwenden derzeit `getUserFolder()` des jeweils angemeldeten beziehungsweise übergebenen Benutzers. Dadurch können je Bearbeiter getrennte Fallordner entstehen. Ein gemeinsam verwendetes Login kaschiert dieses Verhalten, ist aber kein zulässiges Zielmodell.
 - Ziel: Jede Niederlassung beziehungsweise Mandanteneinheit besitzt eine explizit konfigurierte zentrale Fallablage, die unabhängig vom gerade angemeldeten Benutzer aufgelöst wird. Mitarbeiter arbeiten mit persönlichen Nextcloud-Konten und rollenbasierten Berechtigungen; ein geteiltes Benutzerkonto ist weder erforderlich noch vorgesehen.
 - Bevorzugte Variante: Integration mit der Nextcloud-App „Group folders“, sofern deren für die eingesetzte Nextcloud-Version unterstützte Schnittstelle eine stabile Auflösung und Rechteprüfung ermöglicht. Alternativ wird ein dediziertes technisches Eigentümerkonto mit kontrollierter Ordnerfreigabe unterstützt. Benutzername, Passwort oder interaktive Anmeldung dieses Kontos werden von der Bestatter-App nicht gespeichert oder verwendet.
 - Architektur: Eine zentrale `CaseStorageService`-/Storage-Backend-Abstraktion ersetzt direkte `getUserFolder()`-Aufrufe in Folder-, Document-, Workflow-, Assistant-, Backup-, Restore-, Retention-, Purge- und Artikelbildlogik. Konfiguriert werden Backend-Typ, Ablagekennung, relativer Stammpfad und optional die Zuordnung je Niederlassung.
@@ -449,7 +452,7 @@
 
 ## OP-051 – BEST-115: Nebenaufträge in Navigation, Fallstatus und Suche integrieren
 
-- Status: in Version 0.59.0 umgesetzt; 103 lokale JavaScript-/statische Regressionstests bestanden. Serverseitige Installation, PHP-/Migrationsprüfung und reale Fachabnahme mit mindestens zwei offenen Nebenaufträgen sind noch offen.
+- Status: in Version 0.59.0 umgesetzt und auf Nextcloud 34.0.3 installiert. Die reale Abnahme mit Fall `2026-0008`, zwei offenen Nebenaufträgen unterschiedlicher Status, Navigation, Hierarchie, Filter und Abschlusssperre ist bestanden. Der dabei gefundene Suchrandfall für vollständige mehrteilige Auftraggebernamen und die fehlerhafte Mehrzahl wurden in Patchversion 0.59.1 korrigiert. Die Backend-Suche ist im Testsystem bestätigt; die Frontend-Nachprüfung folgt nach Installation von 0.59.1.
 - Priorität/Aufwand: Muss / L.
 - Befund: Das Anlageformular wird im Leerzustand automatisch geöffnet; Positionen und Finanzen wechseln aus dem Nebenauftragsreiter in die allgemeinen Hauptreiter; der Auftraggeber fehlt im Positionskopf. Fallliste, Suche und Fallabschluss berücksichtigen Nebenaufträge derzeit nicht.
 - Ziel: Nebenaufträge werden im eigenen Fallreiter als kompakte, auswählbare Liste mit internen Ansichten für Kopfdaten, Positionen und Abrechnung geführt. Fallübersicht und Suche zeigen sie hierarchisch unter dem Sterbefall und erlauben gezielte Filter.
@@ -458,3 +461,57 @@
 - Risiko: Ob eine freigegebene Schlussrechnung oder erst vollständiger Zahlungseingang für den Nebenauftragsabschluss genügt, ist vor Produktivfreigabe mit der Buchhaltung zu bestätigen. Bestandsfälle mit widersprüchlichem Status werden nur diagnostiziert, nicht automatisch verändert.
 - Abnahmekriterium: Die 14 Kriterien aus BEST-115 sind erfüllt; insbesondere bleibt der Nebenauftragskontext in Kopf, Positionen und Finanzen sichtbar, Suche und Filter liefern eindeutige Fallmengen und die Fallabschlusssperre kann weder über UI, API noch Workflow umgangen werden.
 - Detailticket: `docs/TICKET-BEST-115-NEBENAUFTRAEGE-NAVIGATION-STATUS-SUCHE.md`.
+
+## OP-052 – BEST-116: Dokumente drucken und Mailversand vorbereiten
+
+- Status: in Version 0.60.2 installiert und browserseitig abgenommen. In der zentralen Dokumentübersicht wurden 24 PDF-Druckaktionen und 26 Mailaktionen korrekt angeboten; der Druck-Fallback öffnete die richtige PDF ohne CSRF-Fehler. Auch die Mailaktion erzeugte keine CSRF-Meldung oder Bestatter-App-Fehler. Die Auswahl eines lokal installierten Mailprogramms und die sichtbare Anhangsprüfung bleiben wegen des nicht auslesbaren Systemdialogs als arbeitsplatzabhängiger manueller Test in Edge oder Chrome offen; es wurde weder gedruckt noch versendet.
+- Priorität/Aufwand: Soll / M.
+- Befund: Dokumente lassen sich in den Übersichten bisher öffnen oder als Vorschau anzeigen, aber nicht über einheitliche Zeilenaktionen drucken oder für den Versand vorbereiten. Die Dateiliste in der Fallakte verwendet zudem eine separate Darstellung.
+- Ziel: Hauptübersicht und Fallakte verwenden dieselbe Dokumentzeile. Vorhandene PDFs können direkt gedruckt werden. Jede vorhandene Datei kann über den Systemdialog an ein lokales Mailprogramm mitgegeben werden; Empfänger, Betreff und Text bleiben leer.
+- Transparenz: Bei fehlender Web-Share-Unterstützung werden Datei und leere `mailto:`-Nachricht geöffnet und das manuelle Anhängen erklärt. Es findet kein serverseitiger Versand und keine Versandprotokollierung statt; OP-002 bleibt fachlich und technisch unberührt.
+- Sicherheit: Drucken wird nur bei tatsächlichen PDFs angeboten. Unveränderliche Dokumente bleiben geschützt, dürfen aber weiterhin ausgegeben werden. Dokumenterzeugung, Speicherung, Versionierung und Vorlagen bleiben unverändert.
+- Abnahmekriterium: Die zehn Kriterien aus BEST-116 sind erfüllt; insbesondere sind Aktionen in beiden Übersichten einheitlich, alle Mailfelder bleiben leer, ein unterstütztes lokales Mailprogramm erhält den Anhang und DOCX-Dateien werden nicht fälschlich als direkt druckbar dargestellt.
+- Detailticket: `docs/TICKET-BEST-116-DOKUMENTE-DRUCKEN-MAIL-VORBEREITEN.md`.
+
+## OP-053 – BEST-117: Bestattungsvarianten und Zuschlagsstaffeln
+
+- Status: in 0.61.0 lokal implementiert; Migration 3700 scheiterte zunächst an einem selbstreferenzierenden Fremdschlüssel. Die Korrektur 0.61.1 wurde im Testsystem erfolgreich installiert (`needsDbUpgrade: false`); die fachliche End-to-End-Abnahme bleibt offen. Regeln werden ohne fachliche Freigabe nicht automatisch aktiviert.
+- Priorität/Aufwand: Muss / L.
+- Ziel: Stabile, hierarchische Variantenwahl, bedingte interne Leistungshinweise sowie pflegbare Zuschlagsstaffeln mit festen Katalogleistungen. Erfassung von Abholzeit, Körpergröße und Gewicht bereits jetzt, aber noch keine automatische Zuschlagsermittlung.
+- Nachtrag Variantenpflege: Die zuvor fehlende Pflege von Ober- und Untervarianten ist lokal ergänzt (Elternzuordnung, fachliche Einordnung, Neuanlage, Umhängen, Schutz vor Zyklen und unzulässigem Löschen). Browserabnahme im Testsystem bleibt offen. Der Entwicklungsreset erhält Wertelisten und ist dafür nicht erforderlich.
+- Offen: fachliche Zuordnung von Almwiesen-, Kristall- und Wiesenbestattung; Staffelgrenzen und Zeit-/Feiertagslogik; Artikelgruppe für Urnen vor einer verbindlichen Regel bereinigen; Freigabe der Standardleistungen und Preise durch Fachbereich/Buchhaltung.
+- Nach Beauftragung: Zusätzliche oder veränderte preiswirksame Leistungen dürfen nur als dokumentierte Auftragsänderung beziehungsweise Nachtrag über den bestehenden Positions-/Vertragsprozess erfasst werden.
+- Detailticket: `docs/TICKET-BEST-117-BESTATTUNGSVARIANTEN-ZUSCHLAEGE.md`.
+
+## OP-054 – BEST-118: Dokumentationsbasierte Bedienhilfe
+
+- Status: in 0.62.0 lokal implementiert; Testsystem- und Anbieterabnahme offen. Bei fehlendem Chat-Anbieter bleibt die Bedienhilfe absichtlich unsichtbar.
+- Priorität/Aufwand: Soll / M.
+- Ziel: Read-only-Frage/Antwort-Panel für Bedienungsfragen, ausschließlich über Nextcloud Task Processing und freigegebene, mitgelieferte Bedienhilfe. Der vorhandene Fallassistent bleibt eigenständig.
+- Grenzen: Keine internen Tickets/OP-Listen als Modellkontext, keine Fall-, Rechnungs- oder Workflow-Aktion, keine eigene Modellanbindung. Modellantworten werden als automatisiert gekennzeichnet und mit ermittelten Dokumentationsabschnitten belegt; eine fachliche Prüfung ersetzt dies nicht.
+- Detailticket: `docs/TICKET-BEST-118-DOKUMENTIERTE-BEDIENHILFE.md`.
+
+## OP-055 – Bestattungsart und Bestattungsvarianten fachlich konsolidieren
+
+- Status: in 0.63.0 lokal umgesetzt; Testsystem-Abnahme offen. Die historische Liste `FUNERAL_TYPE` wird nicht mehr neu initialisiert und bei bestehenden Installationen in der Pflege ausgeblendet; vorhandene Werte bleiben ohne Datenverlust erhalten.
+- Ein gemeinsamer Baum `BURIAL_VARIANT`: Wurzeleinträge sind Bestattungsarten, Kind-Einträge Untervarianten. Die Fallspalte `funeral_type` erhält die Wurzelbezeichnung, `burial_variant_code` den gewählten Eintrag. Fallformular und Aufnahmeassistent verwenden dieselbe Liste.
+- Baum- und Waldbestattung sind zwei getrennte Wurzeln. Die bisherigen Baumplätze werden von Wald nach Baum umgehängt; die anonyme Waldbestattung bleibt unter Wald. `CREMATION`/`BURIAL` bleibt ausschließlich technische Katalogfilterung.
+- Almwiesen-, Kristall- und Wiesenbestattung bleiben fachlich offen und leiten weiterhin keine Leistungen automatisch ab. Historische Fälle ohne Variantencode werden nicht automatisch anhand ähnlich klingender Texte umklassifiziert.
+- Abnahme: Migration 3800, Wertelistenpflege, Fall- und Assistentenauswahl sowie Berichte/Dokumente an einem neu angelegten Testfall prüfen.
+- Priorität/Aufwand: Soll / M.
+
+## OP-056 – Handschriftlich unterschriebene Bestattungsverträge erfassen
+
+- Status: lokal in 0.63.1 umgesetzt und statisch getestet; fachliche Browser-Abnahme beider Wege im Testsystem ausstehend.
+- Priorität/Aufwand: Muss / M. Abhängigkeit: finale, unveränderliche Dokumentrevisionen nach BEST-113 (OP-049).
+- Zwei zulässige Eingänge: (A) Ein separat erstellter und handschriftlich unterschriebener Bestattungsvertrag wird vollständig eingescannt und dem Fall zugeordnet. (B) Die Anwendung erzeugt den Bestattungsauftrag als finale PDF-Revision; diese wird ausgedruckt, handschriftlich unterschrieben und anschließend vollständig eingescannt.
+- Der Scan wird zunächst nur als „eingegangen / Unterschriftenprüfung offen“ gespeichert. Erst nach Sichtprüfung von Vollständigkeit, Fallbezug, Vertragsinhalt und erforderlichen Unterschriften bestätigt eine berechtigte Person „handschriftlich unterschrieben“. Dabei werden Quelle A/B, signierende Parteien, ein ggf. ersichtliches Unterschriftsdatum, prüfende Person und Prüfzeitpunkt dokumentiert; der Aufbewahrungsort des Papieroriginals kann angegeben werden. Eine unsichere oder fehlende Angabe bleibt offen und wird nicht erfunden.
+- Bei B wird der Scan mit der ausgegebenen PDF-Revision verknüpft. Der Scan ersetzt oder überschreibt die nicht unterschriebene Revision nicht. Bei A bleibt der externe Vertrag als eigenständiges Originaldokument erkennbar. Jede Korrektur ist eine neue Revision beziehungsweise ein neues Dokument mit nachvollziehbarem Bezug.
+- Die aktuelle direkte Auswahl „Unterschrieben“ bei der Dokumenterzeugung ist zu entfernen oder für diesen Papierprozess zu sperren: Ohne zugeordneten, geprüften Scan darf dieser Status nicht entstehen. Handschriftliche und spätere elektronische Signaturarten müssen unterscheidbar sein.
+- Abnahme: Beide Wege mit je einem Testfall; fehlende Seite oder Unterschrift verhindert die Bestätigung; keine automatische Anerkennung durch OCR; direkte Dateiänderung/-löschung und Auswirkung auf die noch offene Archivierung gesondert prüfen. Die rechtlich erforderliche Form und Zahl der Unterschriften je Dokumentart sind fachlich freizugeben. Die drei Prüfschritte sind eine menschliche Erklärung, keine automatische Bildprüfung. Die App protokolliert SHA-256-Werte beim Upload und prüft sie vor der Bestätigung; eine GoBD-konforme, gegen direkte Nextcloud-Änderungen geschützte Archivierung ist damit nicht erreicht.
+
+## OP-057 – Elektronische Signatur für Aufträge und Vorsorgeverträge
+
+- Status: offen; bewusst nicht Teil des Papierprozesses OP-056.
+- Priorität/Aufwand: Soll / L; Signaturstufe und Anbieter je Dokumentart vor Umsetzung fachlich und rechtlich festlegen.
+- Ziel: Signaturanfragen für unveränderliche PDF-Revisionen über eine Nextcloud-kompatible Signaturanwendung, mit internen/externen Unterzeichnern, Statusabgleich, verifizierter signierter Ausgabe und Nachweisablage. „Elektronisch signiert“ darf nicht mit „handschriftlich unterschrieben“ oder einem bloß manuell gesetzten Status verwechselt werden.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const read = (path) => fs.readFileSync(path, 'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
 const articles = read('lib/Service/ArticleService.php')
 for (const marker of ['contractProtection', 'amendmentsAllowed', 'CONTRACT_AMENDMENT', 'Nach Festschreibung des KVA oder Auftrags', "if ($current['sourcePackageId'] !== null) $line['unitPriceCents'] = $current['unitPriceCents']"]) assert(articles.includes(marker), `Preisbindung fehlt: ${marker}`)
 const controller = read('lib/Controller/CatalogApiController.php')

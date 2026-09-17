@@ -25,7 +25,7 @@ class CaseFileService {
 		return ['caseId' => $caseId, 'caseNumber' => $caseNumber, 'folders' => $this->folders->allowedSubfolders(), 'documentTypes' => self::DOCUMENT_TYPES, 'files' => $files];
 	}
 
-	public function upload(array $case, array $upload, string $subfolder, string $documentType = 'Sonstiges', string $title = ''): array {
+	public function upload(array $case, array $upload, string $subfolder, string $documentType = 'Sonstiges', string $title = '', array $paperSignature = []): array {
 		$this->validateUpload($upload);
 		if (trim($subfolder) === '') $subfolder = $this->folders->defaultUploadFolder();
 		if (!in_array($documentType, self::DOCUMENT_TYPES, true)) throw new \InvalidArgumentException('Die gewählte Dokumentenart ist nicht zulässig.');
@@ -43,11 +43,61 @@ class CaseFileService {
 			'relativePath' => $relativePath, 'subfolder' => $subfolder, 'documentType' => $documentType,
 			'mimeType' => $file->getMimeType(), 'size' => $file->getSize(), 'originalName' => $originalName, 'uploadedAt' => date('c'),
 		];
-		$record = $this->records->saveDocument((int)$case['id'], trim($title) ?: pathinfo($fileName, PATHINFO_FILENAME), 'EINGEGANGEN', $payload);
+		if ($paperSignature !== []) $payload['paperSignature'] = $paperSignature;
+		try { $record = $this->records->saveDocument((int)$case['id'], trim($title) ?: pathinfo($fileName, PATHINFO_FILENAME), $paperSignature !== [] ? 'SIGNATURE_REVIEW' : 'EINGEGANGEN', $payload); }
+		catch (\Throwable $error) { $file->delete(); throw $error; }
 		return ['file' => $this->mapFile($file, $this->folders->caseRoot((string)$case['caseNumber'])->getPath(), $record), 'record' => $record];
 	}
 
+	public function uploadPaperContract(array $case, array $upload, string $source, int $sourceRecordId = 0): array {
+		$this->validateUpload($upload);
+		$source = strtoupper(trim($source));
+		if (!in_array($source, ['EXTERNAL', 'GENERATED'], true)) throw new \InvalidArgumentException('Bitte die Herkunft des unterschriebenen Vertrags angeben.');
+		if (strtolower(pathinfo((string)($upload['name'] ?? ''), PATHINFO_EXTENSION)) !== 'pdf' || (string)file_get_contents((string)$upload['tmp_name'], false, null, 0, 5) !== '%PDF-') throw new \InvalidArgumentException('Bitte den vollständigen unterschriebenen Vertrag als PDF-Scan hochladen.');
+		$sourcePdfFileId = 0; $sourcePdfSha256 = '';
+		if ($source === 'GENERATED') {
+			$record = $this->records->get($sourceRecordId);
+			if ($record['type'] !== 'document' || (int)$record['caseId'] !== (int)$case['id'] || $record['status'] !== 'FINAL' || (string)($record['data']['templateKey'] ?? '') !== 'BESTATTUNGSAUFTRAG') throw new \InvalidArgumentException('Bitte eine finale PDF-Revision dieses Bestattungsauftrags auswählen.');
+			$sourcePdfFileId = (int)($record['data']['pdf']['fileId'] ?? 0);
+			if ($sourcePdfFileId <= 0) throw new \InvalidArgumentException('Die finale PDF-Revision ist nicht verfügbar.');
+			$sourcePdfSha256 = hash('sha256', (string)$this->pdf($case, $sourcePdfFileId)->getContent());
+		} elseif ($sourceRecordId !== 0) throw new \InvalidArgumentException('Ein separater Vertrag darf nicht mit einer erzeugten Revision verknüpft werden.');
+		$metadata = ['method' => 'HANDWRITTEN', 'source' => $source, 'sourceRecordId' => $sourceRecordId, 'sourcePdfFileId' => $sourcePdfFileId, 'sourcePdfSha256' => $sourcePdfSha256, 'scanSha256' => hash_file('sha256', (string)$upload['tmp_name']), 'review' => null];
+		return $this->upload($case, $upload, '', 'Auftrag', 'Handschriftlich unterschriebener Bestattungsvertrag', $metadata);
+	}
+
+	public function confirmPaperContract(array $case, int $recordId, array $review): array {
+		$record = $this->records->get($recordId);
+		$paper = $record['data']['paperSignature'] ?? null;
+		if ($record['type'] !== 'document' || (int)$record['caseId'] !== (int)$case['id'] || $record['status'] !== 'SIGNATURE_REVIEW' || !is_array($paper)) throw new \InvalidArgumentException('Der Papiervertrag ist nicht zur Prüfung vorgemerkt.');
+		$scan = $this->pdf($case, (int)($record['data']['fileId'] ?? 0));
+		if (!hash_equals((string)($paper['scanSha256'] ?? ''), hash('sha256', (string)$scan->getContent()))) throw new \InvalidArgumentException('Der Scan wurde seit dem Upload verändert. Bitte neu hochladen.');
+		if (($paper['source'] ?? '') === 'GENERATED') {
+			$source = $this->pdf($case, (int)($paper['sourcePdfFileId'] ?? 0));
+			if (!hash_equals((string)($paper['sourcePdfSha256'] ?? ''), hash('sha256', (string)$source->getContent()))) throw new \InvalidArgumentException('Die finale PDF-Revision wurde verändert.');
+		}
+		return $this->records->confirmPaperContract($recordId, (int)$case['id'], $review);
+	}
+
 	public function attachmentFiles(array $case): array { return $this->list($case)['files']; }
+
+	public function file(array $case, int $fileId): File {
+		if ($fileId <= 0) throw new \InvalidArgumentException('Die Datei wurde nicht angegeben.');
+		$root = $this->folders->caseRoot((string)($case['caseNumber'] ?? ''));
+		$rootPrefix = rtrim($root->getPath(), '/') . '/';
+		foreach ($root->getById($fileId) as $node) {
+			if (!$node instanceof File || !str_starts_with($node->getPath(), $rootPrefix)) continue;
+			return $node;
+		}
+		throw new \InvalidArgumentException('Die Datei gehört nicht zu diesem Fall oder ist nicht mehr vorhanden.');
+	}
+
+	public function pdf(array $case, int $fileId): File {
+		$file = $this->file($case, $fileId);
+		$isPdf = strtolower($file->getMimeType()) === 'application/pdf' || strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION)) === 'pdf';
+		if (!$isPdf) throw new \InvalidArgumentException('Direktes Drucken ist nur für PDF-Dateien verfügbar.');
+		return $file;
+	}
 
 	public function listAll(array $cases): array {
 		$files = [];

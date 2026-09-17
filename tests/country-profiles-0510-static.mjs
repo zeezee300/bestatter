@@ -3,8 +3,8 @@ import fs from 'node:fs'
 
 const read = (path) => fs.readFileSync(path, 'utf8')
 
-assert(read('appinfo/info.xml').includes('<version>0.59.0</version>'))
-assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.59.0'"))
+assert(read('appinfo/info.xml').includes('<version>0.65.0</version>'))
+assert(read('lib/AppInfo/Application.php').includes("VERSION = '0.65.0'"))
 
 const migration = read('lib/Migration/Version3000Date20260907000000.php')
 for (const token of ['bestatter_country_profiles', 'country_code', 'invoice_profile', 'payment_qr_standard', 'federal_state']) {

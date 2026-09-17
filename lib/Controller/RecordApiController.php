@@ -30,6 +30,7 @@ class RecordApiController extends ApiController {
 	#[NoAdminRequired]
 	public function createRecord(string $type, string $title = '', string $date = '', string $status = 'OFFEN', string $data = '{}', int $caseId = 0): DataResponse {
 		if ($type === 'activity') throw new \InvalidArgumentException('Der Fall-Verlauf wird automatisch als unveränderbares Protokoll geführt.');
+		if ($type === 'document') throw new \InvalidArgumentException('Dokumente werden ausschließlich über die geprüften Fall- und Dokumentprozesse angelegt.');
 		if ($type === 'schedule') $data = json_encode($this->scheduling->prepare($data, $date), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 		$item = match ($type) {
 			'task' => $this->groupware->createTask($title, $date, $status, $data, $caseId),
@@ -44,6 +45,7 @@ class RecordApiController extends ApiController {
 	#[NoAdminRequired]
 	public function updateRecord(int $id, string $title = '', string $date = '', string $status = 'OFFEN', string $data = '{}', int $caseId = 0): DataResponse {
 		$previous = $this->recordService->get($id);
+		if (($previous['type'] ?? '') === 'document') throw new \InvalidArgumentException('Dokumente werden ausschließlich über die geprüften Fall- und Dokumentprozesse bearbeitet.');
 		if (($previous['type'] ?? '') === 'schedule') {
 			$prepared = $this->scheduling->prepare($data, $date, $id);
 			$this->scheduling->requireChangeReason($previous, $title, $date, $status, $prepared);
