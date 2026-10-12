@@ -1,0 +1,19 @@
+{
+	"format": "bestatter-document-kinds",
+	"version": 1,
+	"note": "0.80.0 – mitgelieferte Dokumentarten (OP-058). active=false: über Customizing → Dokumentarten einschalten.",
+	"kinds": [
+		{ "key": "EINGANGSRECHNUNG", "name": "Eingangsrechnung", "description": "Rechnung eines Lieferanten, z. B. Blumen, Sarg, Druckerei.", "folderKey": "ABRECHNUNG", "category": "Rechnung", "effect": "INCOMING_INVOICE", "classification": "CLASSIFICATION_PENDING", "active": true },
+		{ "key": "GEBUEHRENBESCHEID", "name": "Gebührenbescheid", "description": "Gebühren von Friedhof, Krematorium oder Standesamt (Fremdkosten).", "folderKey": "ABRECHNUNG", "category": "Rechnung", "effect": "INCOMING_INVOICE", "classification": "TRUE_PASS_THROUGH", "active": true },
+		{ "key": "STERBEURKUNDE", "name": "Sterbeurkunde", "description": "Ausfertigungen der Sterbeurkunde vom Standesamt.", "folderKey": "BEHOERDEN", "category": "Urkunde", "effect": "FILE", "countLabel": "Ausfertigungen", "active": true },
+		{ "key": "GENEHMIGUNG", "name": "Behördliche Genehmigung", "description": "Bestattungsgenehmigung, Leichenpass, Freigabe nach der zweiten Leichenschau.", "folderKey": "BEHOERDEN", "category": "Nachweis", "effect": "FILE", "active": true },
+		{ "key": "TODESBESCHEINIGUNG", "name": "Todesbescheinigung", "description": "Leichenschauschein (nur nichtvertraulicher Teil).", "hint": "Nur den nichtvertraulichen Teil ablegen. Der vertrauliche Teil enthält Gesundheitsdaten und gehört nicht in die Fallakte.", "folderKey": "BEHOERDEN", "category": "Nachweis", "effect": "FILE", "active": true },
+		{ "key": "RUECKMELDUNG_ABMELDUNG", "name": "Rückmeldung Abmeldestelle", "description": "Bestätigung von Rentenservice, Krankenkasse, Versicherung, Bank o. Ä.", "folderKey": "BEHOERDEN", "category": "Nachweis", "effect": "DEREGISTRATION", "active": true },
+		{ "key": "FRIEDHOFSBESCHEID", "name": "Friedhofsbescheid", "description": "Grabzuweisung, Terminbestätigung, Nutzungsrecht.", "folderKey": "FRIEDHOF", "category": "Nachweis", "effect": "FILE", "active": false },
+		{ "key": "KREMATORIUMSNACHWEIS", "name": "Krematoriumsnachweis", "description": "Einäscherungsbescheinigung, Urnenversand.", "folderKey": "FRIEDHOF", "category": "Nachweis", "effect": "FILE", "active": false },
+		{ "key": "AUFTRAG_UNTERSCHRIEBEN", "name": "Unterschriebener Auftrag", "description": "Scan eines handschriftlich unterschriebenen Auftrags oder Vertrags (nur PDF); danach Unterschriftenprüfung im Reiter „Dokumente“.", "folderKey": "AUFTRAG", "category": "Auftrag", "effect": "PAPER_CONTRACT", "active": false },
+		{ "key": "VERSICHERUNG", "name": "Versicherung / Abtretung", "description": "Sterbegeld, Abtretungserklärung, Kostenübernahme.", "folderKey": "ABRECHNUNG", "category": "Nachweis", "effect": "FILE", "active": false },
+		{ "key": "TRAUERDRUCK", "name": "Trauerdruck / Anzeige", "description": "Korrekturabzug, Anzeigenbestätigung der Zeitung.", "folderKey": "TRAUERDRUCK", "category": "Korrespondenz", "effect": "FILE", "active": false },
+		{ "key": "SONSTIGES", "name": "Sonstiger Schriftverkehr", "description": "Alle übrigen Schriftstücke.", "folderKey": "KORRESPONDENZ", "category": "Korrespondenz", "effect": "FILE", "active": true }
+	]
+}

@@ -1,0 +1,1029 @@
+{
+ "schemaVersion": 2,
+ "note": "Beispielkatalog 2026 – alle Preise sind Beispielwerte für die Testumgebung, keine Empfehlung.",
+ "areas": [
+  {
+   "key": "1",
+   "name": "Dienstleistungen",
+   "sortOrder": 10
+  },
+  {
+   "key": "2",
+   "name": "Sarg & Ausstattung",
+   "sortOrder": 20
+  },
+  {
+   "key": "3",
+   "name": "Urnen",
+   "sortOrder": 30
+  },
+  {
+   "key": "4",
+   "name": "Drucksachen",
+   "sortOrder": 40
+  },
+  {
+   "key": "5",
+   "name": "Floristik",
+   "sortOrder": 50
+  },
+  {
+   "key": "6",
+   "name": "Fremdleistungen",
+   "sortOrder": 60
+  },
+  {
+   "key": "7",
+   "name": "Auslagen & Gebühren",
+   "sortOrder": 70
+  },
+  {
+   "key": "8",
+   "name": "Zuschläge",
+   "sortOrder": 80
+  },
+  {
+   "key": "9",
+   "name": "Pakete",
+   "sortOrder": 90
+  }
+ ],
+ "groups": [
+  {
+   "key": "110",
+   "name": "Überführung",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 110
+  },
+  {
+   "key": "120",
+   "name": "Hygiene/Versorgung",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 120
+  },
+  {
+   "key": "130",
+   "name": "Aufbahrung/Abschied",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 130
+  },
+  {
+   "key": "140",
+   "name": "Organisation Trauerfeier/Beisetzung",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 140
+  },
+  {
+   "key": "150",
+   "name": "Formalitäten",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 150
+  },
+  {
+   "key": "160",
+   "name": "Nachsorge",
+   "area": "1",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 160
+  },
+  {
+   "key": "210",
+   "name": "Särge",
+   "area": "2",
+   "selectionRule": "EXACTLY_ONE",
+   "funeralScope": "ALL",
+   "sortOrder": 210
+  },
+  {
+   "key": "220",
+   "name": "Sargausstattung",
+   "area": "2",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 220
+  },
+  {
+   "key": "230",
+   "name": "Totenbekleidung",
+   "area": "2",
+   "selectionRule": "MAX_ONE",
+   "funeralScope": "ALL",
+   "sortOrder": 230
+  },
+  {
+   "key": "310",
+   "name": "Urnen",
+   "area": "3",
+   "selectionRule": "MAX_ONE",
+   "funeralScope": "CREMATION",
+   "sortOrder": 310
+  },
+  {
+   "key": "320",
+   "name": "Schmuck-/Überurnen",
+   "area": "3",
+   "selectionRule": "MAX_ONE",
+   "funeralScope": "CREMATION",
+   "sortOrder": 320
+  },
+  {
+   "key": "330",
+   "name": "Natururnen (See, Baum)",
+   "area": "3",
+   "selectionRule": "MAX_ONE",
+   "funeralScope": "CREMATION",
+   "sortOrder": 330
+  },
+  {
+   "key": "410",
+   "name": "Traueranzeigen (Gestaltung)",
+   "area": "4",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 410
+  },
+  {
+   "key": "420",
+   "name": "Trauerdrucksachen",
+   "area": "4",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 420
+  },
+  {
+   "key": "430",
+   "name": "Erinnerung/Medien",
+   "area": "4",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 430
+  },
+  {
+   "key": "510",
+   "name": "Sarg-/Urnenschmuck",
+   "area": "5",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 510
+  },
+  {
+   "key": "520",
+   "name": "Kränze/Gestecke",
+   "area": "5",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 520
+  },
+  {
+   "key": "610",
+   "name": "Mitwirkende",
+   "area": "6",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 610
+  },
+  {
+   "key": "620",
+   "name": "Träger/Personal",
+   "area": "6",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 620
+  },
+  {
+   "key": "630",
+   "name": "Krematorium",
+   "area": "6",
+   "selectionRule": "MAX_ONE",
+   "funeralScope": "CREMATION",
+   "sortOrder": 630
+  },
+  {
+   "key": "640",
+   "name": "Grabarbeiten",
+   "area": "6",
+   "selectionRule": "MANY",
+   "funeralScope": "BURIAL",
+   "sortOrder": 640
+  },
+  {
+   "key": "710",
+   "name": "Friedhof/Kommune",
+   "area": "7",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 710
+  },
+  {
+   "key": "720",
+   "name": "Standesamt",
+   "area": "7",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 720
+  },
+  {
+   "key": "730",
+   "name": "Ärztliche Leistungen",
+   "area": "7",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 730
+  },
+  {
+   "key": "740",
+   "name": "Zeitungsanzeigen",
+   "area": "7",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 740
+  },
+  {
+   "key": "810",
+   "name": "Zeit-/Aufwandszuschläge",
+   "area": "8",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 810
+  },
+  {
+   "key": "910",
+   "name": "Bestattungspakete",
+   "area": "9",
+   "selectionRule": "MANY",
+   "funeralScope": "ALL",
+   "sortOrder": 910
+  }
+ ],
+ "articles": [
+  {
+   "articleNumber": "11010",
+   "searchTerm": "UEB-STADT",
+   "shortName": "Überführung im Stadtgebiet",
+   "longText": "Überführung der verstorbenen Person innerhalb des Stadtgebiets mit Bestattungsfahrzeug und zwei Mitarbeitenden.",
+   "articleGroup": "110",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 295
+  },
+  {
+   "articleNumber": "11020",
+   "searchTerm": "UEB-KM",
+   "shortName": "Überführung je weiterer km",
+   "longText": "Überführung außerhalb des Stadtgebiets, je gefahrenem Kilometer.",
+   "articleGroup": "110",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "KM",
+   "quantityDecimals": 1,
+   "salesPrice": 1.8
+  },
+  {
+   "articleNumber": "11030",
+   "searchTerm": "UEB-NACHT",
+   "shortName": "Abholung außerhalb der Geschäftszeit",
+   "longText": "Abholung nachts, am Wochenende oder an Feiertagen.",
+   "articleGroup": "110",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 150
+  },
+  {
+   "articleNumber": "12010",
+   "searchTerm": "VERSORG",
+   "shortName": "Hygienische Versorgung",
+   "longText": "Waschen, Desinfizieren und hygienische Grundversorgung.",
+   "articleGroup": "120",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 180
+  },
+  {
+   "articleNumber": "12020",
+   "searchTerm": "EINKLEID",
+   "shortName": "Einkleiden und Einbetten",
+   "longText": "Einkleiden der verstorbenen Person und fachgerechtes Einbetten.",
+   "articleGroup": "120",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 95
+  },
+  {
+   "articleNumber": "12030",
+   "searchTerm": "THANATO",
+   "shortName": "Thanatopraktische Behandlung",
+   "longText": "Konservierende Behandlung durch ausgebildete Thanatopraktiker.",
+   "articleGroup": "120",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 650
+  },
+  {
+   "articleNumber": "13010",
+   "searchTerm": "AUFBAHR",
+   "shortName": "Aufbahrung im Abschiedsraum je Tag",
+   "longText": "Nutzung des gekühlten Abschiedsraums je angefangenem Tag.",
+   "articleGroup": "130",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "TAG",
+   "quantityDecimals": 0,
+   "salesPrice": 90
+  },
+  {
+   "articleNumber": "13020",
+   "searchTerm": "ABSCHIED",
+   "shortName": "Begleitete Abschiednahme",
+   "longText": "Begleitung der Angehörigen bei der Abschiednahme, je Stunde.",
+   "articleGroup": "130",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "STD",
+   "quantityDecimals": 2,
+   "salesPrice": 60
+  },
+  {
+   "articleNumber": "14010",
+   "searchTerm": "ORG-FEIER",
+   "shortName": "Organisation und Leitung der Trauerfeier",
+   "longText": "Planung, Abstimmung und Leitung der Trauerfeier.",
+   "articleGroup": "140",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 390
+  },
+  {
+   "articleNumber": "14020",
+   "searchTerm": "ORG-BEIS",
+   "shortName": "Organisation der Beisetzung",
+   "longText": "Terminabstimmung mit Friedhof und Beteiligten, Begleitung der Beisetzung.",
+   "articleGroup": "140",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 180
+  },
+  {
+   "articleNumber": "15010",
+   "searchTerm": "FORMAL",
+   "shortName": "Behördengänge und Beurkundung",
+   "longText": "Beurkundung beim Standesamt und Einholen der erforderlichen Unterlagen.",
+   "articleGroup": "150",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 175
+  },
+  {
+   "articleNumber": "15020",
+   "searchTerm": "ABMELD",
+   "shortName": "Abmeldungen (Rente, Kasse, Verträge)",
+   "longText": "Abmeldung bei Rentenversicherung, Krankenkasse und Vertragspartnern.",
+   "articleGroup": "150",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 120
+  },
+  {
+   "articleNumber": "16010",
+   "searchTerm": "NACHSORGE",
+   "shortName": "Nachsorgegespräch",
+   "longText": "Nachgespräch mit den Angehörigen, je Stunde.",
+   "articleGroup": "160",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "STD",
+   "quantityDecimals": 2,
+   "salesPrice": 60
+  },
+  {
+   "articleNumber": "21010",
+   "searchTerm": "SARG-KIEF",
+   "shortName": "Einäscherungssarg Kiefer",
+   "longText": "Einäscherungssarg aus Kiefer, natur lasiert.",
+   "articleGroup": "210",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 590
+  },
+  {
+   "articleNumber": "21020",
+   "searchTerm": "SARG-EICHE",
+   "shortName": "Erdbestattungssarg Eiche",
+   "longText": "Erdbestattungssarg aus massiver Eiche mit Griffgarnitur.",
+   "articleGroup": "210",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 1450
+  },
+  {
+   "articleNumber": "21030",
+   "searchTerm": "SARG-OEKO",
+   "shortName": "Öko-Sarg Pappel unbehandelt",
+   "longText": "Unbehandelter Sarg aus Pappelholz, für Erd- und Feuerbestattung geeignet.",
+   "articleGroup": "210",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 690
+  },
+  {
+   "articleNumber": "22010",
+   "searchTerm": "SARG-INNEN",
+   "shortName": "Sargausstattung Decke und Kissen",
+   "longText": "Sargdecke und Kissen aus Baumwolle.",
+   "articleGroup": "220",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "SATZ",
+   "quantityDecimals": 0,
+   "salesPrice": 85
+  },
+  {
+   "articleNumber": "23010",
+   "searchTerm": "TALAR",
+   "shortName": "Sterbehemd/Talar",
+   "longText": "Sterbehemd bzw. Talar aus Baumwolle.",
+   "articleGroup": "230",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 65
+  },
+  {
+   "articleNumber": "31010",
+   "searchTerm": "URNE-STD",
+   "shortName": "Urne Standard",
+   "longText": "Schmuckurne in Standardausführung.",
+   "articleGroup": "310",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 120
+  },
+  {
+   "articleNumber": "31020",
+   "searchTerm": "URNE-KERAM",
+   "shortName": "Keramikurne",
+   "longText": "Handgefertigte Keramikurne.",
+   "articleGroup": "310",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 260
+  },
+  {
+   "articleNumber": "33010",
+   "searchTerm": "URNE-SEE",
+   "shortName": "Seeurne (wasserlöslich)",
+   "longText": "Wasserlösliche Urne für die Seebestattung.",
+   "articleGroup": "330",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 180
+  },
+  {
+   "articleNumber": "33020",
+   "searchTerm": "URNE-BAUM",
+   "shortName": "Bio-Urne für Baumbestattung",
+   "longText": "Biologisch abbaubare Urne für Baum- und Waldbestattungen.",
+   "articleGroup": "330",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 150
+  },
+  {
+   "articleNumber": "41010",
+   "searchTerm": "ANZ-GEST",
+   "shortName": "Gestaltung Traueranzeige",
+   "longText": "Entwurf und Abstimmung der Traueranzeige.",
+   "articleGroup": "410",
+   "articleType": "DIENSTLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 60
+  },
+  {
+   "articleNumber": "42010",
+   "searchTerm": "KARTEN",
+   "shortName": "Trauerkarten inkl. Umschlag",
+   "longText": "Trauerkarte mit Umschlag, Druck nach Freigabe.",
+   "articleGroup": "420",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 2.4
+  },
+  {
+   "articleNumber": "42020",
+   "searchTerm": "GEBETSBILD",
+   "shortName": "Sterbebilder",
+   "longText": "Sterbebild mit Foto und Text.",
+   "articleGroup": "420",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 1.2
+  },
+  {
+   "articleNumber": "43010",
+   "searchTerm": "KONDOL-BUCH",
+   "shortName": "Kondolenzbuch",
+   "longText": "Kondolenzbuch mit Leineneinband.",
+   "articleGroup": "430",
+   "articleType": "HANDELSWARE",
+   "taxClass": "V",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 45
+  },
+  {
+   "articleNumber": "51010",
+   "searchTerm": "SARGBUK",
+   "shortName": "Sargbukett",
+   "longText": "Sargbukett mit saisonalen Blumen.",
+   "articleGroup": "510",
+   "articleType": "HANDELSWARE",
+   "taxClass": "E",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 180
+  },
+  {
+   "articleNumber": "51020",
+   "searchTerm": "URNKRANZ",
+   "shortName": "Urnenkranz",
+   "longText": "Urnenkranz mit saisonalen Blumen.",
+   "articleGroup": "510",
+   "articleType": "HANDELSWARE",
+   "taxClass": "E",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 75
+  },
+  {
+   "articleNumber": "52010",
+   "searchTerm": "KRANZ",
+   "shortName": "Trauerkranz mit Schleife",
+   "longText": "Trauerkranz mit bedruckter Schleife.",
+   "articleGroup": "520",
+   "articleType": "HANDELSWARE",
+   "taxClass": "E",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "salesPrice": 140
+  },
+  {
+   "articleNumber": "61010",
+   "searchTerm": "REDNER",
+   "shortName": "Trauerredner",
+   "longText": "Freie Trauerrede einschließlich Vorgespräch.",
+   "articleGroup": "610",
+   "articleType": "FREMDLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 350
+  },
+  {
+   "articleNumber": "61020",
+   "searchTerm": "MUSIK",
+   "shortName": "Musiker/Organist",
+   "longText": "Musikalische Begleitung der Trauerfeier.",
+   "articleGroup": "610",
+   "articleType": "FREMDLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 150
+  },
+  {
+   "articleNumber": "62010",
+   "searchTerm": "TRAEGER",
+   "shortName": "Sargträger je Person",
+   "longText": "Sargträger für Trauerfeier und Beisetzung, je Person.",
+   "articleGroup": "620",
+   "articleType": "FREMDLEISTUNG",
+   "taxClass": "V",
+   "unit": "PERS",
+   "quantityDecimals": 0,
+   "salesPrice": 55
+  },
+  {
+   "articleNumber": "63010",
+   "searchTerm": "KREMA",
+   "shortName": "Einäscherung im Krematorium",
+   "longText": "Einäscherung einschließlich amtsärztlicher Leichenschau im Krematorium.",
+   "articleGroup": "630",
+   "articleType": "FREMDLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 320
+  },
+  {
+   "articleNumber": "64010",
+   "searchTerm": "GRAB-AUSH",
+   "shortName": "Grab öffnen und schließen",
+   "longText": "Ausheben und Verfüllen des Grabes durch den Friedhofsgärtner.",
+   "articleGroup": "640",
+   "articleType": "FREMDLEISTUNG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 480
+  },
+  {
+   "articleNumber": "71010",
+   "searchTerm": "FRIEDHOF",
+   "shortName": "Friedhofsgebühren",
+   "longText": "Gebühren der Friedhofsverwaltung laut Bescheid.",
+   "articleGroup": "710",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "71020",
+   "searchTerm": "GRABNUTZ",
+   "shortName": "Grabnutzungsrecht",
+   "longText": "Gebühr für das Grabnutzungsrecht laut Bescheid.",
+   "articleGroup": "710",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "71030",
+   "searchTerm": "TRAUERHALLE",
+   "shortName": "Gebühr Trauerhalle",
+   "longText": "Nutzungsgebühr der Trauerhalle laut Bescheid.",
+   "articleGroup": "710",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "72010",
+   "searchTerm": "STERBEURK",
+   "shortName": "Sterbeurkunden",
+   "longText": "Gebühr des Standesamts je Sterbeurkunde.",
+   "articleGroup": "720",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "STK",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "guidePrice": 12,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "73010",
+   "searchTerm": "LEICHENSCH",
+   "shortName": "Zweite Leichenschau",
+   "longText": "Gebühr der zweiten Leichenschau vor der Einäscherung.",
+   "articleGroup": "730",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "guidePrice": 40,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "74010",
+   "searchTerm": "ANZ-ZEITUNG",
+   "shortName": "Traueranzeige Tageszeitung",
+   "longText": "Anzeigenkosten der Zeitung laut Rechnung.",
+   "articleGroup": "740",
+   "articleType": "AUSLAGE",
+   "taxClass": "A",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "priceOnEntry": true,
+   "salesPrice": 0
+  },
+  {
+   "articleNumber": "81010",
+   "searchTerm": "ZUS-WE",
+   "shortName": "Zuschlag Wochenende/Feiertag",
+   "longText": "Zuschlag für Leistungen am Wochenende oder an Feiertagen.",
+   "articleGroup": "810",
+   "articleType": "ZUSCHLAG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 120
+  },
+  {
+   "articleNumber": "81020",
+   "searchTerm": "ZUS-UEBERGEW",
+   "shortName": "Zuschlag Übergröße/Übergewicht",
+   "longText": "Zuschlag für Überführung und Versorgung bei Übergröße oder Übergewicht.",
+   "articleGroup": "810",
+   "articleType": "ZUSCHLAG",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 150
+  },
+  {
+   "articleNumber": "91010",
+   "searchTerm": "PK-FEUER",
+   "shortName": "Paket Feuerbestattung Basis",
+   "longText": "Grundpaket für eine Feuerbestattung zum Festpreis.",
+   "articleGroup": "910",
+   "articleType": "PAKET",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 2490
+  },
+  {
+   "articleNumber": "91020",
+   "searchTerm": "PK-ERDE",
+   "shortName": "Paket Erdbestattung Basis",
+   "longText": "Grundpaket für eine Erdbestattung zum Festpreis.",
+   "articleGroup": "910",
+   "articleType": "PAKET",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 3290
+  },
+  {
+   "articleNumber": "91030",
+   "searchTerm": "PK-SEE",
+   "shortName": "Paket Seebestattung",
+   "longText": "Seebestattung, Preis ergibt sich aus den Positionen. Die Reederei wird separat erfasst.",
+   "articleGroup": "910",
+   "articleType": "PAKET",
+   "taxClass": "V",
+   "unit": "PAUSCHAL",
+   "quantityDecimals": 0,
+   "salesPrice": 0
+  }
+ ],
+ "boms": [
+  {
+   "package": "91010",
+   "pricing": "HEADER",
+   "printMode": "ITEMS_NO_PRICES",
+   "items": [
+    {
+     "no": 10,
+     "article": "11010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 20,
+     "article": "12010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 30,
+     "article": "12020",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 40,
+     "article": "21010",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "SARG",
+     "default": true
+    },
+    {
+     "no": 41,
+     "article": "21030",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "SARG"
+    },
+    {
+     "no": 50,
+     "article": "31010",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "URNE",
+     "default": true
+    },
+    {
+     "no": 51,
+     "article": "31020",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "URNE"
+    },
+    {
+     "no": 52,
+     "article": "33010",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "URNE"
+    },
+    {
+     "no": 53,
+     "article": "33020",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "URNE"
+    },
+    {
+     "no": 60,
+     "article": "15010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 70,
+     "article": "63010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 80,
+     "article": "23010",
+     "quantity": 1,
+     "type": "OPTIONAL",
+     "credit": 40
+    }
+   ]
+  },
+  {
+   "package": "91020",
+   "pricing": "HEADER",
+   "printMode": "ITEMS_NO_PRICES",
+   "items": [
+    {
+     "no": 10,
+     "article": "11010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 20,
+     "article": "12010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 30,
+     "article": "12020",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 40,
+     "article": "21020",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "SARG",
+     "default": true
+    },
+    {
+     "no": 41,
+     "article": "21030",
+     "quantity": 1,
+     "type": "ALTERNATIVE",
+     "group": "SARG"
+    },
+    {
+     "no": 50,
+     "article": "22010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 60,
+     "article": "14010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 70,
+     "article": "14020",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 80,
+     "article": "15010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 90,
+     "article": "62010",
+     "quantity": 6,
+     "type": "OPTIONAL",
+     "credit": 250
+    }
+   ]
+  },
+  {
+   "package": "91030",
+   "pricing": "ITEMS",
+   "printMode": "ITEMS_NO_PRICES",
+   "items": [
+    {
+     "no": 10,
+     "article": "11010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 20,
+     "article": "12010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 30,
+     "article": "21010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 40,
+     "article": "63010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 50,
+     "article": "33010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 60,
+     "article": "15010",
+     "quantity": 1,
+     "type": "FIXED"
+    },
+    {
+     "no": 70,
+     "article": "51020",
+     "quantity": 1,
+     "type": "OPTIONAL"
+    }
+   ]
+  }
+ ]
+}

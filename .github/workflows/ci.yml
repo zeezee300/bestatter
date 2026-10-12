@@ -1,0 +1,136 @@
+# Automatische Prüfungen bei jedem Push und Pull Request – nur prüfen und bauen.
+# Keine Veröffentlichung, keine Signatur, kein Upload in den Nextcloud App Store.
+name: Prüfungen
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-lint:
+    name: PHP-Syntax (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Alle PHP-Dateien prüfen
+        run: find appinfo lib templates tools -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+  phpstan:
+    name: PHPStan gegen Nextcloud ${{ matrix.nextcloud }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Muss zu <nextcloud min-version/max-version> in appinfo/info.xml passen.
+        nextcloud: ['34', '35']
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: app
+      - name: Nextcloud-Server (stable${{ matrix.nextcloud }}) für die Typinformationen
+        uses: actions/checkout@v5
+        with:
+          repository: nextcloud/server
+          ref: stable${{ matrix.nextcloud }}
+          path: server
+          submodules: true
+          fetch-depth: 1
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: gd, zip
+          coverage: none
+          tools: composer
+      - name: Abhängigkeiten installieren
+        working-directory: app
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: PHPStan
+        working-directory: app
+        env:
+          NEXTCLOUD_SERVER: ${{ github.workspace }}/server
+        run: vendor/bin/phpstan analyse --configuration tools/ci/phpstan-ci.neon --memory-limit=2G --no-progress
+
+  appinfo:
+    name: App-Manifest (info.xml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: xmllint installieren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+      - name: Gegen die Schemas von Nextcloud 34 und 35 prüfen
+        run: |
+          # Lizenz AGPL-3.0-only: ausdrücklich nur Version 3, nicht „or-later“.
+          grep -q '<licence>AGPL-3.0-only</licence>' appinfo/info.xml || { echo "info.xml: <licence>AGPL-3.0-only</licence> fehlt" >&2; exit 1; }
+          grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE || { echo "LICENSE enthält nicht den AGPL-3.0-Text" >&2; exit 1; }
+          for v in 34 35; do
+            curl -fsSL "https://raw.githubusercontent.com/nextcloud/server/stable$v/resources/app-info.xsd" -o "/tmp/app-info-$v.xsd"
+            xmllint --noout --schema "/tmp/app-info-$v.xsd" appinfo/info.xml
+          done
+      - name: Versionen stimmen überein (info.xml, package.json, Application::VERSION)
+        run: |
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          test "$(node -p "require('./package.json').version")" = "$v"
+          grep -q "VERSION = '$v'" lib/AppInfo/Application.php
+          echo "Version $v einheitlich"
+
+  frontend:
+    name: Frontend-Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Gebautes Bundle ist eingecheckt (js/main.js passt zu src/)
+        run: git diff --exit-code --stat -- js/main.js || (echo "js/main.js ist veraltet – bitte „npm run build“ ausführen und committen." && exit 1)
+
+  package:
+    name: Installationspaket bauen (nur Artefakt, unsigniert)
+    runs-on: ubuntu-latest
+    needs: [php-lint, phpstan, appinfo, frontend]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: gd, zip
+          coverage: none
+          tools: composer
+      - name: Paket bauen (dasselbe Skript wie lokal)
+        run: bash tools/release/build-package.sh --out dist
+      - name: Paket prüfen (ein Wurzelordner, info.xml vorhanden, kein .git)
+        run: |
+          pkg=$(ls dist/bestatter-*.tar.gz)
+          test "$(tar -tzf "$pkg" | cut -d/ -f1 | sort -u)" = "bestatter"
+          tar -tzf "$pkg" | grep -qx 'bestatter/appinfo/info.xml'
+          ! tar -tzf "$pkg" | grep -qE '(^|/)\.git/'
+          echo "PACKAGE=$(basename "$pkg")" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ env.PACKAGE }}
+          path: dist/bestatter-*.tar.gz
+          retention-days: 14

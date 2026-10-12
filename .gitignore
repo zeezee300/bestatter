@@ -1,0 +1,43 @@
+# Positivliste: Im Repository liegt nur, was für Betrieb, Bau und Prüfung der App nötig ist.
+# Alles andere (Tests, interne Dokumentation, Hilfsskripte, Testumgebungen) bleibt bewusst lokal.
+/*
+!/.gitignore
+!/.gitattributes
+!/.github/
+!/.php-cs-fixer.dist.php
+!/appinfo/
+!/css/
+!/img/
+!/js/
+!/lib/
+!/resources/
+!/src/
+!/templates/
+!/tools/
+!/CHANGELOG.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
+!/THIRD-PARTY-NOTICES.md
+!/composer.json
+!/composer.lock
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/phpstan.neon
+!/phpstan-baseline.neon
+!/vite.config.js
+
+# In den freigegebenen Ordnern nur die Teile, die zur App gehören
+/.github/*
+!/.github/workflows/
+/tools/*
+!/tools/ci/
+!/tools/release/
+!/tools/update/
+
+# Erzeugtes und Zwischenstände
+js/*.map
+__pycache__/
+.DS_Store
+*.orig

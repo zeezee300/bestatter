@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"description": "Mitgelieferte Marker (0.76.0, Notizart und Platzhaltertext ab 0.77.0). Sie werden inaktiv angelegt und bei der Einrichtung bzw. unter Customizing → Marker ausgewählt.",
+	"labels": [
+		{ "key": "HYGIENE", "noteMode": "OPTIONAL", "noteHint": "Welche Schutzmaßnahmen? (keine Diagnosen eintragen)", "name": "Hygiene beachten", "description": "Besondere Schutz- und Hygienemaßnahmen bei Abholung, Versorgung und Aufbahrung.", "kind": "BOOL", "color": "RUST", "icon": "alert-triangle" },
+		{ "key": "KURZE_FRIST", "noteMode": "OPTIONAL", "noteHint": "Bis wann? Grund der Frist", "name": "Kurze Bestattungsfrist", "description": "Die Bestattung muss besonders schnell erfolgen (z. B. religiöse Vorgaben oder behördliche Frist).", "kind": "BOOL", "color": "RUST", "icon": "hourglass" },
+		{ "key": "VORSORGE", "noteMode": "OPTIONAL", "noteHint": "Vorsorgeinstitut, Vertragsnummer", "name": "Vorsorgevertrag", "description": "Es liegt ein Bestattungsvorsorgevertrag vor; Wünsche und Finanzierung daraus beachten.", "kind": "BOOL", "color": "PLUM", "icon": "file-certificate" },
+		{ "key": "AUSLAND", "noteMode": "OPTIONAL", "noteHint": "Zielland, Ansprechpartner (Konsulat, Fluggesellschaft)", "name": "Überführung Ausland", "description": "Überführung aus dem oder in das Ausland (Leichenpass, Konsulat, Fluggesellschaft).", "kind": "BOOL", "color": "DOVE", "icon": "plane" },
+		{ "key": "KOSTEN_UNGEKLAERT", "noteMode": "OPTIONAL", "noteHint": "Was fehlt noch für die Kostenübernahme?", "name": "Kostenübernahme ungeklärt", "description": "Wer die Kosten trägt, ist noch nicht geklärt.", "kind": "BOOL", "color": "OCHRE", "icon": "coin" },
+		{ "key": "RUECKRUF", "noteMode": "OPTIONAL", "noteHint": "Wer, bis wann, Telefonnummer", "name": "Rückruf Auftraggeber", "description": "Der Auftraggeber bzw. die Angehörigen warten auf einen Rückruf.", "kind": "BOOL", "color": "OCHRE", "icon": "phone-call" },
+		{ "key": "KEINE_AUSKUNFT", "noteMode": "OPTIONAL", "noteHint": "Gegenüber wem, auf wessen Wunsch?", "name": "Keine Auskunft an Dritte", "description": "Keine Auskünfte an Presse, Nachbarn oder sonstige Dritte geben.", "kind": "BOOL", "color": "SLATE", "icon": "eye-off" },
+		{ "key": "KLAERUNG", "noteMode": "REQUIRED", "noteHint": "Was ist zu klären, mit wem?", "name": "Klärung offen", "description": "Es gibt einen offenen Punkt, der mit dem Auftraggeber geklärt werden muss (sachlich festhalten).", "kind": "BOOL", "color": "MAUVE", "icon": "message-report" },
+		{ "key": "FOLGEAUFTRAG", "noteMode": "OPTIONAL", "noteHint": "Welcher Folgeauftrag (z. B. Grabmal, Grabpflege)?", "name": "Folgeauftrag möglich", "description": "Interesse an Grabmal, Grabpflege oder Vorsorge – für die Nachsorge vormerken.", "kind": "BOOL", "color": "SAGE", "icon": "heart-handshake" },
+		{ "key": "KOSTENTRAEGER", "noteMode": "OPTIONAL", "noteHint": "Aktenzeichen, Ansprechpartner", "name": "Kostenträger", "description": "Wer die Bestattungskosten trägt. Bleibt bei der Anonymisierung für Auswertungen erhalten.", "kind": "LIST", "color": "PETROL", "icon": "building-community", "keepOnAnonymize": true, "values": [
+			{ "key": "ANGEHOERIGE", "name": "Angehörige" },
+			{ "key": "SOZIALAMT", "name": "Sozialamt" },
+			{ "key": "ORDNUNGSAMT", "name": "Ordnungsamt" },
+			{ "key": "TREUHAND", "name": "Treuhand / Vorsorge" },
+			{ "key": "VERSICHERUNG", "name": "Versicherung" },
+			{ "key": "NACHLASS", "name": "Nachlass" }
+		] }
+	]
+}

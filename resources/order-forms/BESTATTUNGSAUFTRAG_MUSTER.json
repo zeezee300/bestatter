@@ -1,0 +1,46 @@
+{
+  "key": "BESTATTUNGSAUFTRAG_MUSTER",
+  "name": "Bestattungsauftrag (Muster)",
+  "description": "Neutrales Muster eines Papier-Bestattungsauftrags. Die Zeilen sind Warengruppen zugeordnet (der Artikel wird im Fall gewählt) oder Freitext und passen damit zu jedem Leistungskatalog. Fehlt eine Warengruppe, wird die Zeile als Freitext übernommen. Als Ausgangspunkt für das eigene Formular kopieren und anpassen.",
+  "amountsGross": true,
+  "sections": [
+    {"key": "LEISTUNGEN", "title": "Leistungen des Bestattungsinstituts", "lines": [
+      {"key": "SARG", "label": "Sarg", "kind": "PRICE", "groupKey": "210", "positionType": "EL", "vatRate": 19},
+      {"key": "SARGAUSSTATTUNG", "label": "Sargausstattung", "kind": "PRICE", "groupKey": "220", "positionType": "EL", "vatRate": 19},
+      {"key": "BEKLEIDUNG", "label": "Totenbekleidung", "kind": "PRICE", "groupKey": "230", "positionType": "EL", "vatRate": 19},
+      {"key": "URNE", "label": "Urne", "kind": "PRICE", "groupKey": "310", "positionType": "EL", "vatRate": 19},
+      {"key": "UEBERFUEHRUNG", "label": "Überführung", "kind": "PRICE", "groupKey": "110", "positionType": "EL", "vatRate": 19},
+      {"key": "VERSORGUNG", "label": "Hygienische Versorgung / Einsargung", "kind": "PRICE", "groupKey": "120", "positionType": "EL", "vatRate": 19},
+      {"key": "AUFBAHRUNG", "label": "Aufbahrung / Abschiednahme", "kind": "PRICE", "groupKey": "130", "positionType": "EL", "vatRate": 19},
+      {"key": "TRAUERFEIER", "label": "Organisation Trauerfeier / Beisetzung", "kind": "PRICE", "groupKey": "140", "positionType": "EL", "vatRate": 19},
+      {"key": "FORMALITAETEN", "label": "Erledigung der Formalitäten", "kind": "PRICE", "groupKey": "150", "positionType": "EL", "vatRate": 19},
+      {"key": "DRUCKSACHEN", "label": "Trauerdrucksachen", "kind": "PRICE", "groupKey": "420", "positionType": "EL", "vatRate": 19},
+      {"key": "SONSTIGES_1", "label": "Sonstiges", "kind": "PRICE", "textInput": true, "textRequired": true, "positionType": "EL", "vatRate": 19},
+      {"key": "SONSTIGES_2", "label": "Sonstiges", "kind": "PRICE", "textInput": true, "textRequired": true, "positionType": "EL", "vatRate": 19}
+    ]},
+    {"key": "FREMDLEISTUNGEN", "title": "Fremdleistungen", "lines": [
+      {"key": "MITWIRKENDE", "label": "Redner / Musik", "kind": "PRICE", "groupKey": "610", "textInput": true, "textLabel": "Name", "positionType": "FK", "vatRate": 19},
+      {"key": "TRAEGER", "label": "Träger / Personal", "kind": "PRICE", "groupKey": "620", "positionType": "FK", "vatRate": 19},
+      {"key": "KREMATORIUM", "label": "Krematorium", "kind": "PRICE", "groupKey": "630", "positionType": "FK", "vatRate": 19}
+    ]},
+    {"key": "BLUMEN", "title": "Blumen", "lines": [
+      {"key": "SCHMUCK", "label": "Sarg- / Urnenschmuck", "kind": "PRICE", "groupKey": "510", "textInput": true, "textLabel": "Ausführung", "positionType": "EL", "vatRate": 7},
+      {"key": "KRANZ", "label": "Kranz / Gesteck", "kind": "PRICE", "groupKey": "520", "textInput": true, "textLabel": "Ausführung/Schleife", "positionType": "EL", "vatRate": 7}
+    ]},
+    {"key": "AUSLAGEN", "title": "Auslagen und Gebühren", "lines": [
+      {"key": "ANZEIGE", "label": "Zeitungsanzeige", "kind": "PRICE", "groupKey": "740", "textInput": true, "textLabel": "Zeitung/Ausgabe", "positionType": "DP", "vatRate": 0},
+      {"key": "ARZT", "label": "Ärztliche Leistungen", "kind": "PRICE", "groupKey": "730", "textInput": true, "textLabel": "Arzt/Praxis", "positionType": "DP", "vatRate": 0},
+      {"key": "STERBEURKUNDEN", "label": "Sterbeurkunden", "kind": "PRICE", "groupKey": "720", "quantityInput": true, "quantityLabel": "Stück", "positionType": "DP", "vatRate": 0},
+      {"key": "FRIEDHOFSGEBUEHREN", "label": "Friedhofsgebühren", "kind": "PRICE", "groupKey": "710", "positionType": "DP", "vatRate": 0},
+      {"key": "AUSLAGE_SONSTIGE", "label": "Weitere Auslage", "kind": "PRICE", "textInput": true, "textRequired": true, "positionType": "DP", "vatRate": 0}
+    ]},
+    {"key": "MERKPOSTEN", "title": "Direkt abgerechnete Kosten (nicht in der Rechnung)", "memo": true, "lines": [
+      {"key": "MP_FRIEDHOF", "label": "Friedhof (Extrarechnung)", "kind": "MEMO"},
+      {"key": "MP_STEINMETZ", "label": "Steinmetz", "kind": "MEMO"}
+    ]},
+    {"key": "HINWEISE", "title": "Weitere Angaben", "lines": [
+      {"key": "KASSEN", "label": "Kassen und Versicherungen", "kind": "NOTE", "multiline": true},
+      {"key": "BEMERKUNGEN", "label": "Bemerkungen", "kind": "NOTE", "multiline": true}
+    ]}
+  ]
+}

@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>bestatter</id>
+    <name lang="en">Bestatter</name>
+    <name lang="de">Bestatter</name>
+    <summary lang="en">Case files and process control for funeral homes in Germany (German only)</summary>
+    <summary lang="de">Fachakte und Vorgangssteuerung für Bestattungsunternehmen</summary>
+    <description lang="en"><![CDATA[Bestatter manages every death case as a case file directly in Nextcloud – from the first call to the paid final invoice. The app is built for **funeral homes in Germany**: user interface, document templates, authority notifications and e-invoicing follow German practice, and the app and its manual are **available in German only**.
+
+- **Case file** with master data, burial variant, contacts from Nextcloud Contacts and secondary orders from further clients
+- **Guided process** in seven phases: tasks are created automatically and appear in Nextcloud Tasks and in the calendars of the people responsible
+- **Order and cost estimate** with service catalogue, packages, order form and protected contract prices
+- **Appointments** with scheduling of staff, vehicles and rooms, including conflict checks
+- **Notifications** to authorities, insurers and partners, **documents** generated from DOCX templates
+- **Invoicing** with partial and final invoices, cancellation and credit notes, ZUGFeRD/XRechnung and EPC QR code, incoming invoices and pass-through items
+- **Data protection**: tamper-evident audit log, retention policy, legal hold, backup and restore
+- Optional: quick capture from conversations or intake forms (speech and text recognition via Nextcloud Task Processing), Paperless-ngx, built-in help
+
+Access is controlled exclusively through Nextcloud groups. A complete user manual (also as PDF) is included in the app.]]></description>
+    <description lang="de"><![CDATA[Bestatter führt jeden Sterbefall als Fachakte direkt in Nextcloud – von der Erstaufnahme bis zur bezahlten Schlussrechnung.
+
+- **Fallakte** mit Stammdaten, Bestattungsvariante, Kontakten aus Nextcloud Contacts und Nebenaufträgen weiterer Auftraggeber
+- **Geführter Ablauf** in sieben Phasen: Aufgaben entstehen automatisch, erscheinen in Nextcloud Tasks und im Kalender der Zuständigen
+- **Auftrag und Kostenvoranschlag** mit Leistungskatalog, Paketen, Auftragsformular und geschützten Vertragspreisen
+- **Termine** mit Disposition von Personal, Fahrzeugen, Räumen und Konfliktprüfung
+- **Abmeldungen** an Behörden, Kassen und Vertragspartner, **Dokumente** aus DOCX-Vorlagen
+- **Abrechnung** mit Teil- und Schlussrechnung, Storno und Gutschrift, ZUGFeRD/XRechnung und EPC-QR-Code, Eingangsrechnungen und durchlaufende Posten
+- **Datenschutz**: unveränderliches Protokoll, Aufbewahrungsrichtlinie, Legal Hold, Sicherung und Wiederherstellung
+- Optional: Schnellerfassung aus Gespräch oder Erfassungsbogen (Texterkennung), Paperless-ngx, Bedienhilfe
+
+Zugriff ausschließlich über Nextcloud-Gruppen. Ein vollständiges Anwenderhandbuch (auch als PDF) ist in der App enthalten.
+
+Die App ist auf Bestattungsunternehmen in Deutschland ausgerichtet; Oberfläche, Dokumente und Handbuch sind deutschsprachig.]]></description>
+	<version>0.83.3</version>
+    <licence>AGPL-3.0-only</licence>
+    <author homepage="https://github.com/zeezee300/bestatter">Rainer Lüdeke</author>
+    <namespace>Bestatter</namespace>
+    <documentation>
+        <user>https://github.com/zeezee300/bestatter/blob/HEAD/resources/handbuch/Bestatter-Handbuch.pdf</user>
+        <admin>https://github.com/zeezee300/bestatter/blob/HEAD/README.md#installation</admin>
+    </documentation>
+    <category>tools</category>
+    <website>https://github.com/zeezee300/bestatter</website>
+    <bugs>https://github.com/zeezee300/bestatter/issues</bugs>
+    <repository type="git">https://github.com/zeezee300/bestatter.git</repository>
+    <screenshot>https://raw.githubusercontent.com/zeezee300/bestatter/HEAD/resources/handbuch/bilder/fallakte-uebersicht.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/zeezee300/bestatter/HEAD/resources/handbuch/bilder/leistungen.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/zeezee300/bestatter/HEAD/resources/handbuch/bilder/termine.png</screenshot>
+    <screenshot>https://raw.githubusercontent.com/zeezee300/bestatter/HEAD/resources/handbuch/bilder/finanzen.png</screenshot>
+    <dependencies>
+        <nextcloud min-version="34" max-version="35" />
+    </dependencies>
+    <background-jobs>
+		<job>OCA\Bestatter\BackgroundJob\MaintenanceJob</job>
+		<job>OCA\Bestatter\BackgroundJob\PaperlessSyncJob</job>
+		<job>OCA\Bestatter\BackgroundJob\ProcessScheduleJob</job>
+		<job>OCA\Bestatter\BackgroundJob\GroupwareRetryJob</job>
+		<job>OCA\Bestatter\BackgroundJob\ScheduledBackupJob</job>
+	</background-jobs>
+    <commands>
+        <command>OCA\Bestatter\Command\DevelopmentReset</command>
+		<command>OCA\Bestatter\Command\AcceptanceCheck</command>
+		<command>OCA\Bestatter\Command\PaperlessAcceptanceCheck</command>
+		<command>OCA\Bestatter\Command\Backup</command>
+		<command>OCA\Bestatter\Command\Restore</command>
+		<command>OCA\Bestatter\Command\Retention</command>
+		<command>OCA\Bestatter\Command\Purge</command>
+		<command>OCA\Bestatter\Command\GroupwareRepair</command>
+		<command>OCA\Bestatter\Command\SetupPackage</command>
+		<command>OCA\Bestatter\Command\StorageMigrate</command>
+		<command>OCA\Bestatter\Command\CaseFolderRename</command>
+		<command>OCA\Bestatter\Command\Labels</command>
+		<command>OCA\Bestatter\Command\UpdateCheck</command>
+    </commands>
+	<activity>
+		<settings>
+			<setting>OCA\Bestatter\Activity\Setting\CaseAssignedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\TaskChangedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\ScheduleChangedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\DocumentFinalizedSetting</setting>
+			<setting>OCA\Bestatter\Activity\Setting\ProcessAttentionSetting</setting>
+		</settings>
+		<providers>
+			<provider>OCA\Bestatter\Activity\Provider</provider>
+		</providers>
+	</activity>
+    <navigations>
+        <navigation>
+            <id>bestatter</id>
+            <name>Bestatter</name>
+            <route>bestatter.page.index</route>
+            <icon>app.svg</icon>
+            <order>30</order>
+            <type>link</type>
+        </navigation>
+    </navigations>
+</info>

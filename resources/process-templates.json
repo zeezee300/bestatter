@@ -1,0 +1,1576 @@
+{
+  "schema_version": 1,
+  "seed_name": "process_templates",
+  "description": "Auslieferungsstand der Ablaufvorlagen (0.66.0). Wird je Vorlage nur eingefügt, wenn sie noch nicht existiert; Kundenänderungen bleiben erhalten. „Auslieferungsstand wiederherstellen“ im Customizing setzt eine Vorlage auf diesen Stand zurück.",
+  "templates": [
+    {
+      "key": "STANDARDABLAUF",
+      "name": "Standardablauf Sterbefall",
+      "active": true,
+      "sortOrder": 10,
+      "description": "Alle Kernschritte eines Sterbefalls in 7 Phasen – von der Erstaufnahme bis zum Abschluss.",
+      "steps": [
+        {
+          "key": "ERSTANGABEN",
+          "phase": 1,
+          "title": "Erstangaben vervollständigen (Sterbeort, Auftraggeber, Rückrufnummer)",
+          "description": "Beim Erstkontakt aufgenommene Angaben im Fall prüfen und ergänzen.",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "STAMMDATEN",
+              "type": "OPEN_VIEW",
+              "label": "Stammdaten öffnen",
+              "view": "master"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "TODESBESCHEINIGUNG",
+          "phase": 1,
+          "title": "Todesbescheinigung prüfen",
+          "description": "Vollständigkeit, Todesart und Freigaben prüfen.",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "KRITISCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "UEBERFUEHRUNG",
+          "phase": 1,
+          "title": "Überführung koordinieren (Abholung, Fahrzeug, Zielort)",
+          "description": "Abholung, Fahrzeug und Zielort abstimmen; Abholzeit im Fall erfassen (Grundlage für Zuschläge).",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "FAHRER",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "SCHEDULE_DONE",
+            "presetKey": "UEBERFUEHRUNG"
+          },
+          "actions": [
+            {
+              "key": "TERMIN_UEBERFUEHRUNG",
+              "type": "SCHEDULE",
+              "label": "Termin „Überführung“ anlegen",
+              "openForm": true,
+              "schedulePresetKey": "UEBERFUEHRUNG",
+              "title": "",
+              "description": ""
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "ANGEHOERIGE",
+          "phase": 2,
+          "title": "Angehörige und Auftraggeber erfassen",
+          "description": "Vertretungsberechtigung, Kontaktdaten und Rechnungsempfänger sichern.",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "KONTAKTE",
+              "type": "OPEN_VIEW",
+              "label": "Kontakte öffnen",
+              "view": "contact"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "BERATUNG",
+          "phase": 2,
+          "title": "Beratungsgespräch vereinbaren",
+          "description": "",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKey": "BERATUNG"
+          },
+          "actions": [
+            {
+              "key": "TERMIN_BERATUNG",
+              "type": "SCHEDULE",
+              "label": "Termin „Beratungsgespräch“ anlegen",
+              "openForm": true,
+              "schedulePresetKey": "BERATUNG",
+              "title": "",
+              "description": ""
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "TRAUERFEIER_TERMIN",
+          "phase": 2,
+          "title": "Termin für Trauerfeier abstimmen",
+          "description": "Mit den Angehörigen Datum, Ort und Ablauf der Trauerfeier abstimmen.",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "YES",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKey": "TRAUERFEIER_1"
+          },
+          "actions": [
+            {
+              "key": "TERMIN_TRAUERFEIER",
+              "type": "SCHEDULE",
+              "label": "Termin „1. Trauerfeier“ anlegen",
+              "openForm": true,
+              "schedulePresetKey": "TRAUERFEIER_1",
+              "title": "",
+              "description": ""
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "BESTATTUNGSART",
+          "phase": 2,
+          "title": "Bestattungsart und Termine abstimmen",
+          "description": "Bestattungsart/-variante im Fall erfassen; Trauerfeier- bzw. Beisetzungstermin mit Terminart anlegen, damit die Folgeschritte greifen.",
+          "trigger": {
+            "type": "CASE_CREATED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "FUNERAL_TYPE_SET"
+          },
+          "actions": [
+            {
+              "key": "BESTATTUNGSART_ERFASSEN",
+              "type": "OPEN_VIEW",
+              "label": "Bestattungsart erfassen",
+              "view": "master"
+            },
+            {
+              "key": "TERMIN_BESTATTUNG",
+              "type": "SCHEDULE",
+              "label": "Trauerfeier-/Beisetzungstermin anlegen",
+              "openForm": true,
+              "schedulePresetKey": "",
+              "title": "",
+              "description": ""
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "AUFTRAG",
+          "phase": 2,
+          "title": "KVA / Bestattungsauftrag und Vollmacht erzeugen und unterschreiben lassen",
+          "description": "Kostenvoranschlag bzw. Auftrag und Vollmacht erzeugen, unterschreiben lassen und den Auftrag festschreiben.",
+          "trigger": {
+            "type": "FUNERAL_TYPE_SET"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "actions": [
+            {
+              "key": "AUFTRAG_DOKUMENT",
+              "type": "DOCUMENT",
+              "label": "Bestattungsauftrag / KVA erzeugen",
+              "templateKey": "BESTATTUNGSAUFTRAG",
+              "sourceStatusAfter": "IN_BEARBEITUNG"
+            },
+            {
+              "key": "VOLLMACHT_DOKUMENT",
+              "type": "DOCUMENT",
+              "label": "Bestattungsvollmacht erzeugen",
+              "templateKey": "BESTATTUNGSVOLLMACHT",
+              "sourceStatusAfter": "IN_BEARBEITUNG"
+            },
+            {
+              "key": "AUFTRAG_OEFFNEN",
+              "type": "OPEN_VIEW",
+              "label": "Auftrag festschreiben",
+              "view": "order"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "AUFTRAG_PRUEFEN",
+          "phase": 2,
+          "title": "Unterschriebene Auftragsdokumente prüfen",
+          "description": "Auftrag und Vollmacht auf Vollständigkeit und Unterschrift prüfen, Scan ablegen.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "DOKUMENTE",
+              "type": "OPEN_VIEW",
+              "label": "Dokumente öffnen",
+              "view": "document"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "STANDESAMT",
+          "phase": 3,
+          "title": "Standesamtliche Anzeige vorbereiten und senden",
+          "description": "Sterbefallanzeige erzeugen und über die Abmeldung „Standesamt“ versenden (E-Mail, Post oder Portal).",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "STERBEFALLANZEIGE",
+              "type": "DOCUMENT",
+              "label": "Sterbefallanzeige erzeugen",
+              "templateKey": "STERBEFALLANZEIGE_STANDESAMT",
+              "sourceStatusAfter": "IN_BEARBEITUNG"
+            },
+            {
+              "key": "ABMELDUNG_STANDESAMT",
+              "type": "DEREGISTRATIONS",
+              "label": "Abmeldung Standesamt anlegen",
+              "templateKeys": [
+                "STANDESAMT"
+              ]
+            },
+            {
+              "key": "ABMELDUNGEN_OEFFNEN",
+              "type": "OPEN_VIEW",
+              "label": "Abmeldungen öffnen",
+              "view": "deregistration"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "STERBEURKUNDEN",
+          "phase": 3,
+          "title": "Rückmeldung Standesamt prüfen, Sterbeurkunden abholen",
+          "description": "",
+          "trigger": {
+            "type": "STEP_DONE",
+            "stepKey": "STANDESAMT"
+          },
+          "dueOffsetDays": 3,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "DOCUMENT_RECEIVED",
+            "documentKind": "STERBEURKUNDE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "FEUER_EINWILLIGUNG",
+          "phase": 3,
+          "title": "Einwilligung zur Feuerbestattung und zweite Leichenschau prüfen",
+          "description": "Verfügung bzw. Berechtigung dokumentieren, zweite Leichenschau veranlassen.",
+          "trigger": {
+            "type": "FUNERAL_TYPE_SET"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "FRIEDHOF",
+          "phase": 4,
+          "title": "Friedhof oder Krematorium beauftragen",
+          "description": "Auftrag und Termin bei Friedhofsverwaltung bzw. Krematorium absichern.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 2,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "KREMATORIUM",
+          "phase": 4,
+          "title": "Krematoriumstermin bestätigen",
+          "description": "Anlieferung und Unterlagen mit dem Krematorium abstimmen.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "URNENBEISETZUNG",
+          "phase": 4,
+          "title": "Urnenbeisetzung oder Urnenübergabe disponieren",
+          "description": "",
+          "trigger": {
+            "type": "STEP_DONE",
+            "stepKey": "KREMATORIUM"
+          },
+          "dueOffsetDays": 2,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "TERMIN_BEISETZUNG",
+              "type": "SCHEDULE",
+              "label": "Termin „Beisetzung“ anlegen",
+              "openForm": true,
+              "schedulePresetKey": "BEISETZUNG",
+              "title": "",
+              "description": ""
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "GRAB",
+          "phase": 4,
+          "title": "Grabstelle und Graböffnung beauftragen",
+          "description": "Friedhofsverwaltung, Grabart und Graböffnung abstimmen.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "BURIAL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "TRAEGER",
+          "phase": 4,
+          "title": "Sargträger und Fahrzeug disponieren",
+          "description": "",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "BEISETZUNG"
+            ]
+          },
+          "dueOffsetDays": -2,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "BURIAL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "TRAUERDRUCK",
+          "phase": 4,
+          "title": "Trauerdruck und Traueranzeige abstimmen",
+          "description": "Entwurf, Freigabe durch die Angehörigen und Anzeigenschluss der Zeitung planen.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 2,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "KONDOLENZ",
+          "phase": 4,
+          "title": "Kondolenzlisten erstellen",
+          "description": "Deckblatt und Kondolenzliste erzeugen; Datum, Uhrzeit und Ort kommen aus dem Trauerfeier-Termin.",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "TRAUERFEIER_1",
+              "TRAUERFEIER_2"
+            ]
+          },
+          "dueOffsetDays": -3,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "KONDOLENZLISTEN_PAKET",
+              "type": "DOCUMENT_BUNDLE",
+              "label": "Deckblatt und Kondolenzliste erzeugen",
+              "templateKeys": [
+                "KONDOLENZLISTE_DECKBLATT",
+                "KONDOLENZLISTE_LISTE"
+              ],
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "ABLAUF_TRAUERFEIER",
+          "phase": 4,
+          "title": "Ablauf der Trauerfeier prüfen",
+          "description": "",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "TRAUERFEIER_1",
+              "TRAUERFEIER_2"
+            ]
+          },
+          "dueOffsetDays": -2,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "VOR_ORT",
+          "phase": 4,
+          "title": "Vorbereitung der Trauerfeier vor Ort prüfen",
+          "description": "Ausstattung, Unterlagen und Zuständigkeiten am Ort der Trauerfeier prüfen.",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "TRAUERFEIER_1",
+              "TRAUERFEIER_2"
+            ]
+          },
+          "dueOffsetDays": -1,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "ABMELDUNGEN",
+          "phase": 5,
+          "title": "Abmeldungen anlegen und versenden",
+          "description": "Krankenkasse, Versicherungen, Rundfunkbeitrag und weitere Vertragspartner auswählen; Entwürfe werden angelegt und im Reiter „Abmeldungen“ versendet.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 2,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "DEREGISTRATIONS_SENT"
+          },
+          "actions": [
+            {
+              "key": "ABMELDUNGEN_ANLEGEN",
+              "type": "DEREGISTRATIONS",
+              "label": "Abmeldungen anlegen",
+              "templateKeys": [
+                "GKV_PFLEGEKASSE",
+                "VERSICHERUNG",
+                "RUNDFUNKBEITRAG",
+                "VERTRAGSPARTNER_STANDARD"
+              ]
+            },
+            {
+              "key": "ABMELDUNGEN_REITER",
+              "type": "OPEN_VIEW",
+              "label": "Abmeldungen öffnen",
+              "view": "deregistration"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "RENTE",
+          "phase": 5,
+          "title": "Rentenservice abmelden, Vorschuss für Witwe/Witwer prüfen",
+          "description": "Separates Rentenservice-Formular verwenden; Vorschussantrag für hinterbliebene Ehepartner prüfen.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 2,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "YES",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "RENTENSERVICE_FORMULAR",
+              "type": "DOCUMENT",
+              "label": "Rentenservice-Formular erzeugen",
+              "templateKey": "RENTENSERVICE_AENDERUNGSFORMULAR",
+              "sourceStatusAfter": "IN_BEARBEITUNG"
+            },
+            {
+              "key": "ABMELDUNG_RENTE",
+              "type": "DEREGISTRATIONS",
+              "label": "Abmeldung Rentenservice anlegen",
+              "templateKeys": [
+                "RENTENSERVICE"
+              ]
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "RUECKMELDUNGEN",
+          "phase": 5,
+          "title": "Rückmeldungen zu Abmeldungen prüfen",
+          "description": "Bestätigungen und fehlende Unterlagen nachhalten.",
+          "trigger": {
+            "type": "STEP_DONE",
+            "stepKey": "ABMELDUNGEN"
+          },
+          "dueOffsetDays": 7,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "LEISTUNGEN",
+          "phase": 6,
+          "title": "Leistungen und Fremdkosten prüfen",
+          "description": "Erbrachte Leistungen, Auslagen und Fremdkosten vollständig erfassen und abrechenbar setzen.",
+          "trigger": {
+            "type": "SCHEDULE_DONE",
+            "presetKeys": [
+              "BEISETZUNG",
+              "TRAUERFEIER_1"
+            ],
+            "once": true
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "LEISTUNGEN_OEFFNEN",
+              "type": "OPEN_VIEW",
+              "label": "Leistungen öffnen",
+              "view": "services"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "FALL_ABSCHLIESSEN",
+          "phase": 7,
+          "title": "Fall abschließen",
+          "description": "Abschlussprüfung: alle Pflichtschritte erledigt, Schlussrechnung bezahlt.",
+          "trigger": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "FALL_ABSCHLUSS",
+              "type": "CASE_CLOSE",
+              "label": "Abschlussprüfung öffnen"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_LEISTUNGSPRUEFUNG",
+      "name": "Leistungs- und Zuschlagsprüfung",
+      "description": "Umsatzsicherung: Zuschläge nach den gepflegten Staffeln und typischerweise vergessene Leistungen vor der Schlussrechnung prüfen.",
+      "active": false,
+      "sortOrder": 110,
+      "steps": [
+        {
+          "key": "ABHOLWERTE",
+          "phase": 1,
+          "title": "Abholzeit, Körpergröße und -gewicht erfassen",
+          "description": "Grundlage für Abhol-, Größen- und Gewichtszuschläge.",
+          "trigger": {
+            "type": "SCHEDULE_DONE",
+            "presetKeys": [
+              "UEBERFUEHRUNG"
+            ],
+            "once": true
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "FAHRER",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "STAMMDATEN_ABHOLUNG",
+              "type": "OPEN_VIEW",
+              "label": "Stammdaten öffnen",
+              "view": "master"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "ZUSCHLAGSPRUEFUNG",
+          "phase": 6,
+          "title": "Zuschläge und vergessene Leistungen prüfen",
+          "description": "Vorschläge aus Zuschlagsstaffeln und Fallverlauf prüfen und fehlende Positionen in den Leistungen ergänzen.",
+          "trigger": {
+            "type": "SCHEDULE_DONE",
+            "presetKeys": [
+              "BEISETZUNG",
+              "TRAUERFEIER_1"
+            ],
+            "once": true
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "ZUSCHLAG_DIALOG",
+              "type": "SURCHARGE_CHECK",
+              "label": "Leistungs- und Zuschlagsprüfung öffnen"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_FREMDKOSTEN",
+      "name": "Fremdkosten-Durchlauf",
+      "description": "Keine Friedhofs- oder Krematoriumsgebühr bleibt am Unternehmen hängen: jede Eingangsrechnung wird geprüft und in die Abrechnung übernommen.",
+      "active": false,
+      "sortOrder": 120,
+      "steps": [
+        {
+          "key": "EINGANGSRECHNUNG",
+          "phase": 6,
+          "title": "Eingangsrechnung prüfen und als Auslage übernehmen",
+          "description": "Betrag gegen Kostenvoranschlag prüfen, Positionen klassifizieren und in den Fall übernehmen.",
+          "trigger": {
+            "type": "INCOMING_INVOICE"
+          },
+          "dueOffsetDays": 3,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "INCOMING_TRANSFERRED"
+          },
+          "actions": [
+            {
+              "key": "FINANZEN",
+              "type": "OPEN_VIEW",
+              "label": "Finanzen öffnen",
+              "view": "finances"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_ANZAHLUNG",
+      "name": "Anzahlung",
+      "description": "Nur für Fälle mit fest vereinbartem Anzahlungsbetrag (Fallmerkmal „Anzahlung“). Senkt das Ausfallrisiko und verbessert die Liquidität.",
+      "active": false,
+      "sortOrder": 130,
+      "steps": [
+        {
+          "key": "ANZAHLUNG_ANFORDERN",
+          "phase": 2,
+          "title": "Anzahlung anfordern",
+          "description": "Zahlungsaufforderung über den vereinbarten Betrag an den Auftraggeber senden.",
+          "trigger": {
+            "type": "DEPOSIT_AGREED"
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "YES"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "ZAHLUNGSAUFFORDERUNG",
+              "type": "EMAIL_DRAFT",
+              "label": "Zahlungsaufforderung (E-Mail-Entwurf)",
+              "title": "Anzahlung zum Sterbefall {{case.number}}",
+              "description": "Guten Tag,\n\nwie besprochen bitten wir für die Bestattung von {{case.first_name}} {{case.last_name}} (Fall {{case.number}}) um eine Anzahlung in Höhe von {{deposit.amount}}.\n\nBankverbindung: {{branch.account_holder}}, IBAN {{branch.iban}}, BIC {{branch.bic}}\nVerwendungszweck: {{case.number}}\n\nDie Anzahlung wird in der Schlussrechnung berücksichtigt.\n\nMit freundlichen Grüßen\n{{branch.name}}",
+              "repeatable": true,
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "ANZAHLUNG_EINGANG",
+          "phase": 2,
+          "title": "Eingang der Anzahlung prüfen",
+          "description": "Zahlungseingang im Fallcockpit unter „Anzahlung eingegangen am“ erfassen.",
+          "trigger": {
+            "type": "STEP_DONE",
+            "stepKey": "ANZAHLUNG_ANFORDERN"
+          },
+          "dueOffsetDays": 5,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "NORMAL",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "YES"
+          },
+          "complete": {
+            "type": "DEPOSIT_RECEIVED"
+          },
+          "actions": [
+            {
+              "key": "FALLMERKMALE",
+              "type": "OPEN_VIEW",
+              "label": "Fallmerkmale öffnen",
+              "view": "overview"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_ZAHLUNG",
+      "name": "Schlussrechnung und Mahnwesen",
+      "description": "Kürzere Außenstände: Schlussrechnung zeitnah nach der Beisetzung, Zahlungserinnerung und Mahnung bei überfälliger Rechnung mit vorbereiteten Texten.",
+      "active": false,
+      "sortOrder": 140,
+      "steps": [
+        {
+          "key": "SCHLUSSRECHNUNG",
+          "phase": 6,
+          "title": "Schlussrechnung erstellen und freigeben",
+          "description": "",
+          "trigger": {
+            "type": "SCHEDULE_DONE",
+            "presetKeys": [
+              "BEISETZUNG",
+              "TRAUERFEIER_1"
+            ],
+            "once": true
+          },
+          "dueOffsetDays": 3,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "FINAL_INVOICE_ISSUED"
+          },
+          "actions": [
+            {
+              "key": "FINANZEN_RECHNUNG",
+              "type": "OPEN_VIEW",
+              "label": "Finanzen öffnen",
+              "view": "finances"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "ZAHLUNGSERINNERUNG",
+          "phase": 6,
+          "title": "Zahlungseingang prüfen, ggf. Zahlungserinnerung senden",
+          "description": "",
+          "trigger": {
+            "type": "INVOICE_OVERDUE",
+            "days": 1
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "actions": [
+            {
+              "key": "ERINNERUNG",
+              "type": "EMAIL_DRAFT",
+              "label": "Zahlungserinnerung (E-Mail-Entwurf)",
+              "title": "Zahlungserinnerung Rechnung {{invoice.number}}",
+              "description": "Guten Tag,\n\nsicher ist es Ihrer Aufmerksamkeit entgangen: Unsere Rechnung {{invoice.number}} über {{invoice.amount}} zur Bestattung von {{case.first_name}} {{case.last_name}} war am {{invoice.due_date}} fällig.\n\nWir bitten Sie, den Betrag in den nächsten Tagen zu überweisen: {{branch.account_holder}}, IBAN {{branch.iban}}, Verwendungszweck {{invoice.number}}.\n\nSollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{{branch.name}}",
+              "repeatable": true,
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "MAHNUNG",
+          "phase": 6,
+          "title": "Mahnung senden",
+          "description": "",
+          "trigger": {
+            "type": "INVOICE_OVERDUE",
+            "days": 15
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BUCHHALTUNG",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "actions": [
+            {
+              "key": "MAHNUNG_TEXT",
+              "type": "EMAIL_DRAFT",
+              "label": "Mahnung (E-Mail-Entwurf)",
+              "title": "Mahnung Rechnung {{invoice.number}}",
+              "description": "Guten Tag,\n\ntrotz unserer Zahlungserinnerung ist die Rechnung {{invoice.number}} über {{invoice.amount}} (fällig seit {{invoice.due_date}}) noch offen.\n\nWir bitten um Ausgleich innerhalb von 10 Tagen auf das Konto {{branch.account_holder}}, IBAN {{branch.iban}}, Verwendungszweck {{invoice.number}}. Sollte es Gründe geben, die einer Zahlung entgegenstehen, sprechen Sie uns bitte an – wir finden gemeinsam eine Lösung.\n\nMit freundlichen Grüßen\n{{branch.name}}",
+              "repeatable": true,
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_URNE",
+      "name": "Urnenlogistik Feuerbestattung",
+      "description": "Urnen liegen nicht unbemerkt im Lager; Friedhof und Angehörige werden rechtzeitig informiert.",
+      "active": false,
+      "sortOrder": 150,
+      "steps": [
+        {
+          "key": "URNE_EINGANG",
+          "phase": 4,
+          "title": "Urneneingang vom Krematorium erfassen",
+          "description": "Eingang der Urne mit Datum und Lagerort dokumentieren.",
+          "trigger": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "dueOffsetDays": 5,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "URNE_INFORMIEREN",
+          "phase": 4,
+          "title": "Friedhof bzw. Angehörige über den Urneneingang informieren",
+          "description": "",
+          "trigger": {
+            "type": "STEP_DONE",
+            "stepKey": "URNE_EINGANG"
+          },
+          "dueOffsetDays": 1,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "KONTAKT_URNE",
+              "type": "CONTACT_ACTIVITY",
+              "label": "Kontakt dokumentieren",
+              "title": "Information Urneneingang",
+              "description": "Friedhof/Angehörige über den Urneneingang im Fall {{case.number}} informiert.",
+              "repeatable": true,
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        },
+        {
+          "key": "URNE_BEREITSTELLEN",
+          "phase": 4,
+          "title": "Urne für Beisetzung bzw. Übergabe bereitstellen",
+          "description": "",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "BEISETZUNG"
+            ]
+          },
+          "dueOffsetDays": -1,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "CREMATION",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_NACHSORGE",
+      "name": "Nachsorge und Folgeaufträge",
+      "description": "Kundenbindung und Folgeumsatz: Dankeskarte, Angebot Grabmal/Grabpflege, Hinweis auf Bestattungsvorsorge, Jahresgedenken.",
+      "active": false,
+      "sortOrder": 160,
+      "steps": [
+        {
+          "key": "DANKESKARTE",
+          "phase": 7,
+          "title": "Dankeskarte senden",
+          "description": "",
+          "trigger": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "dueOffsetDays": 7,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NIEDRIG",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "GRABMAL",
+          "phase": 7,
+          "title": "Angebot Grabmal / Grabpflege unterbreiten",
+          "description": "Steinmetz-Angebot bzw. Grabpflege anbieten (ca. 6 Wochen nach der Beisetzung).",
+          "trigger": {
+            "type": "DATE_REACHED",
+            "dateRef": "BURIAL",
+            "days": 42,
+            "leadDays": 7
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "GRAVE",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "VORSORGE",
+          "phase": 7,
+          "title": "Hinweis auf Bestattungsvorsorge an Angehörige",
+          "description": "",
+          "trigger": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "dueOffsetDays": 90,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "NIEDRIG",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "JAHRESGEDENKEN",
+          "phase": 7,
+          "title": "Jahresgedenken vorbereiten",
+          "description": "Kurzer Gruß zum ersten Jahrestag des Todes.",
+          "trigger": {
+            "type": "DATE_REACHED",
+            "dateRef": "DEATH_DATE",
+            "days": 365,
+            "leadDays": 21
+          },
+          "dueOffsetDays": -7,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NIEDRIG",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_BEWERTUNG",
+      "name": "Bewertung und Empfehlung",
+      "description": "Mehr Online-Bewertungen durch eine freundliche Bitte nach Abschluss der Zusammenarbeit.",
+      "active": false,
+      "sortOrder": 170,
+      "steps": [
+        {
+          "key": "BEWERTUNG",
+          "phase": 7,
+          "title": "Um Bewertung bitten",
+          "description": "Link zur Bewertungsseite im Text hinterlegen.",
+          "trigger": {
+            "type": "PAYMENT_RECEIVED"
+          },
+          "dueOffsetDays": 10,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "NIEDRIG",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [
+            {
+              "key": "BEWERTUNG_TEXT",
+              "type": "EMAIL_DRAFT",
+              "label": "Bitte um Bewertung (E-Mail-Entwurf)",
+              "title": "Ihre Rückmeldung zu unserer Begleitung",
+              "description": "Guten Tag,\n\nwir durften Sie beim Abschied von {{case.first_name}} {{case.last_name}} begleiten. Ihre Rückmeldung hilft uns und anderen Familien in einer schweren Zeit.\n\nWenn Sie mögen, würden wir uns über eine kurze Bewertung freuen: [Link zur Bewertungsseite hier eintragen]\n\nHerzliche Grüße\n{{branch.name}}",
+              "repeatable": true,
+              "sourceStatusAfter": "ERLEDIGT"
+            }
+          ],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_BEISETZUNG",
+      "name": "Beisetzung vorbereiten",
+      "description": "Schließt die Lücke bei Beisetzungen ohne Trauerfeier (z. B. Urnenbeisetzung): keine vergessene Graböffnung.",
+      "active": false,
+      "sortOrder": 180,
+      "steps": [
+        {
+          "key": "BEISETZUNG_VORBEREITEN",
+          "phase": 4,
+          "title": "Beisetzung vorbereiten (Grab geöffnet, Träger, Fahrzeug, Unterlagen, Nachwerfblumen)",
+          "description": "",
+          "trigger": {
+            "type": "SCHEDULE_CONFIRMED",
+            "presetKeys": [
+              "BEISETZUNG"
+            ]
+          },
+          "dueOffsetDays": -1,
+          "dueReference": "TRIGGER",
+          "role": "BESTATTER",
+          "priority": "HOCH",
+          "required": true,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "ZUSATZ_NACHFASSEN",
+      "name": "Nachfassen und Terminänderungen",
+      "description": "Nachfassen beim offenen KVA sowie Benachrichtigung der Beteiligten, wenn eine bestätigte Trauerfeier oder Beisetzung verschoben oder abgesagt wird.",
+      "active": false,
+      "sortOrder": 190,
+      "steps": [
+        {
+          "key": "KVA_NACHFASSEN",
+          "phase": 2,
+          "title": "Beim KVA nachfassen",
+          "description": "Rückfrage bei den Auftraggebern, ob Fragen zum Kostenvoranschlag bestehen.",
+          "trigger": {
+            "type": "QUOTE_CREATED"
+          },
+          "dueOffsetDays": 3,
+          "dueReference": "TRIGGER",
+          "role": "FALLVERANTWORTLICH",
+          "priority": "NORMAL",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "ORDER_COMMISSIONED"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "TERMIN_GEAENDERT",
+          "phase": 4,
+          "title": "Beteiligte über die Terminänderung informieren",
+          "description": "Angehörige, Friedhof/Krematorium, Redner, Musik, Floristik und Druckerei über den neuen Zeitpunkt bzw. Ort informieren.",
+          "trigger": {
+            "type": "SCHEDULE_CHANGED",
+            "presetKeys": [
+              "TRAUERFEIER_1",
+              "TRAUERFEIER_2",
+              "BEISETZUNG"
+            ]
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        },
+        {
+          "key": "TERMIN_ABGESAGT",
+          "phase": 4,
+          "title": "Absage an Beteiligte weitergeben, Ressourcen freigeben",
+          "description": "Alle Beteiligten informieren und gebuchte Räume, Fahrzeuge und Träger freigeben.",
+          "trigger": {
+            "type": "SCHEDULE_CANCELLED",
+            "presetKeys": [
+              "TRAUERFEIER_1",
+              "TRAUERFEIER_2",
+              "BEISETZUNG"
+            ]
+          },
+          "dueOffsetDays": 0,
+          "dueReference": "TRIGGER",
+          "role": "BUERO",
+          "priority": "HOCH",
+          "required": false,
+          "applies": {
+            "scope": "ALL",
+            "ceremony": "ANY",
+            "pension": "ANY",
+            "deposit": "ANY"
+          },
+          "complete": {
+            "type": "NONE"
+          },
+          "actions": [],
+          "active": true
+        }
+      ]
+    }
+  ]
+}

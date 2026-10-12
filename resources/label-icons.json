@@ -1,0 +1,367 @@
+{
+	"source": "Tabler Icons 3.48.0 (outline), MIT License, https://tabler.io/icons",
+	"groups": [
+		{
+			"key": "ACHTUNG",
+			"name": "Achtung und Fristen"
+		},
+		{
+			"key": "KOMMUNIKATION",
+			"name": "Angehörige und Kommunikation"
+		},
+		{
+			"key": "VERWALTUNG",
+			"name": "Kosten und Verwaltung"
+		},
+		{
+			"key": "LOGISTIK",
+			"name": "Überführung und Logistik"
+		},
+		{
+			"key": "ABSCHIED",
+			"name": "Abschied und Gestaltung"
+		},
+		{
+			"key": "STATUS",
+			"name": "Status, Sorgfalt und Nachsorge"
+		}
+	],
+	"icons": [
+		{
+			"key": "alert-triangle",
+			"name": "Achtung",
+			"group": "ACHTUNG",
+			"terms": "warnung gefahr hygiene vorsicht",
+			"svg": "<path d=\"M12 9v4\" /> <path d=\"M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0\" /> <path d=\"M12 16h.01\" />"
+		},
+		{
+			"key": "alert-circle",
+			"name": "Wichtig",
+			"group": "ACHTUNG",
+			"terms": "wichtig hinweis",
+			"svg": "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0\" /> <path d=\"M12 8v4\" /> <path d=\"M12 16h.01\" />"
+		},
+		{
+			"key": "info-circle",
+			"name": "Hinweis",
+			"group": "ACHTUNG",
+			"terms": "info information",
+			"svg": "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0\" /> <path d=\"M12 9h.01\" /> <path d=\"M11 12h1v4h1\" />"
+		},
+		{
+			"key": "hourglass",
+			"name": "Frist",
+			"group": "ACHTUNG",
+			"terms": "frist zeit eilt kurz",
+			"svg": "<path d=\"M6.5 7h11\" /> <path d=\"M6.5 17h11\" /> <path d=\"M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1\" /> <path d=\"M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1\" />"
+		},
+		{
+			"key": "clock-exclamation",
+			"name": "Termin kritisch",
+			"group": "ACHTUNG",
+			"terms": "uhr zeit dringend eilig",
+			"svg": "<path d=\"M20.986 12.502a9 9 0 1 0 -5.973 7.98\" /> <path d=\"M12 7v5l3 3\" /> <path d=\"M19 16v3\" /> <path d=\"M19 22v.01\" />"
+		},
+		{
+			"key": "flag",
+			"name": "Markiert",
+			"group": "ACHTUNG",
+			"terms": "fahne markierung",
+			"svg": "<path d=\"M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9\" /> <path d=\"M5 21v-7\" />"
+		},
+		{
+			"key": "lock",
+			"name": "Gesperrt",
+			"group": "ACHTUNG",
+			"terms": "sperre freigabe schloss",
+			"svg": "<path d=\"M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6\" /> <path d=\"M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0\" /> <path d=\"M8 11v-4a4 4 0 1 1 8 0v4\" />"
+		},
+		{
+			"key": "shield-check",
+			"name": "Geprüft",
+			"group": "ACHTUNG",
+			"terms": "schutz geprüft sicher",
+			"svg": "<path d=\"M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06\" /> <path d=\"M15 19l2 2l4 -4\" />"
+		},
+		{
+			"key": "phone-call",
+			"name": "Rückruf",
+			"group": "KOMMUNIKATION",
+			"terms": "telefon anruf rückruf",
+			"svg": "<path d=\"M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2\" /> <path d=\"M15 7a2 2 0 0 1 2 2\" /> <path d=\"M15 3a6 6 0 0 1 6 6\" />"
+		},
+		{
+			"key": "mail",
+			"name": "Schriftlich",
+			"group": "KOMMUNIKATION",
+			"terms": "post brief e-mail",
+			"svg": "<path d=\"M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10\" /> <path d=\"M3 7l9 6l9 -6\" />"
+		},
+		{
+			"key": "message-report",
+			"name": "Klärung",
+			"group": "KOMMUNIKATION",
+			"terms": "nachricht klärung beschwerde reklamation",
+			"svg": "<path d=\"M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12\" /> <path d=\"M12 8v3\" /> <path d=\"M12 14v.01\" />"
+		},
+		{
+			"key": "users",
+			"name": "Betreuung",
+			"group": "KOMMUNIKATION",
+			"terms": "personen gruppe familie betreuer",
+			"svg": "<path d=\"M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0\" /> <path d=\"M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2\" /> <path d=\"M16 3.13a4 4 0 0 1 0 7.75\" /> <path d=\"M21 21v-2a4 4 0 0 0 -3 -3.85\" />"
+		},
+		{
+			"key": "user-heart",
+			"name": "Ansprechperson",
+			"group": "KOMMUNIKATION",
+			"terms": "person angehörige kontakt",
+			"svg": "<path d=\"M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0\" /> <path d=\"M6 21v-2a4 4 0 0 1 4 -4h.5\" /> <path d=\"M18 22l3.35 -3.284a2.143 2.143 0 0 0 .005 -3.071a2.242 2.242 0 0 0 -3.129 -.006l-.224 .22l-.223 -.22a2.242 2.242 0 0 0 -3.128 -.006a2.143 2.143 0 0 0 -.006 3.071l3.355 3.296\" />"
+		},
+		{
+			"key": "eye-off",
+			"name": "Diskretion",
+			"group": "KOMMUNIKATION",
+			"terms": "diskret auskunft geheim presse",
+			"svg": "<path d=\"M10.585 10.587a2 2 0 0 0 2.829 2.828\" /> <path d=\"M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87\" /> <path d=\"M3 3l18 18\" />"
+		},
+		{
+			"key": "language",
+			"name": "Dolmetscher",
+			"group": "KOMMUNIKATION",
+			"terms": "sprache übersetzung",
+			"svg": "<path d=\"M9 6.371c0 4.418 -2.239 6.629 -5 6.629\" /> <path d=\"M4 6.371h7\" /> <path d=\"M5 9c0 2.144 2.252 3.908 6 4\" /> <path d=\"M12 20l4 -9l4 9\" /> <path d=\"M19.1 18h-6.2\" /> <path d=\"M6.694 3l.793 .582\" />"
+		},
+		{
+			"key": "home",
+			"name": "Hausbesuch",
+			"group": "KOMMUNIKATION",
+			"terms": "haus besuch zuhause",
+			"svg": "<path d=\"M5 12l-2 0l9 -9l9 9l-2 0\" /> <path d=\"M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7\" /> <path d=\"M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6\" />"
+		},
+		{
+			"key": "coin",
+			"name": "Kosten",
+			"group": "VERWALTUNG",
+			"terms": "geld münze kosten zahlung",
+			"svg": "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0\" /> <path d=\"M14.8 9a2 2 0 0 0 -1.8 -1h-2a2 2 0 1 0 0 4h2a2 2 0 1 1 0 4h-2a2 2 0 0 1 -1.8 -1\" /> <path d=\"M12 7v10\" />"
+		},
+		{
+			"key": "receipt",
+			"name": "Rechnung",
+			"group": "VERWALTUNG",
+			"terms": "beleg rechnung zahlung",
+			"svg": "<path d=\"M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2\" />"
+		},
+		{
+			"key": "building-community",
+			"name": "Amt",
+			"group": "VERWALTUNG",
+			"terms": "amt behörde sozialamt kostenträger",
+			"svg": "<path d=\"M8 9l5 5v7h-5v-4m0 4h-5v-7l5 -5m1 1v-6a1 1 0 0 1 1 -1h10a1 1 0 0 1 1 1v17h-8\" /> <path d=\"M13 7l0 .01\" /> <path d=\"M17 7l0 .01\" /> <path d=\"M17 11l0 .01\" /> <path d=\"M17 15l0 .01\" />"
+		},
+		{
+			"key": "building-bank",
+			"name": "Bank",
+			"group": "VERWALTUNG",
+			"terms": "bank konto",
+			"svg": "<path d=\"M3 21l18 0\" /> <path d=\"M3 10l18 0\" /> <path d=\"M5 6l7 -3l7 3\" /> <path d=\"M4 10l0 11\" /> <path d=\"M20 10l0 11\" /> <path d=\"M8 14l0 3\" /> <path d=\"M12 14l0 3\" /> <path d=\"M16 14l0 3\" />"
+		},
+		{
+			"key": "file-certificate",
+			"name": "Vorsorge",
+			"group": "VERWALTUNG",
+			"terms": "vertrag urkunde vorsorge",
+			"svg": "<path d=\"M14 3v4a1 1 0 0 0 1 1h4\" /> <path d=\"M5 8v-3a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2h-5\" /> <path d=\"M3 14a3 3 0 1 0 6 0a3 3 0 1 0 -6 0\" /> <path d=\"M4.5 17l-1.5 5l3 -1.5l3 1.5l-1.5 -5\" />"
+		},
+		{
+			"key": "scale",
+			"name": "Nachlass",
+			"group": "VERWALTUNG",
+			"terms": "waage recht erbe nachlass",
+			"svg": "<path d=\"M7 20l10 0\" /> <path d=\"M6 6l6 -1l6 1\" /> <path d=\"M12 3l0 17\" /> <path d=\"M9 12l-3 -6l-3 6a3 3 0 0 0 6 0\" /> <path d=\"M21 12l-3 -6l-3 6a3 3 0 0 0 6 0\" />"
+		},
+		{
+			"key": "gavel",
+			"name": "Behörde",
+			"group": "VERWALTUNG",
+			"terms": "gericht staatsanwaltschaft polizei",
+			"svg": "<path d=\"M13 10l7.383 7.418c.823 .82 .823 2.148 0 2.967a2.11 2.11 0 0 1 -2.976 0l-7.407 -7.385\" /> <path d=\"M6 9l4 4\" /> <path d=\"M13 10l-4 -4\" /> <path d=\"M3 21h7\" /> <path d=\"M6.793 15.793l-3.586 -3.586a1 1 0 0 1 0 -1.414l2.293 -2.293l.5 .5l3 -3l-.5 -.5l2.293 -2.293a1 1 0 0 1 1.414 0l3.586 3.586a1 1 0 0 1 0 1.414l-2.293 2.293l-.5 -.5l-3 3l.5 .5l-2.293 2.293a1 1 0 0 1 -1.414 0\" />"
+		},
+		{
+			"key": "signature",
+			"name": "Unterschrift",
+			"group": "VERWALTUNG",
+			"terms": "unterschrift vollmacht",
+			"svg": "<path d=\"M3 17c3.333 -3.333 5 -6 5 -8c0 -3 -1 -3 -2 -3s-2.032 1.085 -2 3c.034 2.048 1.658 4.877 2.5 6c1.5 2 2.5 2.5 3.5 1l2 -3c.333 2.667 1.333 4 3 4c.53 0 2.639 -2 3 -2c.517 0 1.517 .667 3 2\" />"
+		},
+		{
+			"key": "plane",
+			"name": "Ausland",
+			"group": "LOGISTIK",
+			"terms": "flugzeug ausland überführung",
+			"svg": "<path d=\"M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2 -7h-4l-2 2h-3l2 -4l-2 -4h3l2 2h4l-2 -7h3l4 7\" />"
+		},
+		{
+			"key": "truck",
+			"name": "Überführung",
+			"group": "LOGISTIK",
+			"terms": "fahrzeug transport",
+			"svg": "<path d=\"M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\" /> <path d=\"M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\" /> <path d=\"M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5\" />"
+		},
+		{
+			"key": "map-pin",
+			"name": "Ort",
+			"group": "LOGISTIK",
+			"terms": "ort adresse",
+			"svg": "<path d=\"M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0\" /> <path d=\"M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0\" />"
+		},
+		{
+			"key": "world",
+			"name": "International",
+			"group": "LOGISTIK",
+			"terms": "welt ausland international",
+			"svg": "<path d=\"M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0\" /> <path d=\"M3.6 9h16.8\" /> <path d=\"M3.6 15h16.8\" /> <path d=\"M11.5 3a17 17 0 0 0 0 18\" /> <path d=\"M12.5 3a17 17 0 0 1 0 18\" />"
+		},
+		{
+			"key": "ship",
+			"name": "Schiff",
+			"group": "LOGISTIK",
+			"terms": "schiff see seebestattung",
+			"svg": "<path d=\"M2 20a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1\" /> <path d=\"M4 18l-1 -5h18l-2 4\" /> <path d=\"M5 13v-6h8l4 6\" /> <path d=\"M7 7v-4h-1\" />"
+		},
+		{
+			"key": "snowflake",
+			"name": "Kühlung",
+			"group": "LOGISTIK",
+			"terms": "kühlung kalt",
+			"svg": "<path d=\"M10 4l2 1l2 -1\" /> <path d=\"M12 2v6.5l3 1.72\" /> <path d=\"M17.928 6.268l.134 2.232l1.866 1.232\" /> <path d=\"M20.66 7l-5.629 3.25l.01 3.458\" /> <path d=\"M19.928 14.268l-1.866 1.232l-.134 2.232\" /> <path d=\"M20.66 17l-5.629 -3.25l-2.99 1.738\" /> <path d=\"M14 20l-2 -1l-2 1\" /> <path d=\"M12 22v-6.5l-3 -1.72\" /> <path d=\"M6.072 17.732l-.134 -2.232l-1.866 -1.232\" /> <path d=\"M3.34 17l5.629 -3.25l-.01 -3.458\" /> <path d=\"M4.072 9.732l1.866 -1.232l.134 -2.232\" /> <path d=\"M3.34 7l5.629 3.25l2.99 -1.738\" />"
+		},
+		{
+			"key": "calendar-event",
+			"name": "Termin",
+			"group": "LOGISTIK",
+			"terms": "kalender termin",
+			"svg": "<path d=\"M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12\" /> <path d=\"M16 3l0 4\" /> <path d=\"M8 3l0 4\" /> <path d=\"M4 11l16 0\" /> <path d=\"M8 15h2v2h-2l0 -2\" />"
+		},
+		{
+			"key": "umbrella",
+			"name": "Witterung",
+			"group": "LOGISTIK",
+			"terms": "wetter regen außen",
+			"svg": "<path d=\"M4 12a8 8 0 0 1 16 0l-16 0\" /> <path d=\"M12 12v6a2 2 0 0 0 4 0\" />"
+		},
+		{
+			"key": "candle",
+			"name": "Gedenken",
+			"group": "ABSCHIED",
+			"terms": "kerze gedenken",
+			"svg": "<path d=\"M9 21h6v-10a1 1 0 0 0 -1 -1h-4a1 1 0 0 0 -1 1l0 10\" /> <path d=\"M12 2l1.465 1.638a2 2 0 1 1 -3.015 .099l1.55 -1.737\" />"
+		},
+		{
+			"key": "flower",
+			"name": "Blumen",
+			"group": "ABSCHIED",
+			"terms": "blumen floristik",
+			"svg": "<path d=\"M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0\" /> <path d=\"M12 2a3 3 0 0 1 3 3c0 .562 -.259 1.442 -.776 2.64l-.724 1.36l1.76 -1.893c.499 -.6 .922 -1 1.27 -1.205a2.968 2.968 0 0 1 4.07 1.099a3.011 3.011 0 0 1 -1.09 4.098c-.374 .217 -.99 .396 -1.846 .535l-2.664 .366l2.4 .326c1 .145 1.698 .337 2.11 .576a3.011 3.011 0 0 1 1.09 4.098a2.968 2.968 0 0 1 -4.07 1.098c-.348 -.202 -.771 -.604 -1.27 -1.205l-1.76 -1.893l.724 1.36c.516 1.199 .776 2.079 .776 2.64a3 3 0 0 1 -6 0c0 -.562 .259 -1.442 .776 -2.64l.724 -1.36l-1.76 1.893c-.499 .601 -.922 1 -1.27 1.205a2.968 2.968 0 0 1 -4.07 -1.098a3.011 3.011 0 0 1 1.09 -4.098c.374 -.218 .99 -.396 1.846 -.536l2.664 -.366l-2.4 -.325c-1 -.145 -1.698 -.337 -2.11 -.576a3.011 3.011 0 0 1 -1.09 -4.099a2.968 2.968 0 0 1 4.07 -1.099c.348 .203 .771 .604 1.27 1.205l1.76 1.894c-1 -2.292 -1.5 -3.625 -1.5 -4a3 3 0 0 1 3 -3\" />"
+		},
+		{
+			"key": "trees",
+			"name": "Naturbestattung",
+			"group": "ABSCHIED",
+			"terms": "baum wald natur",
+			"svg": "<path d=\"M16 5l3 3l-2 1l4 4l-3 1l4 4h-9\" /> <path d=\"M15 21l0 -3\" /> <path d=\"M8 13l-2 -2\" /> <path d=\"M8 12l2 -2\" /> <path d=\"M8 21v-13\" /> <path d=\"M5.824 16a3 3 0 0 1 -2.743 -3.69a3 3 0 0 1 .304 -4.833a3 3 0 0 1 4.615 -3.707a3 3 0 0 1 4.614 3.707a3 3 0 0 1 .305 4.833a3 3 0 0 1 -2.919 3.695h-4l-.176 -.005\" />"
+		},
+		{
+			"key": "music",
+			"name": "Musik",
+			"group": "ABSCHIED",
+			"terms": "musik orgel",
+			"svg": "<path d=\"M3 17a3 3 0 1 0 6 0a3 3 0 0 0 -6 0\" /> <path d=\"M13 17a3 3 0 1 0 6 0a3 3 0 0 0 -6 0\" /> <path d=\"M9 17v-13h10v13\" /> <path d=\"M9 8h10\" />"
+		},
+		{
+			"key": "microphone",
+			"name": "Trauerrede",
+			"group": "ABSCHIED",
+			"terms": "redner rede",
+			"svg": "<path d=\"M9 5a3 3 0 0 1 3 -3a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3a3 3 0 0 1 -3 -3l0 -5\" /> <path d=\"M5 10a7 7 0 0 0 14 0\" /> <path d=\"M8 21l8 0\" /> <path d=\"M12 17l0 4\" />"
+		},
+		{
+			"key": "book",
+			"name": "Kondolenzbuch",
+			"group": "ABSCHIED",
+			"terms": "buch kondolenz",
+			"svg": "<path d=\"M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0\" /> <path d=\"M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0\" /> <path d=\"M3 6l0 13\" /> <path d=\"M12 6l0 13\" /> <path d=\"M21 6l0 13\" />"
+		},
+		{
+			"key": "feather",
+			"name": "Trauerdruck",
+			"group": "ABSCHIED",
+			"terms": "druck karte anzeige",
+			"svg": "<path d=\"M4 20l10 -10m0 -5v5h5m-9 -1v5h5m-9 -1v5h5m-5 -5l4 -4l4 -4\" /> <path d=\"M19 10c.638 -.636 1 -1.515 1 -2.486a3.515 3.515 0 0 0 -3.517 -3.514c-.97 0 -1.847 .367 -2.483 1m-3 13l4 -4l4 -4\" />"
+		},
+		{
+			"key": "building-church",
+			"name": "Kapelle",
+			"group": "ABSCHIED",
+			"terms": "kapelle trauerhalle kirche",
+			"svg": "<path d=\"M3 21l18 0\" /> <path d=\"M10 21v-4a2 2 0 0 1 4 0v4\" /> <path d=\"M10 5l4 0\" /> <path d=\"M12 3l0 5\" /> <path d=\"M6 21v-7m-2 2l8 -8l8 8m-2 -2v7\" />"
+		},
+		{
+			"key": "check",
+			"name": "Erledigt",
+			"group": "STATUS",
+			"terms": "erledigt fertig",
+			"svg": "<path d=\"M5 12l5 5l10 -10\" />"
+		},
+		{
+			"key": "star",
+			"name": "Besonders",
+			"group": "STATUS",
+			"terms": "stern besonders wichtig",
+			"svg": "<path d=\"M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245\" />"
+		},
+		{
+			"key": "heart-handshake",
+			"name": "Folgeauftrag",
+			"group": "STATUS",
+			"terms": "nachsorge folgeauftrag grabpflege",
+			"svg": "<path d=\"M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572\" /> <path d=\"M12 6l-3.293 3.293a1 1 0 0 0 0 1.414l.543 .543c.69 .69 1.81 .69 2.5 0l1 -1a3.182 3.182 0 0 1 4.5 0l2.25 2.25\" /> <path d=\"M12.5 15.5l2 2\" /> <path d=\"M15 13l2 2\" />"
+		},
+		{
+			"key": "bookmark",
+			"name": "Vorgemerkt",
+			"group": "STATUS",
+			"terms": "merken vorgemerkt",
+			"svg": "<path d=\"M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4\" />"
+		},
+		{
+			"key": "tag",
+			"name": "Allgemein",
+			"group": "STATUS",
+			"terms": "marker markierung allgemein",
+			"svg": "<path d=\"M6.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0\" /> <path d=\"M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3\" />"
+		},
+		{
+			"key": "first-aid-kit",
+			"name": "Hygiene",
+			"group": "STATUS",
+			"terms": "hygiene infektion medizin",
+			"svg": "<path d=\"M8 8v-2a2 2 0 0 1 2 -2h4a2 2 0 0 1 2 2v2\" /> <path d=\"M4 10a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -8\" /> <path d=\"M10 14h4\" /> <path d=\"M12 12v4\" />"
+		},
+		{
+			"key": "wheelchair",
+			"name": "Barrierefrei",
+			"group": "STATUS",
+			"terms": "barrierefrei rollstuhl",
+			"svg": "<path d=\"M3 16a5 5 0 1 0 10 0a5 5 0 1 0 -10 0\" /> <path d=\"M17 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\" /> <path d=\"M19 17a3 3 0 0 0 -3 -3h-3.4\" /> <path d=\"M3 3h1a2 2 0 0 1 2 2v6\" /> <path d=\"M6 8h11\" /> <path d=\"M15 8v6\" />"
+		},
+		{
+			"key": "baby-carriage",
+			"name": "Kind",
+			"group": "STATUS",
+			"terms": "kind sternenkind baby",
+			"svg": "<path d=\"M6 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\" /> <path d=\"M16 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0\" /> <path d=\"M2 5h2.5l1.632 4.897a6 6 0 0 0 5.693 4.103h2.675a5.5 5.5 0 0 0 0 -11h-.5v6\" /> <path d=\"M6 9h14\" /> <path d=\"M9 17l1 -3\" /> <path d=\"M16 14l1 3\" />"
+		}
+	]
+}
