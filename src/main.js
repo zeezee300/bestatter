@@ -8,6 +8,7 @@ import { createProcessModule } from './modules/process.js'
 import { createLabelsModule } from './modules/labels.js'
 import { createDocumentKindsModule } from './modules/document-kinds.js'
 import { createNavigation } from './modules/navigation.js'
+import { createCaseGuidance } from './modules/case-guidance.js'; import { createDocumentTemplatesModule } from './modules/document-templates.js'
 import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 (function () {
 	'use strict'; const root = document.getElementById('bestatter-app'); if (!root) return
@@ -251,6 +252,8 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const context = {
 		root, urls, apiBase, appVersion, state, applyCatalog, mainNavigation, recordLabels, sections, labels, listMap, fixedOptions, api, download, ui, notifySuccess, notifyError, notifyWarning, confirmAction, promptAction, title, render, loadRecordType, loadSideOrders, loadCaseFiles, loadAllCaseFiles, uploadCaseFile, syncGroupware, refreshGroupwareSilently, bind, bindMasterForm, bindOrderForm, bindCommercial, showNewCase, openDeepLinkedTask, recordUrl, recordItemUrl, articleUrl, caseServicesUrl, sideOrdersUrl, commercialUrl, schedulePresetsUrl, schedulingUrl, documentTemplateUrl, documentTemplateOptionsUrl, deregistrationTemplateUrl, deregistrationUrl, documentUrl, caseFilesUrl, allCaseFilesUrl, branchUrl, invoiceSettingsUrl, actionsUrl, executeActionUrl, esc, recordCaseNumber, recordAssigneeUid, recordAssigneeName, recordCase, recordBranch, createToken,
 	}
+	const caseGuidance = createCaseGuidance(context); const documentTemplatesModule = createDocumentTemplatesModule(context)
+	Object.assign(context, caseGuidance, documentTemplatesModule)
 	const assistantModule = createAssistantModule(context)
 	Object.assign(context, assistantModule)
 	const { guidedCaptureView, assistantSidebarView, bindAssistant, initializeAssistantCapture } = assistantModule
@@ -272,7 +275,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const { orderField, funeralScope, hydrateServiceDraft, loadCaseServices, serviceConflictMessages, saveCaseServices, serviceSelectionPanel, orderPanel, bindServiceSelection, showInvoiceDraftForm, showCreditNoteForm, finalizeCommercialDocument, relationOptions, orderTypes, commissioningTypes, euro, formatMoney, costTypeLabels, unitLabels, quantityStep, formatQuantity, serviceSaveTimer } = commercialModule
 	const documentsModule = createDocumentsModule(context)
 	Object.assign(context, documentsModule)
-	const { caseContactsPanel, showCaseContactForm, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, showDeregistrationMailDialog, documentPanel, showBusinessMailDialog, showPaperContractUpload, showPaperContractReview, showFilePreview, showOrderDocumentPreview, showInvoiceDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog } = documentsModule
+	const { caseContactsPanel, showCaseContactForm, bindCaseContacts, chooseDuplicate, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, showDeregistrationMailDialog, documentPanel, showBusinessMailDialog, showPaperContractUpload, showPaperContractReview, showFilePreview, showOrderDocumentPreview, showInvoiceDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog } = documentsModule
 	const orderFormModule = createOrderFormModule(context)
 	Object.assign(context, orderFormModule)
 	const { bindOrderFormEntry, bindOrderFormAdmin } = orderFormModule
@@ -445,7 +448,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			if (state.customizingTab === 'scheduling') state.scheduling = await api(schedulingUrl())
 			if (state.customizingTab === 'surcharges') state.surchargeRules = await api(`${apiBase}/customizing/surcharges`)
 			if (state.customizingTab === 'burial-rules') state.burialVariantRules = await api(`${apiBase}/customizing/burial-rules`)
-			if (state.customizingTab === 'documents') [state.documentTemplates, state.documentTemplateOptions] = await Promise.all([api(documentTemplateUrl()), api(documentTemplateOptionsUrl())])
+			if (state.customizingTab === 'documents') { [state.documentTemplates, state.documentTemplateOptions] = await Promise.all([api(documentTemplateUrl()), api(documentTemplateOptionsUrl())]); state.documentTemplateFiles = null; state.documentTemplateEditing = null }
 			if (state.customizingTab === 'deregistration') { [state.deregistrationTemplates] = await Promise.all([api(deregistrationTemplateUrl()), loadRecordType('contact')]) }
 			render()
 		}))
@@ -519,8 +522,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 				notifyError(error.message)
 			}
 		}))
-		document.getElementById('assign-case-contact')?.addEventListener('click', () => showCaseContactForm())
-		root.querySelectorAll('.edit-case-contact').forEach((button) => button.addEventListener('click', () => showCaseContactForm((state.records.case_contact || []).find((entry) => entry.id === Number(button.dataset.id)))))
+		bindCaseContacts()
 		document.getElementById('new-deregistration')?.addEventListener('click', () => showDeregistrationForm())
 		root.querySelectorAll('.edit-deregistration').forEach((button) => button.addEventListener('click', () => showDeregistrationForm((state.records.deregistration || []).find((entry) => entry.id === Number(button.dataset.id)))))
 		root.querySelectorAll('.preview-deregistration').forEach((button) => button.addEventListener('click', async () => { const item = (state.records.deregistration || []).find((entry) => entry.id === Number(button.dataset.id)); if(!item)return; const preview=await api(`${deregistrationUrl(state.currentCase.id)}/preview`,{method:'POST',body:new URLSearchParams({deregistration:JSON.stringify(item.data||{})})}); if(preview.previewMode==='LETTER')showLetterPreview(preview);else showTextPreview(item.title,preview.subject,preview.body,preview.missingFields) }))
@@ -564,6 +566,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		root.querySelectorAll('.bp-add-contact').forEach((button) => button.addEventListener('click', () => showContactForm(button.dataset.contactCategory, button.dataset.contactTarget)))
 		bindMasterForm()
 		bindOrderForm()
+		caseGuidance.bindCaseGuidance(); documentTemplatesModule.bindDocumentTemplates()
 		bindCommercial()
 		bindServiceSelection()
 		bindOrderFormEntry(); bindOrderFormAdmin(); bindBranchLogos(); bindSetupPackage()
@@ -587,6 +590,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		const form = document.getElementById('case-form'); if (!form) return
 		const stateLabel = document.getElementById('case-save-state'); let timer = null
 		const save = async () => {
+			clearTimeout(timer); caseGuidance.clearPendingSave('case')
 			if (state.createInFlight) return
 			const formData = Object.fromEntries(new FormData(form))
 			const data = { ...(state.currentCase.masterData || {}), ...formData }
@@ -594,17 +598,17 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			stateLabel.textContent = 'Speichert …'; stateLabel.dataset.state = 'saving'
 			state.createInFlight = state.newCase
 			try {
-				const result = await api(state.newCase ? urls.cases : `${urls.cases}/${state.currentCase.id}/master-data`, { method: state.newCase ? 'POST' : 'PUT', feedback: false, body: new URLSearchParams({ masterData: JSON.stringify(data), firstName: data.first_name, lastName: data.last_name, creationToken: state.caseCreationToken || '', ...(state.newCase ? { labels: JSON.stringify((state.currentCase.labels || []).map((label) => ({ key: label.key, value: label.value || '', ...(label.note ? { note: label.note } : {}) }))) } : { expectedUpdatedAt: state.currentCase.updatedAt || '' }) }) })
+				const result = await caseGuidance.trackSave(api(state.newCase ? urls.cases : `${urls.cases}/${state.currentCase.id}/master-data`, { method: state.newCase ? 'POST' : 'PUT', feedback: false, body: new URLSearchParams({ masterData: JSON.stringify(data), firstName: data.first_name, lastName: data.last_name, creationToken: state.caseCreationToken || '', ...(state.newCase ? { labels: JSON.stringify((state.currentCase.labels || []).map((label) => ({ key: label.key, value: label.value || '', ...(label.note ? { note: label.note } : {}) }))) } : { expectedUpdatedAt: state.currentCase.updatedAt || '' }) }) }))
 				const created = state.newCase
 				if (state.newCase) { state.newCase = false; state.caseCreationToken = null; state.currentCase = await api(`${urls.cases}/${result.id}`); state.cases = await api(urls.cases); unlockCaseTabs() } else { state.currentCase = result; updateCaseHeading() }
 				state.caseCompleteness = await api(`${apiBase}/cases/${state.currentCase.id}/completeness`, { feedback: false })
 				const warnings = Array.isArray(state.currentCase.validationWarnings) ? state.currentCase.validationWarnings : []; stateLabel.textContent = warnings.length ? `Gespeichert – Hinweis: ${warnings.join(' ')}` : 'Gespeichert'; stateLabel.dataset.state = warnings.length ? 'warning' : 'saved'
 				// 0.82.1: Nach dem ersten Speichern eines neuen Falls den Kopf (Name, „Falldaten exportieren“, „Legal Hold setzen“, „Fall löschen“) vollständig
 				// zeigen – ohne Eingaben, Fokus oder Cursorposition im Formular zu verlieren.
-				if (created) rerenderKeepingCaseForm(stateLabel.textContent, stateLabel.dataset.state)
+				if (created) { await caseGuidance.afterCaseCreated(); /* 0.88.1: Hinweis auf die entstandenen Aufgaben */ rerenderKeepingCaseForm(stateLabel.textContent, stateLabel.dataset.state) }
 			} catch (error) { stateLabel.textContent = error.message; stateLabel.dataset.state = 'error' } finally { state.createInFlight = false }
 		}
-		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550) })))
+		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550); caseGuidance.registerPendingSave('case', save) })))
 		form.querySelectorAll('[data-burial-level]').forEach((select) => select.addEventListener('change', async () => {
 			const depth = Number(select.dataset.burialLevel || 0)
 			const parentCode = depth ? form.querySelector(`[data-burial-level="${depth - 1}"]`)?.value || '' : ''
@@ -625,6 +629,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		const status = document.getElementById('order-save-state')
 		let timer = null
 		const save = async (signed = false) => {
+			clearTimeout(timer); caseGuidance.clearPendingSave('order')
 			const data = Object.fromEntries(new FormData(form))
 			delete data.order_mode_choice // reine UI-Auswahl; fachlich gilt order_mode
 			data.order_mode = form.elements.order_mode.value
@@ -648,7 +653,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			status.dataset.state = 'saving'
 			try {
 				const masterData = { ...(state.currentCase.masterData || {}), ...data }
-				state.currentCase = await api(`${urls.cases}/${state.currentCase.id}/master-data`, { method: 'PUT', feedback: false, body: new URLSearchParams({ masterData: JSON.stringify(masterData), firstName: state.currentCase.firstName, lastName: state.currentCase.lastName, expectedUpdatedAt: state.currentCase.updatedAt || '' }) })
+				state.currentCase = await caseGuidance.trackSave(api(`${urls.cases}/${state.currentCase.id}/master-data`, { method: 'PUT', feedback: false, body: new URLSearchParams({ masterData: JSON.stringify(masterData), firstName: state.currentCase.firstName, lastName: state.currentCase.lastName, expectedUpdatedAt: state.currentCase.updatedAt || '' }) }))
 				status.textContent = signed ? 'Digital best\u00e4tigt und gespeichert.' : 'Gespeichert'
 				status.dataset.state = 'saved'
 				return true
@@ -692,7 +697,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			form.querySelector('#sepa-direct-debit-fields')?.classList.toggle('bp-hidden', event.target.value !== 'SEPA_DIRECT_DEBIT')
 			clearTimeout(timer); timer = setTimeout(save, 150)
 		})
-		form.querySelectorAll('input:not([name="order_mode_choice"]),select:not([name="order_status"]),textarea').forEach((input) => ['input', 'change', 'blur'].forEach((eventName) => input.addEventListener(eventName, () => { clearTimeout(timer); timer = setTimeout(save, eventName === 'blur' ? 150 : 550) })))
+		form.querySelectorAll('input:not([name="order_mode_choice"]),select:not([name="order_status"]),textarea').forEach((input) => ['input', 'change', 'blur'].forEach((eventName) => input.addEventListener(eventName, () => { clearTimeout(timer); timer = setTimeout(save, eventName === 'blur' ? 150 : 550); caseGuidance.registerPendingSave('order', () => save()) })))
 		form.elements.order_status?.addEventListener('change', async (event) => {
 			const selected = event.target.value, mode = form.elements.order_mode.value
 			const finalizationType = mode === 'KVA' && selected === 'KVA versendet' ? 'QUOTE' : mode === 'A' && selected === 'beauftragt' ? 'ORDER' : ''
@@ -805,6 +810,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	/** 0.79.3: Nach dem ersten Speichern eines neuen Falls die Reiter freigeben, ohne neu zu zeichnen (Eingabefokus bleibt). */
 	function unlockCaseTabs() {
 		root.querySelectorAll('.bp-case-tabs [data-case-tab].is-locked').forEach((button) => { button.disabled = false; button.removeAttribute('aria-disabled'); button.classList.remove('is-locked'); button.title = `Arbeitsbereich ${button.textContent} öffnen.` })
+		root.querySelectorAll('#case-area-select option:disabled').forEach((option) => { option.disabled = false })
 		root.querySelector('.bp-case-unsaved-hint')?.remove()
 		const eyebrow = root.querySelector('.bp-page-head .bp-eyebrow')
 		if (eyebrow && state.currentCase?.caseNumber) eyebrow.textContent = `Fallakte ${state.currentCase.caseNumber}`
@@ -880,7 +886,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			state.labels = labelCatalog
 			await loadDocumentKinds().catch(() => {})
 			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; state.help.available = Boolean(helpAvailability?.available); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
-			initializeAssistantCapture()
+			initializeAssistantCapture(); await caseGuidance.loadRoleStatus()
 			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await loadProcess(state.currentCase.id); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
 			refreshGroupwareSilently().catch(() => {})
 		})

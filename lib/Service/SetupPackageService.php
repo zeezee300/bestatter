@@ -28,7 +28,7 @@ class SetupPackageService {
 	];
 	public const ACTION_LABELS = ['CREATE' => 'Neu anlegen', 'UPDATE' => 'Aktualisieren', 'REPLACE' => 'Ersetzen', 'COPY' => 'Als Kopie anlegen', 'SKIP' => 'Überspringen'];
 	/** Diese Dokumentvorlagen verwendet die App fest unter ihrem Schlüssel; eine Kopie würde nicht benutzt. */
-	private const SYSTEM_DOCUMENT_KEYS = ['RECHNUNG', 'BESTATTUNGSAUFTRAG', 'KOSTENVORANSCHLAG', 'KORREKTUR'];
+	private const SYSTEM_DOCUMENT_KEYS = ['RECHNUNG', 'BESTATTUNGSAUFTRAG', 'KOSTENVORANSCHLAG', 'BESTATTUNGSVOLLMACHT', 'WIDERRUFSBELEHRUNG', 'KORREKTUR'];
 
 	public function __construct(
 		private IDBConnection $db,

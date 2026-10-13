@@ -1,4 +1,4 @@
-import { PHASES, DEFAULT_META, stepSentence, clientWarnings, simulate, phaseProgress, euroToCents, centsToEuro, presetLabel, DOCUMENT_TRIGGERS, DEREGISTRATION_TRIGGERS, LABEL_TRIGGERS } from './process-logic.js'
+import { PHASES, DEFAULT_META, stepSentence, clientWarnings, simulate, phaseProgress, processStateCounts, processCountsText, euroToCents, centsToEuro, presetLabel, DOCUMENT_TRIGGERS, DEREGISTRATION_TRIGGERS, LABEL_TRIGGERS } from './process-logic.js'
 
 /**
  * Ablaufvorlagen in 7 Phasen (0.66.0): Fallcockpit (Phasenleiste, nächste Schritte, Fallmerkmale,
@@ -29,7 +29,7 @@ export function createProcessModule(ctx) {
 
 	async function loadProcess(caseId = state.currentCase?.id) {
 		if (!caseId) return null
-		if (Number(state.process?.caseId) !== Number(caseId)) { state.processPhaseOpen = 0; state.processPhaseToggles = {} }
+		if (Number(state.process?.caseId) !== Number(caseId)) { state.processPhaseOpen = 0; state.processPhaseToggles = {}; state.processPanelOpen = false }
 		try {
 			state.process = await api(processUrl(caseId), { feedback: false, loadingLabel: 'Ablauf wird abgeglichen …' })
 			if (state.process?.reconcile?.errors?.length) notifyWarning(`Einige Ablaufschritte konnten nicht angelegt werden: ${state.process.reconcile.errors.join(' · ')}`)
@@ -92,7 +92,8 @@ export function createProcessModule(ctx) {
 		const notes = []
 		if (view.reason) notes.push(`<small class="bp-step-reason">${esc(view.reason)}</small>`)
 		if (view.shortNotice && open) notes.push('<small class="bp-warning">Kurzfristig: Die reguläre Frist lag bereits in der Vergangenheit.</small>')
-		if (view.roleUnresolved && open) notes.push('<small class="bp-warning">Für die Rolle ist keine Nextcloud-Gruppe mit Mitgliedern eingerichtet – die Aufgabe liegt bei der Fallverantwortung.</small>')
+		// 0.88.1: kurze Marke statt eines Warnabsatzes je Schritt; die ausführliche Meldung steht einmal zentral (Fallanlage, Startseite).
+		if (view.roleUnresolved && open) notes.push(`<small class="bp-role-fallback" title="Für die Rolle ist keine Nextcloud-Gruppe mit Mitgliedern eingerichtet – die Aufgabe liegt bei der Fallverantwortung.">Rolle ${esc(view.roleLabel || 'unbekannt')} unbesetzt → Fallverantwortung</small>`)
 		if (view.autoCompleted) notes.push(`<small class="bp-step-reason">Automatisch erledigt: ${esc(view.autoCompletedReason)}</small>`)
 		if (view.state === 'skipped' && view.skipReason) notes.push(`<small class="bp-step-reason">Entfällt: ${esc(view.skipReason)}</small>`)
 		if (open && view.completion && view.completion !== 'von Hand abhaken') notes.push(`<small class="bp-step-reason">Hakt sich selbst ab, wenn: ${esc(view.completion)}</small>`)
@@ -133,7 +134,9 @@ export function createProcessModule(ctx) {
 		if (!process || process.error || Number(process.caseId) !== Number(state.currentCase?.id)) return ''
 		const steps = (process.phases || []).flatMap((phase) => phase.steps || []).filter((view) => view.scheduleRelated && ['open', 'overdue', 'pending'].includes(view.state))
 		const list = steps.length ? `<div class="bp-step-list">${steps.map((view) => stepRow(view, { compact: true })).join('')}</div>` : '<p class="bp-empty">Kein Terminschritt offen.</p>'
-		return `<section class="bp-panel bp-process-schedule" aria-labelledby="process-schedule-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Ablauf</p><h3 id="process-schedule-title">Terminschritte</h3><p class="bp-muted">Offene Schritte rund um Termine: Termin vereinbaren, auf einen bestätigten Termin vorbereiten oder einen stattgefundenen Termin nachbereiten.</p></div><button type="button" class="bp-secondary" data-process-phase-open-tab="task">Alle Schritte</button></div><div class="bp-process-header-bar">${phaseBar(process)}</div>${list}</section>`
+		// 0.88.1: steht unter der Terminliste und lässt sich einklappen.
+		const open = state.processScheduleOpen !== false
+		return `<details class="bp-panel bp-process-schedule bp-process-collapsible" id="process-schedule-details" ${open ? 'open' : ''}><summary><span class="bp-eyebrow">Ablauf</span><b id="process-schedule-title">Terminschritte</b><small>${steps.length} offen</small></summary><div class="bp-panel-head"><p class="bp-muted">Offene Schritte rund um Termine: Termin vereinbaren, auf einen bestätigten Termin vorbereiten oder einen stattgefundenen Termin nachbereiten.</p><button type="button" class="bp-secondary" data-process-phase-open-tab="task">Alle Schritte</button></div><div class="bp-process-header-bar">${phaseBar(process)}</div>${list}</details>`
 	}
 
 	function processOverviewCard() {
@@ -141,10 +144,11 @@ export function createProcessModule(ctx) {
 		if (!process || Number(process.caseId) !== Number(state.currentCase?.id)) return '<section class="bp-panel bp-process-card"><p class="bp-muted">Ablauf wird geladen …</p></section>'
 		if (process.error) return `<section class="bp-panel bp-process-card"><p class="bp-error">Der Ablauf konnte nicht geladen werden: ${esc(process.error)}</p></section>`
 		const totals = (process.phases || []).reduce((sum, phase) => ({ total: sum.total + phase.total, done: sum.done + phase.done, overdue: sum.overdue + phase.overdue }), { total: 0, done: 0, overdue: 0 })
+		const counts = processStateCounts(process.phases || [])
 		const next = (process.nextSteps || []).map((view) => stepRow(view, { compact: true })).join('') || '<p class="bp-empty">Aktuell ist kein Schritt offen.</p>'
 		const closure = process.closure || {}
 		const closeButton = closure.alreadyClosed ? '<span class="bp-status ready">Fall abgeschlossen</span>' : `<button type="button" class="${closure.closable ? 'bp-primary' : 'bp-secondary'}" id="open-closure" title="Abschlussprüfung anzeigen">Fall abschließen …</button>`
-		return `<section class="bp-panel bp-process-card" aria-labelledby="process-card-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Ablauf</p><h3 id="process-card-title">${totals.done} von ${totals.total} Schritten erledigt${totals.overdue ? ` · <span class="bp-warning-text">${totals.overdue} überfällig</span>` : ''}</h3></div><div class="bp-head-actions"><button type="button" class="bp-secondary" data-case-tab="task" data-process-reset-phases>Alle Schritte</button>${closeButton}</div></div>${phaseBar(process)}<div class="bp-process-grid"><div class="bp-next-steps"><h4>Nächste Schritte</h4>${next}</div>${attributesForm(process)}</div></section>`
+		return `<section class="bp-panel bp-process-card" aria-labelledby="process-card-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Ablauf</p><h3 id="process-card-title">${esc(processCountsText(counts))}${totals.overdue ? ` · <span class="bp-warning-text">${totals.overdue} überfällig</span>` : ''}</h3><p class="bp-muted bp-process-total">Insgesamt ${totals.done} von ${totals.total} Schritten erledigt. „Später“ sind Schritte, deren Auslöser noch nicht eingetreten ist – zum Beispiel erst nach dem Auftrag.</p></div><div class="bp-head-actions"><button type="button" class="bp-secondary" data-case-tab="task" data-process-reset-phases>Alle Schritte</button>${closeButton}</div></div>${phaseBar(process)}<div class="bp-process-grid"><div class="bp-next-steps"><h4>Nächste Schritte</h4>${next}</div>${attributesForm(process)}</div></section>`
 	}
 
 	function processTaskPanel() {
@@ -166,7 +170,11 @@ export function createProcessModule(ctx) {
 		const option = (step) => `<option value="${step.stepId}">${esc(`${step.phase} · ${step.title}${step.templateName ? ` (${step.templateName})` : ''}`)}</option>`
 		const addStep = manual.length ? `<label class="bp-inline-field"><span>Schritt hinzufügen</span><select id="process-add-step"><option value="">– auswählen –</option>${newSteps.length ? `<optgroup label="Neu in der Vorlage (nach Start dieses Falls)">${newSteps.map(option).join('')}</optgroup>` : ''}${otherSteps.length ? `<optgroup label="Vorziehen bzw. nur von Hand">${otherSteps.map(option).join('')}</optgroup>` : ''}</select></label><button type="button" class="bp-secondary" id="process-add-step-button">Hinzufügen</button>` : ''
 		const newHint = newSteps.length ? `<aside class="bp-compliance-note"><b>Bestandsschutz:</b> ${newSteps.length} Schritt(e) sind erst nach Start dieses Falls in eine Ablaufvorlage gekommen und werden hier nicht automatisch angelegt. Bei Bedarf über „Schritt hinzufügen“ übernehmen.</aside>` : ''
-		return `<section class="bp-panel bp-process-panel" aria-labelledby="process-panel-title"><div class="bp-panel-head"><div><p class="bp-eyebrow">Ablauf</p><h3 id="process-panel-title">Schritte nach Phasen</h3><p class="bp-muted">Schritte entstehen automatisch, sobald ihr Auslöser eintritt (z. B. Auftrag erteilt, Termin bestätigt). „Entfällt“ markiert einen Schritt als nicht zutreffend.</p></div><div class="bp-head-actions"><label class="bp-inline-check"><input type="checkbox" id="process-hide-done" ${hideDone ? 'checked' : ''}> Erledigte ausblenden</label>${addStep}</div></div>${newHint}${phaseBar(process)}${phases}${emptyPhases.length ? `<p class="bp-muted bp-process-empty-phases">Ohne Schritte in diesem Fall: ${emptyPhases.map((phase) => esc(`${phase.phase} ${phase.label}`)).join(' · ')}</p>` : ''}</section>`
+		// 0.88.1: Die Aufgabenliste steht oben; der Ablauf nach Phasen folgt darunter und ist eingeklappt, bis eine Phase gewählt
+		// oder der Bereich geöffnet wird.
+		const counts = processStateCounts(process.phases || [])
+		const panelOpen = Boolean(state.processPanelOpen || openPhase)
+		return `<details class="bp-panel bp-process-panel bp-process-collapsible" id="process-panel-details" ${panelOpen ? 'open' : ''}><summary><span class="bp-eyebrow">Ablauf</span><b id="process-panel-title">Schritte nach Phasen</b><small>${esc(processCountsText(counts))}${counts.overdue ? ` · ${counts.overdue} überfällig` : ''}</small></summary><div class="bp-panel-head"><p class="bp-muted">Schritte entstehen automatisch, sobald ihr Auslöser eintritt (z. B. Auftrag erteilt, Termin bestätigt). „Entfällt“ markiert einen Schritt als nicht zutreffend.</p><div class="bp-head-actions"><label class="bp-inline-check"><input type="checkbox" id="process-hide-done" ${hideDone ? 'checked' : ''}> Erledigte ausblenden</label>${addStep}</div></div>${newHint}${phaseBar(process)}${phases}${emptyPhases.length ? `<p class="bp-muted bp-process-empty-phases">Ohne Schritte in diesem Fall: ${emptyPhases.map((phase) => esc(`${phase.phase} ${phase.label}`)).join(' · ')}</p>` : ''}</details>`
 	}
 
 	// ------------------------------------------------------------ Fall: Aktionen
@@ -332,6 +340,7 @@ export function createProcessModule(ctx) {
 		root.querySelectorAll('[data-process-phase]').forEach((button) => button.addEventListener('click', () => {
 			state.processPhaseOpen = Number(button.dataset.processPhase)
 			state.processPhaseToggles = { [state.processPhaseOpen]: true }
+			state.processPhaseScroll = true
 			if (state.caseTab !== 'task') openCaseTab('task'); else render()
 		}))
 		// Nur echte Klicks merken (das toggle-Ereignis feuert auch beim Rendern geöffneter Phasen).
@@ -339,8 +348,13 @@ export function createProcessModule(ctx) {
 			const details = summary.parentElement
 			state.processPhaseToggles = { ...(state.processPhaseToggles || {}), [Number(details.dataset.processPhaseDetails)]: !details.open }
 		}))
-		root.querySelectorAll('[data-process-phase-open-tab]').forEach((button) => button.addEventListener('click', () => { state.processPhaseOpen = 0; state.processPhaseToggles = {}; openCaseTab(button.dataset.processPhaseOpenTab) }))
-		root.querySelectorAll('[data-process-reset-phases]').forEach((button) => button.addEventListener('click', () => { state.processPhaseOpen = 0; state.processPhaseToggles = {} }, { capture: true }))
+		root.querySelectorAll('[data-process-phase-open-tab]').forEach((button) => button.addEventListener('click', () => { state.processPhaseOpen = 0; state.processPhaseToggles = {}; state.processPanelOpen = true; openCaseTab(button.dataset.processPhaseOpenTab) }))
+		root.querySelectorAll('[data-process-reset-phases]').forEach((button) => button.addEventListener('click', () => { state.processPhaseOpen = 0; state.processPhaseToggles = {}; state.processPanelOpen = true }, { capture: true }))
+		// 0.88.1: Auf- und Zuklappen von Ablauf (Aufgaben) und Terminschritten merken.
+		root.querySelector('#process-panel-details > summary')?.addEventListener('click', (event) => { const details = event.currentTarget.parentElement; state.processPanelOpen = !details.open; if (details.open) state.processPhaseOpen = 0 })
+		root.querySelector('#process-schedule-details > summary')?.addEventListener('click', (event) => { state.processScheduleOpen = !event.currentTarget.parentElement.open })
+		if (state.caseTab === 'task' && state.processPhaseScroll && Number(state.processPhaseOpen || 0)) requestAnimationFrame(() => root.querySelector(`[data-process-phase-details="${Number(state.processPhaseOpen)}"]`)?.scrollIntoView({ block: 'start' }))
+		state.processPhaseScroll = false
 		root.querySelector('#process-hide-done')?.addEventListener('change', (event) => { state.processHideDone = event.target.checked; globalThis.localStorage?.setItem('bestatter:process-hide-done', event.target.checked ? '1' : '0'); render() })
 		root.querySelectorAll('[data-process-complete]').forEach((button) => button.addEventListener('click', async () => {
 			button.disabled = true

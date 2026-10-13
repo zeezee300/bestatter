@@ -60,6 +60,8 @@ class CaseDeletionService {
 			$notices[] = ['code' => $code, 'text' => $label . ': gesetzliche Aufbewahrung (' . $years . ' Jahre) läuft bis ' . $latest->format('d.m.Y') . '. Bitte vor dem Löschen sicherstellen, dass die Belege in der Buchhaltung (z. B. DATEV) archiviert sind.'];
 		}
 		$paperless = $this->paperlessDocuments($caseId);
+		$addressBook = $this->addressBookNotice($caseId);
+		if ($addressBook !== null) $notices[] = $addressBook;
 		if ($paperless > 0) $notices[] = ['code' => 'PAPERLESS', 'text' => $paperless . ' Dokument' . ($paperless === 1 ? '' : 'e') . ' in Paperless ' . ($paperless === 1 ? 'wird' : 'werden') . ' nicht mitgelöscht. Bitte bei Bedarf in Paperless entfernen.'];
 		return $notices;
 	}
@@ -127,6 +129,29 @@ class CaseDeletionService {
 		foreach ($entries as $entry) if (!$entry['folder']->isDeletable()) throw new \RuntimeException('Fallordner ist nicht löschbar: ' . $entry['label']);
 		foreach ($entries as $entry) { $this->permanent->delete($entry['folder']); $result['deleted'][] = $entry['label']; }
 		return $result;
+	}
+
+	/**
+	 * 0.86.0: Personen des Falls, die auf Wunsch ins Nextcloud-Adressbuch übernommen wurden (Auftraggeber/in oder „nur für
+	 * diesen Fall“ erfasste Personen). Löschen und Anonymisieren entfernen nur die Zuordnung im Fall, nicht den
+	 * Adressbucheintrag – darauf weist dieser Hinweis hin. Gilt für beide Modi (Löschen und Anonymisieren).
+	 * @return array{code:string,text:string}|null
+	 */
+	public function addressBookNotice(int $caseId): ?array {
+		$query = $this->db->getQueryBuilder();
+		$rows = $query->select('title', 'payload')->from('bestatter_records')
+			->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))
+			->andWhere($query->expr()->eq('record_type', $query->createNamedParameter('case_contact')))
+			->executeQuery()->fetchAllAssociative();
+		$names = [];
+		foreach ($rows as $row) {
+			$data = json_decode((string)($row['payload'] ?? '{}'), true) ?: [];
+			$source = (string)($data['source'] ?? '');
+			$linked = ($source === 'order-client' && !empty($data['contactId'])) || ($source === 'case-person' && !empty($data['addressBook']['contactId']));
+			if ($linked) $names[] = trim((string)$row['title']) ?: 'ohne Namen';
+		}
+		if ($names === []) return null;
+		return ['code' => 'ADDRESS_BOOK', 'text' => (count($names) === 1 ? '1 Person dieses Falls steht' : count($names) . ' Personen dieses Falls stehen') . ' im Nextcloud-Adressbuch (' . implode(', ', array_slice($names, 0, 5)) . (count($names) > 5 ? ', …' : '') . '). Diese Einträge werden nicht mitgelöscht; bitte bei Bedarf in Nextcloud Kontakte entfernen.'];
 	}
 
 	private function paperlessDocuments(int $caseId): int {

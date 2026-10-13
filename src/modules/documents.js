@@ -27,20 +27,166 @@ export function createDocumentsModule(ctx) {
 	const title = (...args) => ctx.title(...args)
 	const notifySuccess = (...args) => ctx.notifySuccess(...args)
 	const notifyWarning = (...args) => ctx.notifyWarning(...args)
+	const notifyError = (...args) => ctx.notifyError(...args)
 	const confirmAction = (...args) => ctx.confirmAction(...args)
 
+	// 0.86.0: Fallbezogene Kontakte. Die Auftraggeberin / der Auftraggeber kommt aus dem Auftrag (keine Kopie), weitere
+	// Angehörige lassen sich „nur für diesen Fall“ erfassen. Ins Adressbuch geht eine Person nur auf ausdrücklichen Wunsch,
+	// nach einer Dublettenprüfung; die Verknüpfung wird im Fall gespeichert.
+	const caseContactRecords = () => (state.records.case_contact || []).filter((item) => item.caseId === state.currentCase.id)
+	const orderClientLink = () => caseContactRecords().find((item) => item.data?.source === 'order-client')
+
+	function orderClientPerson() {
+		const master = state.currentCase?.masterData || {}
+		const postalCity = String(master.order_client_postal_city || '').trim()
+		const postal = postalCity.match(/^(\d{4,5})\s+(.+)$/)
+		return {
+			salutation: master.order_client_salutation || '', firstName: String(master.order_client_first_name || '').trim(), lastName: String(master.order_client_name || '').trim(),
+			relation: String(master.order_client_relation || '').trim(), street: String(master.order_client_street || '').trim(), postalCode: postal ? postal[1] : '', city: postal ? postal[2] : postalCity,
+			country: master.order_client_country || '', phone: String(master.order_client_phone || '').trim(), mobile: String(master.order_client_mobile || '').trim(), email: String(master.order_client_email || '').trim(),
+		}
+	}
+
+	function personLines(person) {
+		const address = [person.street, [person.postalCode, person.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+		return [address, [person.mobile && `Mobil ${person.mobile}`, person.phone && `Tel. ${person.phone}`].filter(Boolean).join(' · '), person.email].filter(Boolean)
+	}
+
+	function personCard({ name, role, badges, lines, actions }) {
+		return `<article class="bp-person-card"><div><b>${esc(name)}</b><small>${esc(role)}</small><div class="bp-person-badges">${badges.map(([label, kind]) => `<span class="bp-status ${kind || ''}">${esc(label)}</span>`).join('')}</div>${lines.length ? `<ul>${lines.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>` : ''}</div><div class="bp-row-actions">${actions}</div></article>`
+	}
+
 	function caseContactsPanel() {
-		const records = (state.records.case_contact || []).filter((item) => item.caseId === state.currentCase.id)
-		const rows = records.map((item) => `<article class="bp-record-row"><span class="bp-record-check">♟</span><button class="bp-record-content edit-case-contact" data-id="${item.id}"><b>${esc(item.title)}</b><small>${esc(item.data?.role || 'Fallkontakt')} · Nextcloud-Kontaktzuordnung</small></button><button class="bp-secondary edit-case-contact" data-id="${item.id}">Bearbeiten</button></article>`).join('')
-		return `<div class="bp-page-head"><div><p class="bp-eyebrow">Kontakte</p><h2>Fallbezogene Kontakte</h2><p class="bp-muted">Kontaktdaten bleiben zentral in Nextcloud Contacts; hier werden nur Rolle und Zuordnung zum Fall gespeichert.</p></div><button class="bp-primary" id="assign-case-contact">Kontakt zuordnen</button></div><section class="bp-panel bp-record-panel"><div class="bp-record-list">${rows || '<p class="bp-empty">Noch keine Kontakte zugeordnet.</p>'}</div></section>`
+		const client = orderClientPerson()
+		const link = orderClientLink()
+		const clientCard = client.firstName && client.lastName
+			? personCard({ name: `${client.firstName} ${client.lastName}`, role: `Auftraggeber/in${client.relation ? ` · ${client.relation}` : ''}`, badges: [['aus dem Auftrag', ''], ...(link ? [['im Adressbuch', 'ready']] : [])], lines: personLines(client),
+				actions: `<button type="button" class="bp-secondary" data-case-tab="order">Im Auftrag bearbeiten</button><button type="button" class="bp-secondary" id="order-client-address-book">${link ? 'Adressbuch-Eintrag aktualisieren' : 'Ins Adressbuch übernehmen'}</button>` })
+			: `<article class="bp-person-card bp-person-card-empty"><div><b>Auftraggeber/in</b><small>Noch nicht im Auftrag erfasst. Sobald Vor- und Nachname im Auftrag stehen, erscheint die Person hier.</small></div><div class="bp-row-actions"><button type="button" class="bp-secondary" data-case-tab="order">Auftrag öffnen</button></div></article>`
+		const others = caseContactRecords().filter((item) => item.data?.source !== 'order-client').map((item) => {
+			if (item.data?.source === 'case-person') {
+				const person = item.data.person || {}
+				return personCard({ name: item.title, role: item.data.role || 'Angehörige/r', badges: [['nur in diesem Fall', ''], ...(item.data.addressBook?.contactId ? [['im Adressbuch', 'ready']] : [])], lines: [...personLines(person), person.note].filter(Boolean),
+					actions: `<button type="button" class="bp-secondary edit-case-contact" data-id="${item.id}">Bearbeiten</button><button type="button" class="bp-secondary case-person-address-book" data-id="${item.id}">${item.data.addressBook?.contactId ? 'Adressbuch-Eintrag aktualisieren' : 'Ins Adressbuch übernehmen'}</button><button type="button" class="bp-secondary remove-case-contact" data-id="${item.id}">Entfernen</button>` })
+			}
+			return personCard({ name: item.title, role: item.data?.role || 'Fallkontakt', badges: [['Adressbuch', '']], lines: [item.data?.contactSnapshot?.addressText || String(item.data?.contactSnapshot?.address || '').split(';').filter(Boolean).join(', '), item.data?.contactSnapshot?.phone, item.data?.contactSnapshot?.email].filter(Boolean),
+				actions: `<button type="button" class="bp-secondary edit-case-contact" data-id="${item.id}">Bearbeiten</button><button type="button" class="bp-secondary remove-case-contact" data-id="${item.id}">Entfernen</button>` })
+		}).join('')
+		return `<div class="bp-page-head"><div><p class="bp-eyebrow">Kontakte</p><h2>Fallbezogene Kontakte</h2><p class="bp-muted">Die Auftraggeberin bzw. der Auftraggeber kommt aus dem Auftrag. Behörden, Friedhöfe und Dienstleister ordnen Sie aus dem Adressbuch zu; weitere Angehörige können Sie nur für diesen Fall erfassen.</p></div><button class="bp-primary" id="assign-case-contact">Kontakt zuordnen</button></div>
+			<section class="bp-panel bp-person-list"><h3>Auftraggeber/in</h3>${clientCard}</section>
+			<section class="bp-panel bp-person-list"><h3>Weitere Kontakte</h3>${others || '<p class="bp-empty">Noch keine weiteren Kontakte zugeordnet.</p>'}</section>`
+	}
+
+	const sameName = (a, b) => normalizeName(a) !== '' && normalizeName(a) === normalizeName(b)
+	function normalizeName(value) {
+		return String(value || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ').filter((token) => token && !['herr', 'frau', 'dr', 'prof'].includes(token)).sort().join(' ')
 	}
 
 	function showCaseContactForm(item = null) {
+		const isPerson = item ? item.data?.source === 'case-person' : false
+		const person = item?.data?.person || {}
 		const currentId = item?.data?.contactId || ''
-		const options = state.records.contact.map((contact) => `<option value="${esc(contact.id)}" ${String(contact.id) === String(currentId) ? 'selected' : ''}>${esc(contact.title)} · ${esc(contact.data?.categories || '')}</option>`).join('')
-		root.insertAdjacentHTML('beforeend', `<div class="bp-modal"><form id="case-contact-form"><h2>Fallkontakt ${item ? 'bearbeiten' : 'zuordnen'}</h2><label>Nextcloud-Kontakt<select name="contactId" required><option value="">Kontakt wählen</option>${options}</select></label><label>Rolle im Fall<input name="role" value="${esc(item?.data?.role || '')}" placeholder="z. B. Tochter, Standesamt, Friedhof" required></label><div class="bp-modal-actions"><button type="button" class="bp-secondary" data-close-modal>Abbrechen</button><button class="bp-primary">Zuordnung speichern</button></div></form></div>`)
+		const options = state.records.contact.filter((contact) => contact.data?.source !== 'nextcloud-group').map((contact) => `<option value="${esc(contact.id)}" ${String(contact.id) === String(currentId) ? 'selected' : ''}>${esc(contact.title)} · ${esc(contact.data?.categories || '')}</option>`).join('')
+		const input = (name, label, value = '', attrs = '') => `<label><span>${esc(label)}</span><input name="${name}" value="${esc(value)}" ${attrs}></label>`
+		const modeSwitch = item ? '' : `<fieldset class="bp-contact-mode"><legend>Art des Kontakts</legend><label class="bp-inline-check"><input type="radio" name="mode" value="book" checked> <span>Kontakt aus dem Adressbuch</span></label><label class="bp-inline-check"><input type="radio" name="mode" value="person"> <span>Person nur für diesen Fall erfassen</span></label></fieldset>`
+		root.insertAdjacentHTML('beforeend', `<div class="bp-modal"><form id="case-contact-form" class="bp-case-contact-form"><h2>Fallkontakt ${item ? 'bearbeiten' : 'zuordnen'}</h2>${modeSwitch}
+			<div data-mode-panel="book" ${isPerson ? 'hidden' : ''}><label>Nextcloud-Kontakt<select name="contactId"><option value="">Kontakt wählen</option>${options}</select></label></div>
+			<div data-mode-panel="person" ${isPerson ? '' : 'hidden'}><p class="bp-muted">Für Angehörige, die nur zu diesem Fall gehören. Die Angaben werden mit dem Fall gelöscht bzw. anonymisiert und erscheinen nicht im Adressbuch, solange Sie sie nicht ausdrücklich übernehmen.</p><div class="bp-form-grid">${input('salutation', 'Anrede', person.salutation)}${input('firstName', 'Vorname', person.firstName)}${input('lastName', 'Nachname', person.lastName)}${input('mobile', 'Mobilfunknummer', person.mobile, 'type="tel"')}${input('phone', 'Telefon', person.phone, 'type="tel"')}${input('email', 'E-Mail', person.email, 'type="email"')}${input('street', 'Straße / Hausnummer', person.street)}${input('postalCode', 'PLZ', person.postalCode)}${input('city', 'Ort', person.city)}</div><label><span>Notiz</span><textarea name="note" rows="2">${esc(person.note || '')}</textarea></label></div>
+			<label>Rolle im Fall<input name="role" value="${esc(item?.data?.role || '')}" placeholder="z. B. Tochter, Standesamt, Friedhof" required></label><p class="bp-error" id="case-contact-error" hidden></p><div class="bp-modal-actions"><button type="button" class="bp-secondary" data-close-modal>Abbrechen</button><button class="bp-primary">Zuordnung speichern</button></div></form></div>`)
 		const modal = [...root.querySelectorAll('.bp-modal')].pop(); modal.querySelector('[data-close-modal]').onclick = () => modal.remove()
-		modal.querySelector('form').onsubmit = async (event) => { event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); const contact = state.records.contact.find((entry) => String(entry.id) === String(data.contactId)); if (!contact) return; const payload = { contactId: contact.id, addressBookKey: contact.data?.addressBookKey || '', role: data.role, source: 'case-assignment', contactSnapshot: { title: contact.title, email: contact.data?.email || '', phone: contact.data?.phone || '', address: contact.data?.address || '', country: contact.data?.country || '' } }; await api(item ? recordItemUrl(item.id) : recordUrl('case_contact'), { method: item ? 'PUT' : 'POST', body: new URLSearchParams({ title: contact.title, date: new Date().toISOString(), status: 'AKTIV', caseId: state.currentCase.id, data: JSON.stringify(payload) }) }); await loadRecordType('case_contact', state.currentCase.id); modal.remove(); render() }
+		const form = modal.querySelector('form')
+		const mode = () => item ? (isPerson ? 'person' : 'book') : (form.querySelector('[name="mode"]:checked')?.value || 'book')
+		const sync = () => { form.querySelectorAll('[data-mode-panel]').forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode() }); form.querySelector('[name="contactId"]').required = mode() === 'book'; ['firstName', 'lastName'].forEach((name) => { form.querySelector(`[name="${name}"]`).required = mode() === 'person' }) }
+		form.querySelectorAll('[name="mode"]').forEach((radio) => radio.addEventListener('change', sync)); sync()
+		const showError = (message) => { const error = modal.querySelector('#case-contact-error'); error.textContent = message; error.hidden = false }
+		form.onsubmit = async (event) => {
+			event.preventDefault(); const data = Object.fromEntries(new FormData(form))
+			const client = orderClientPerson()
+			if (mode() === 'person') {
+				const name = `${data.firstName.trim()} ${data.lastName.trim()}`
+				if (sameName(name, `${client.firstName} ${client.lastName}`) && !await confirmAction(`${name} ist bereits als Auftraggeber/in im Auftrag erfasst. Trotzdem zusätzlich als Fallkontakt anlegen?`, { title: 'Person bereits erfasst', confirmLabel: 'Trotzdem anlegen' })) return
+				const twin = caseContactRecords().find((entry) => entry.id !== item?.id && entry.data?.source === 'case-person' && sameName(entry.title, name))
+				if (twin) { showError(`${name} ist in diesem Fall bereits als ${twin.data?.role || 'Kontakt'} erfasst.`); return }
+				const personData = Object.fromEntries(['salutation', 'firstName', 'lastName', 'mobile', 'phone', 'email', 'street', 'postalCode', 'city', 'note'].map((key) => [key, String(data[key] || '').trim()]))
+				const payload = { ...(item?.data || {}), source: 'case-person', role: data.role, person: personData }
+				await api(item ? recordItemUrl(item.id) : recordUrl('case_contact'), { method: item ? 'PUT' : 'POST', body: new URLSearchParams({ title: name, date: item?.date || new Date().toISOString(), status: 'AKTIV', caseId: state.currentCase.id, data: JSON.stringify(payload) }) })
+			} else {
+				const contact = state.records.contact.find((entry) => String(entry.id) === String(data.contactId)); if (!contact) return
+				const already = caseContactRecords().find((entry) => entry.id !== item?.id && String(entry.data?.contactId || entry.data?.addressBook?.contactId || '') === String(contact.id))
+				if (already) { showError(`${contact.title} ist diesem Fall bereits zugeordnet (${already.data?.source === 'order-client' ? 'als Auftraggeber/in' : already.data?.role || 'Fallkontakt'}).`); return }
+				const payload = { contactId: contact.id, addressBookKey: contact.data?.addressBookKey || '', role: data.role, source: 'case-assignment', contactSnapshot: { title: contact.title, email: contact.data?.email || '', phone: contact.data?.phone || '', address: contact.data?.address || '', addressText: contact.data?.addressText || '', country: contact.data?.country || '' } }
+				await api(item ? recordItemUrl(item.id) : recordUrl('case_contact'), { method: item ? 'PUT' : 'POST', body: new URLSearchParams({ title: contact.title, date: new Date().toISOString(), status: 'AKTIV', caseId: state.currentCase.id, data: JSON.stringify(payload) }) })
+			}
+			await loadRecordType('case_contact', state.currentCase.id); modal.remove(); render()
+		}
+	}
+
+	/**
+	 * Mögliche Dubletten anzeigen. Ergebnis: {useId} (vorhandenen Kontakt verwenden), {create: true} oder null (abgebrochen).
+	 * Wird auch beim Anlegen eines Kontakts über „Neu“ verwendet.
+	 */
+	function chooseDuplicate(duplicates, newLabel) {
+		return new Promise((resolve) => {
+			root.insertAdjacentHTML('beforeend', `<div class="bp-modal"><section class="bp-duplicate-dialog"><h2>Mögliche Dublette</h2><p>Im Adressbuch gibt es bereits ähnliche Kontakte. Bitte prüfen Sie, ob ${esc(newLabel)} schon vorhanden ist. Zusammengeführt wird nichts automatisch.</p><ul>${duplicates.map((item) => `<li><div><b>${esc(item.title)}</b><small>${esc(item.reasonText || '')}${item.addressBook ? ` · ${esc(item.addressBook)}` : ''}</small><small>${esc([item.contact?.data?.addressText, item.contact?.data?.phone, item.contact?.data?.email].filter(Boolean).join(' · '))}</small></div><button type="button" class="bp-secondary" data-use-duplicate="${esc(item.id)}">Vorhandenen Kontakt verwenden</button></li>`).join('')}</ul><div class="bp-modal-actions"><button type="button" class="bp-secondary" data-duplicate-cancel>Abbrechen</button><button type="button" class="bp-primary" data-duplicate-create>Trotzdem neu anlegen</button></div></section></div>`)
+			const modal = [...root.querySelectorAll('.bp-modal')].pop()
+			const done = (value) => { modal.remove(); resolve(value) }
+			modal.querySelector('[data-duplicate-cancel]').onclick = () => done(null)
+			modal.querySelector('[data-duplicate-create]').onclick = () => done({ create: true })
+			modal.querySelectorAll('[data-use-duplicate]').forEach((button) => { button.onclick = () => done({ useId: button.dataset.useDuplicate, duplicate: duplicates.find((item) => String(item.id) === button.dataset.useDuplicate) }) })
+		})
+	}
+
+	/** Person (Auftraggeber/in oder Fallperson) ins Adressbuch übernehmen bzw. den Eintrag aktualisieren. */
+	async function savePersonToAddressBook(person, role, existingLink) {
+		const body = (force, uri = '') => new URLSearchParams({ person: JSON.stringify({ ...person, role }), uri, force: force ? '1' : '' })
+		const url = `${apiBase}/cases/${state.currentCase.id}/address-book-person`
+		if (existingLink?.uri) {
+			if (!await confirmAction(`Den Adressbuch-Eintrag „${existingLink.title || ''}“ mit den aktuellen Angaben überschreiben?`, { title: 'Adressbuch-Eintrag aktualisieren', confirmLabel: 'Aktualisieren' })) return null
+			const result = await api(url, { method: 'POST', loadingLabel: 'Adressbuch-Eintrag wird aktualisiert …', body: body(true, existingLink.uri) })
+			return result.contact
+		}
+		let result = await api(url, { method: 'POST', feedback: false, loadingLabel: 'Adressbuch wird auf Dubletten geprüft …', body: body(false) })
+		if (result.status === 'DUPLICATES') {
+			const choice = await chooseDuplicate(result.duplicates, `${person.firstName} ${person.lastName}`)
+			if (!choice) return null
+			if (choice.useId) return choice.duplicate.contact
+			result = await api(url, { method: 'POST', loadingLabel: 'Kontakt wird im Adressbuch angelegt …', body: body(true) })
+		}
+		return result.contact
+	}
+
+	const linkOf = (contact) => ({ contactId: contact.id, addressBookKey: contact.data?.addressBookKey || '', uri: contact.data?.uri || '', title: contact.title })
+
+	async function orderClientToAddressBook() {
+		const client = orderClientPerson(); const link = orderClientLink()
+		const role = `Auftraggeber/in${client.relation ? ` · ${client.relation}` : ''}`
+		try {
+			const contact = await savePersonToAddressBook(client, role, link ? { uri: link.data?.uri, title: link.title } : null); if (!contact) return
+			const payload = { ...(link?.data || {}), source: 'order-client', role, ...linkOf(contact), contactSnapshot: { title: contact.title, email: contact.data?.email || '', phone: contact.data?.phone || '', address: contact.data?.address || '', addressText: contact.data?.addressText || '' } }
+			await api(link ? recordItemUrl(link.id) : recordUrl('case_contact'), { method: link ? 'PUT' : 'POST', body: new URLSearchParams({ title: contact.title, date: link?.date || new Date().toISOString(), status: 'AKTIV', caseId: state.currentCase.id, data: JSON.stringify(payload) }) })
+			await Promise.all([loadRecordType('case_contact', state.currentCase.id), loadRecordType('contact')]); notifySuccess(link ? 'Adressbuch-Eintrag aktualisiert.' : `${contact.title} ist mit dem Adressbuch verknüpft.`); render()
+		} catch (error) { notifyError(error.message) }
+	}
+
+	async function casePersonToAddressBook(item) {
+		try {
+			const contact = await savePersonToAddressBook(item.data?.person || {}, item.data?.role || '', item.data?.addressBook?.uri ? item.data.addressBook : null); if (!contact) return
+			await api(recordItemUrl(item.id), { method: 'PUT', body: new URLSearchParams({ title: item.title, date: item.date || new Date().toISOString(), status: item.status || 'AKTIV', caseId: state.currentCase.id, data: JSON.stringify({ ...item.data, addressBook: linkOf(contact) }) }) })
+			await Promise.all([loadRecordType('case_contact', state.currentCase.id), loadRecordType('contact')]); notifySuccess(`${item.title} ist mit dem Adressbuch verknüpft.`); render()
+		} catch (error) { notifyError(error.message) }
+	}
+
+	function bindCaseContacts() {
+		document.getElementById('assign-case-contact')?.addEventListener('click', () => showCaseContactForm())
+		root.querySelectorAll('.edit-case-contact').forEach((button) => button.addEventListener('click', () => showCaseContactForm(caseContactRecords().find((entry) => entry.id === Number(button.dataset.id)))))
+		document.getElementById('order-client-address-book')?.addEventListener('click', orderClientToAddressBook)
+		root.querySelectorAll('.case-person-address-book').forEach((button) => button.addEventListener('click', () => { const item = caseContactRecords().find((entry) => entry.id === Number(button.dataset.id)); if (item) casePersonToAddressBook(item) }))
+		root.querySelectorAll('.remove-case-contact').forEach((button) => button.addEventListener('click', async () => {
+			const item = caseContactRecords().find((entry) => entry.id === Number(button.dataset.id)); if (!item) return
+			const inBook = item.data?.source === 'case-person' && item.data?.addressBook?.contactId
+			if (!await confirmAction(`${item.title} aus diesem Fall entfernen?${inBook ? ' Der Eintrag im Adressbuch bleibt bestehen.' : ''}`, { title: 'Fallkontakt entfernen', confirmLabel: 'Entfernen' })) return
+			try { await api(recordItemUrl(item.id), { method: 'DELETE' }); await loadRecordType('case_contact', state.currentCase.id); render() } catch (error) { notifyError(error.message) }
+		}))
 	}
 
 	function expandDeregistration(value, data) {
@@ -315,9 +461,9 @@ export function createDocumentsModule(ctx) {
 
 	async function showOrderDocumentPreview() {
 		const isQuote = String(state.currentCase?.masterData?.order_mode || 'A').toUpperCase() === 'KVA'
-		const definitions = isQuote
-			? [{ key: 'BESTATTUNGSAUFTRAG', title: 'Kostenvoranschlag' }]
-			: [{ key: 'BESTATTUNGSAUFTRAG', title: 'Bestattungsauftrag' }, { key: 'BESTATTUNGSVOLLMACHT', title: 'Bestattungsvollmacht' }]
+		// 0.88.0: Das Paket kommt vom Server (Auftrag und Vollmacht in einem Dokument, ggf. Widerrufsbelehrung).
+		let definitions = isQuote ? [{ key: 'BESTATTUNGSAUFTRAG', title: 'Kostenvoranschlag' }] : [{ key: 'BESTATTUNGSAUFTRAG', title: 'Bestattungsauftrag und Vollmacht' }]
+		try { const list = await api(`${apiBase}/cases/${state.currentCase.id}/order-documents`, { feedback: false }); if ((list.documents || []).length) definitions = list.documents } catch (_) { /* Fallback oben */ }
 		const packageTitle = isQuote ? 'Kostenvoranschlag prüfen' : 'Auftrag und Vollmacht prüfen'
 		const hasCurrentDraft = () => (state.records.document || []).some((record) => record.caseId === state.currentCase.id && record.status === 'ENTWURF' && definitions.some((entry) => entry.key === record.data?.templateKey))
 		root.insertAdjacentHTML('beforeend', `<div class="bp-modal" role="dialog" aria-modal="true" aria-labelledby="bp-order-preview-title"><section class="bp-wide-modal bp-order-preview"><div class="bp-panel-head bp-file-preview-head"><div><p class="bp-eyebrow">Nebenwirkungsfreie PDF-Vorschau</p><h2 id="bp-order-preview-title">${esc(packageTitle)}</h2><p class="bp-muted">Die Vorschau legt keine Datei und keinen Dokumentdatensatz in der Fallakte an.</p></div><button type="button" class="bp-secondary" data-close-order-preview>Schließen</button></div><div class="bp-order-preview-tabs" role="tablist" aria-label="Dokumente des Pakets">${definitions.map((entry, index) => `<button type="button" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-order-preview-tab="${esc(entry.key)}" ${index === 0 ? '' : 'tabindex="-1"'}>${esc(entry.title)}</button>`).join('')}</div><div class="bp-order-preview-stage" aria-busy="true"><p class="bp-empty" data-order-preview-loading>PDF-Vorschau wird erzeugt …</p><iframe title="${esc(definitions[0].title)}" data-order-preview-frame hidden></iframe></div><p class="bp-save-state" data-order-preview-state aria-live="polite"></p><div class="bp-modal-actions"><button type="button" class="bp-secondary" data-open-order-preview disabled>PDF öffnen / drucken</button><button type="button" class="bp-primary" data-create-order-draft disabled>${hasCurrentDraft() ? 'Entwurfspaket aktualisieren' : 'Entwurfspaket erzeugen'}</button></div></section></div>`)
@@ -511,15 +657,19 @@ export function createDocumentsModule(ctx) {
 		else if (state.caseTab === 'order') body = orderPanel(data)
 		else if (state.caseTab === 'side-orders') body = sideOrdersPanel()
 		else if (state.caseTab === 'services') body = state.orderForm?.open && Number(state.orderForm.caseId || state.currentCase?.id) === Number(state.currentCase?.id) ? ctx.orderFormView() : serviceSelectionPanel()
-		else if (state.caseTab === 'task') body = `${ctx.processTaskPanel ? ctx.processTaskPanel() : ''}${recordsView('task', item.id)}`
+		// 0.88.1: Aufgaben- bzw. Terminliste samt „Neu anlegen“ zuerst, der Ablauf (einklappbar) darunter.
+		else if (state.caseTab === 'task') body = `${recordsView('task', item.id)}${ctx.processTaskPanel ? ctx.processTaskPanel() : ''}`
 		else if (state.caseTab === 'contact') body = caseContactsPanel()
 		else if (state.caseTab === 'deregistration') body = deregistrationPanel()
 		else if (state.caseTab === 'document') body = documentPanel()
 		else if (state.caseTab === 'finances') body = financesPanel()
-		else if (state.caseTab === 'schedule') body = `${ctx.processScheduleStrip ? ctx.processScheduleStrip() : ''}${recordsView(state.caseTab, item.id)}`
+		else if (state.caseTab === 'schedule') body = `${recordsView(state.caseTab, item.id)}${ctx.processScheduleStrip ? ctx.processScheduleStrip() : ''}`
 		else if (state.caseTab === 'history') body = recordsView('activity', item.id)
 		else if (!['overview', 'master', 'task', 'history'].includes(state.caseTab)) body = `<section class="bp-panel bp-placeholder"><h3>${esc(tabs.find((tab) => tab[0] === state.caseTab)?.[1] || state.caseTab)}</h3><p>Dieser fallbezogene Arbeitsbereich ist vorbereitet.</p></section>`
-		return `<div class="bp-page-head"><div><p class="bp-eyebrow">Fallakte ${esc(item.caseNumber)}</p><h2>${esc(item.lastName)}, ${esc(item.firstName)}</h2>${ctx.caseLabelsHead ? ctx.caseLabelsHead(item) : ''}${item.retentionHold?`<span class="bp-status" title="${esc(holdTitle)}" aria-label="Aufbewahrung gesperrt. ${esc(holdTitle)}">Aufbewahrung gesperrt</span><small class="bp-hold-summary">Verantwortlich: ${esc(item.retentionHoldResponsible || '–')} · Prüfung: ${esc(holdReviewAt)}</small>`:''}</div><div class="bp-head-actions">${unsaved ? '' : '<button class="bp-secondary" id="export-case" title="Alle strukturierten Daten dieses Falls als Exportdatei herunterladen.">Falldaten exportieren</button>'}${!unsaved && state.team.isBestatterAdmin?`<button class="bp-secondary" id="toggle-retention-hold" title="${item.retentionHold?'Die Löschsperre nach Angabe eines Grundes aufheben.':'Den Fall vor Löschung und Anonymisierung schützen.'}">${item.retentionHold?'Legal Hold aufheben':'Legal Hold setzen'}</button>`:''}<button class="bp-secondary" data-view="cases" title="Zur Fallübersicht zurückkehren.">Zurück zu Fällen</button>${!unsaved && state.team.isBestatterAdmin ? '<button class="bp-danger" id="delete-case" title="Diesen Fall nach Sicherheitsabfrage endgültig löschen.">Fall löschen</button>' : ''}</div></div><div class="bp-tabs bp-case-tabs">${tabs.map((tab) => { const locked = unsaved && !UNSAVED_CASE_TABS.includes(tab[0]); return `<button class="${state.caseTab === tab[0] ? 'active' : ''}${locked ? ' is-locked' : ''}" data-case-tab="${tab[0]}"${locked ? ` disabled aria-disabled="true" title="${esc(tab[1])}: ${esc(UNSAVED_CASE_HINT)}"` : ` title="Arbeitsbereich ${esc(tab[1])} öffnen."`}>${tab[1]}</button>` }).join('')}</div>${unsaved ? `<p class="bp-case-unsaved-hint" role="note">Die weiteren Reiter sind ${esc(UNSAVED_CASE_HINT.charAt(0).toLowerCase() + UNSAVED_CASE_HINT.slice(1))}</p>` : ''}${body}`
+		// 0.88.1: Speicherstatus im Kopf; seltene Aktionen im Menü „Weitere Aktionen“; unter 768 px eine Bereichsauswahl statt der Reiter.
+		const isLocked = (key) => unsaved && !UNSAVED_CASE_TABS.includes(key)
+		if (state.caseTab === 'overview' && !unsaved && ctx.creationNoticeView) body = `${ctx.creationNoticeView()}${body}`
+		return `<div class="bp-page-head bp-case-head"><div><p class="bp-eyebrow">Fallakte ${esc(item.caseNumber)}</p><div class="bp-case-title-row"><h2>${esc(item.lastName)}, ${esc(item.firstName)}</h2>${ctx.saveIndicator ? ctx.saveIndicator() : ''}${ctx.creationChip ? ctx.creationChip() : ''}</div>${ctx.caseLabelsHead ? ctx.caseLabelsHead(item) : ''}${item.retentionHold?`<span class="bp-status" title="${esc(holdTitle)}" aria-label="Aufbewahrung gesperrt. ${esc(holdTitle)}">Aufbewahrung gesperrt</span><small class="bp-hold-summary">Verantwortlich: ${esc(item.retentionHoldResponsible || '–')} · Prüfung: ${esc(holdReviewAt)}</small>`:''}</div><div class="bp-head-actions"><button class="bp-secondary" data-view="cases" title="Zur Fallübersicht zurückkehren.">Zurück zu Fällen</button>${ctx.caseActionMenu ? ctx.caseActionMenu(item, unsaved) : ''}</div></div>${ctx.caseStickyBar ? ctx.caseStickyBar(item, tabs.find((tab) => tab[0] === state.caseTab)?.[1] || '') : ''}${ctx.caseAreaSelect ? ctx.caseAreaSelect(tabs, isLocked) : ''}<div class="bp-tabs bp-case-tabs">${tabs.map((tab) => { const locked = isLocked(tab[0]); return `<button class="${state.caseTab === tab[0] ? 'active' : ''}${locked ? ' is-locked' : ''}" data-case-tab="${tab[0]}"${locked ? ` disabled aria-disabled="true" title="${esc(tab[1])}: ${esc(UNSAVED_CASE_HINT)}"` : ` title="Arbeitsbereich ${esc(tab[1])} öffnen."`}>${tab[1]}</button>` }).join('')}</div>${unsaved ? `<p class="bp-case-unsaved-hint" role="note">Die weiteren Reiter sind ${esc(UNSAVED_CASE_HINT.charAt(0).toLowerCase() + UNSAVED_CASE_HINT.slice(1))}</p>` : ''}${body}`
 	}
 
 	function showRetentionHoldDialog() {
@@ -550,5 +700,5 @@ export function createDocumentsModule(ctx) {
 	}
 
 
-	return { caseContactsPanel, showCaseContactForm, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, showDeregistrationMailDialog, documentPanel, showBusinessMailDialog, showPaperContractUpload, showPaperContractReview, showFilePreview, showOrderDocumentPreview, showInvoiceDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog }
+	return { caseContactsPanel, showCaseContactForm, bindCaseContacts, chooseDuplicate, expandDeregistration, deliveryChannels, showTextPreview, showLetterPreview, deregistrationPanel, showDeregistrationForm, showDeregistrationTransitionForm, showDeregistrationMailDialog, documentPanel, showBusinessMailDialog, showPaperContractUpload, showPaperContractReview, showFilePreview, showOrderDocumentPreview, showInvoiceDocumentPreview, showDocumentDialog, caseDetail, showRetentionHoldDialog }
 }

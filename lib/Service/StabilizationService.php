@@ -56,7 +56,10 @@ class StabilizationService {
 		}, array_filter($activeBranches, static fn(array $branch): bool => self::missingBranchFields($branch) !== [])));
 		$templateDetails = array_values(array_map(static fn(array $template): string => (string)($template['name'] ?? $template['key'] ?? 'Vorlage') . ' → ' . (string)($template['fileName'] ?? 'keine Datei'), array_filter($activeTemplates, static fn(array $template): bool => !self::templateSourceAvailable((string)($template['fileName'] ?? ''), $templateFiles))));
 
+		$dependencies = DependencyCheck::report();
 		$checks = [
+			// 0.87.0: Paket statt Quellcode-Ordner (vendor/)
+			$this->check('php_dependencies', 'PHP-Abhängigkeiten', $dependencies['status'], $dependencies['message'], $dependencies['hint'], $dependencies['missing']),
 			$this->installationCheck(),
 			$this->roleGroupsCheck(),
 			$this->storageCheck(count($team['members'] ?? [])),

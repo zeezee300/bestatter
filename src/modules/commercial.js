@@ -22,8 +22,9 @@ export function createCommercialModule(ctx) {
 	const rememberServiceGroups = () => { try { if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(serviceGroupStorageKey, JSON.stringify(serviceGroupOpen)) } catch { /* Sitzungsspeicher ist optional. */ } }
 
 	function orderField(name, label, value = '', type = 'text', options = [], attributes = '') {
+		// Optionen als Wert oder als [Wert, Bezeichnung] (0.88.0: Vertragsschluss).
 		const control = options.length
-			? `<select class="bp-field" name="${name}" ${attributes}>${options.map((option) => `<option value="${esc(option)}" ${String(option) === String(value) ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>`
+			? `<select class="bp-field" name="${name}" ${attributes}>${options.map((option) => { const [key, text] = Array.isArray(option) ? option : [option, option]; return `<option value="${esc(key)}" ${String(key) === String(value) ? 'selected' : ''}>${esc(text)}</option>` }).join('')}</select>`
 			: type === 'textarea' ? `<textarea class="bp-field" name="${name}" rows="3" ${attributes}>${esc(value)}</textarea>`
 				: `<input class="bp-field" name="${name}" type="${type}" value="${esc(value)}" ${type === 'number' ? 'min="0" step="1"' : ''} ${attributes}>`
 		return `<label><span>${esc(label)}</span>${control}</label>`
@@ -372,8 +373,13 @@ export function createCommercialModule(ctx) {
 			${orderField('certificate_free_count', 'Sterbeurkunden geb\u00fchrenfrei', data.certificate_free_count ?? 2, 'number')}
 			${orderField('urkunden_gebuehrenpflichtig', 'Sterbeurkunden geb\u00fchrenpflichtig', data.urkunden_gebuehrenpflichtig ?? 0, 'number')}
 			${orderField('order_notes', 'Auftragsnotiz', data.order_notes, 'textarea')}</div></section>
+			${mode === 'KVA' ? '' : `<section class="bp-field-section"><div class="bp-panel-head"><div><h3>Vertragsschluss und Vollmacht</h3><p class="bp-muted">Angaben für „Bestattungsauftrag und Vollmacht“. Bei Vertragsschluss außerhalb der Geschäftsräume oder im Fernabsatz wird die Widerrufsbelehrung mit Muster-Widerrufsformular beigefügt.</p></div></div><div class="bp-form-grid">
+			${orderField('order_contract_conclusion', 'Vertragsschluss', data.order_contract_conclusion || '', 'text', [['', 'Bitte wählen'], ['GESCHAEFTSRAEUME', 'In den Geschäftsräumen'], ['AUSSERHALB', 'Außerhalb der Geschäftsräume (Hausbesuch, Klinik, Heim)'], ['FERNABSATZ', 'Fernabsatz (Telefon, E-Mail, online)']])}
+			${orderField('order_payment_terms', 'Zahlungsziel / Abschläge', data.order_payment_terms)}
+			${orderField('order_special_terms', 'Besondere Abreden / Kostenobergrenze', data.order_special_terms, 'textarea')}
+			${orderField('order_poa_other', 'Vollmacht für weitere Stellen (Bezeichnung, Zweck, Umfang)', data.order_poa_other, 'textarea')}</div></section>`}
 			<section class="bp-signature-box"><div><p class="bp-eyebrow">Unterschrift</p><b>${esc(data.order_signature_name ? `Digital best\u00e4tigt von ${data.order_signature_name}` : 'Noch nicht unterschrieben')}</b><small>${esc(data.order_signature_date || '')}</small></div><div class="bp-head-actions"><button type="button" class="bp-secondary" id="sign-order">Digital unterschreiben</button><button type="button" class="bp-primary" id="preview-order-docs">${mode === 'KVA' ? 'KVA-Vorschau' : 'Auftrag und Vollmacht prüfen'}</button></div></section>
-			<p class="bp-save-state" id="order-save-state">\u00c4nderungen werden automatisch gespeichert.</p></form>`
+			<p class="bp-save-state bp-save-mirrored" id="order-save-state">\u00c4nderungen werden automatisch gespeichert.</p></form>`
 	}
 
 	let serviceSaveTimer = null

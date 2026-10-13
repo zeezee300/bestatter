@@ -32,7 +32,7 @@ Access is controlled exclusively through Nextcloud groups. A complete user manua
 Zugriff ausschließlich über Nextcloud-Gruppen. Ein vollständiges Anwenderhandbuch (auch als PDF) ist in der App enthalten.
 
 Die App ist auf Bestattungsunternehmen in Deutschland ausgerichtet; Oberfläche, Dokumente und Handbuch sind deutschsprachig.]]></description>
-	<version>0.83.3</version>
+	<version>0.88.2</version>
     <licence>AGPL-3.0-only</licence>
     <author homepage="https://github.com/zeezee300/bestatter">Rainer Lüdeke</author>
     <namespace>Bestatter</namespace>

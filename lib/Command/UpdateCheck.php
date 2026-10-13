@@ -6,6 +6,7 @@ namespace OCA\Bestatter\Command;
 
 use OCA\Bestatter\AppInfo\Application;
 use OCA\Bestatter\Service\AuditService;
+use OCA\Bestatter\Service\DependencyCheck;
 use OCA\Bestatter\Service\InstallationConfigService;
 use OCA\Bestatter\Service\StabilizationService;
 use OCP\App\IAppManager;
@@ -61,6 +62,10 @@ class UpdateCheck extends Command {
 				. ($installed !== Application::VERSION ? ' – „occ upgrade“ ausführen' : '')];
 		$checks[] = ['key' => 'enabled', 'label' => 'App aktiv', 'status' => $enabled ? 'OK' : 'ERROR', 'message' => $enabled ? 'aktiviert' : 'nicht aktiviert – „occ app:enable bestatter“'];
 
+		// 0.87.0: unabhängig vom Konto der Systemprüfung – fehlt vendor/, wurde nicht das gebaute Paket eingespielt.
+		$dependencies = DependencyCheck::report();
+		$checks[] = ['key' => 'dependencies', 'label' => 'PHP-Abhängigkeiten', 'status' => $dependencies['status'], 'message' => $dependencies['message'] . ($dependencies['status'] === 'OK' ? '' : ' Bitte das Installationspaket statt des Quellcode-Ordners verwenden.')];
+
 		$asUser = trim((string)$input->getOption('as-user'));
 		$context = $this->contextUser($asUser);
 		if ($context === null) {
@@ -81,7 +86,8 @@ class UpdateCheck extends Command {
 				'message' => sprintf('%d in Ordnung, %d Hinweise, %d Fehler', $system['summary']['ok'], $system['summary']['warnings'], $system['summary']['errors']) . ($problems !== [] ? ' – ' . implode('; ', $problems) : '')];
 		}
 		$audit = $this->audit->verifyIntegrity();
-		$checks[] = ['key' => 'audit', 'label' => 'Audit-Kette', 'status' => $audit['status'] === 'OK' ? 'OK' : 'ERROR', 'message' => $audit['checked'] . ' Einträge geprüft' . ($audit['status'] === 'OK' ? '' : ', beschädigt: ' . implode(', ', array_slice($audit['brokenIds'], 0, 10)))];
+		// 0.84.1: gleichzeitig geschriebene Einträge (Inhalt unverändert) sind ein Hinweis, echte Schäden ein Fehler.
+		$checks[] = ['key' => 'audit', 'label' => 'Audit-Kette', 'status' => in_array($audit['status'], ['OK', 'WARN'], true) ? $audit['status'] : 'ERROR', 'message' => $audit['message']];
 
 		$overall = 'OK';
 		foreach ($checks as $check) { if ($check['status'] === 'ERROR') { $overall = 'ERROR'; break; } if ($check['status'] === 'WARN') $overall = 'WARN'; }

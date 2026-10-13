@@ -83,6 +83,29 @@ class ProcessService {
 		return array_map(fn(array $row): array => $this->mapTemplate($row, true), $rows);
 	}
 
+	/**
+	 * 0.88.1: Rollen der aktiven Ablaufschritte, für die keine Nextcloud-Gruppe mit Mitgliedern eingerichtet ist.
+	 * Aufgaben dieser Rollen fallen an die Fallverantwortung; die Oberfläche meldet das einmal zentral statt in jedem Schritt.
+	 * Nur Anzahl der Mitglieder, keine Namen.
+	 */
+	public function roleStatus(): array {
+		$this->ensureSeedData();
+		$used = [];
+		foreach ($this->activeSteps() as $step) {
+			$role = (string)($step['role'] ?? '');
+			if ($role !== '' && $role !== 'FALLVERANTWORTLICH') $used[$role] = true;
+		}
+		$roles = [];
+		foreach ($this->installation->roleGroups() as $role => $group) {
+			if (!isset($used[$role])) continue;
+			$exists = $group !== '' && $this->groupLookup->lookup($group)['exists'];
+			$members = $exists ? $this->groupMembers($group) : [];
+			$reason = $group === '' ? 'keine Gruppe zugeordnet' : (!$exists ? 'Gruppe „' . $group . '“ nicht gefunden' : ($members === [] ? 'Gruppe „' . $group . '“ ohne Mitglieder' : ''));
+			$roles[] = ['key' => $role, 'label' => ProcessRules::ROLES[$role] ?? $role, 'group' => $group, 'groupExists' => $exists, 'memberCount' => count($members), 'unresolved' => $members === [], 'reason' => $reason];
+		}
+		return ['roles' => $roles, 'unresolved' => array_values(array_filter($roles, static fn(array $role): bool => $role['unresolved']))];
+	}
+
 	public function meta(): array {
 		$roles = [];
 		foreach ($this->installation->roleGroups() as $role => $group) {

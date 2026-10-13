@@ -191,8 +191,8 @@
     {
       "category": "Auftrag",
       "active": true,
-      "layout": "bestattungsauftrag_v2",
-      "description": "Dynamische DOCX-Vorlage mit Auftraggeber, Mobilfunknummer, detaillierten Leistungspositionen, Mehrwertsteuer, Gesamtsumme und Unterschriftsbereich.",
+      "layout": "bestattungsauftrag_vollmacht_v1",
+      "description": "Bestattungsauftrag mit Leistungs- und Preisaufstellung, auf den Bestattungsfall beschränkter Vollmacht, Erklärungen zum Leistungsbeginn und Unterschriften. Im Modus Kostenvoranschlag wird die Vorlage „Kostenvoranschlag“ verwendet.",
       "key": "BESTATTUNGSAUFTRAG",
       "fields": [
         {
@@ -220,7 +220,7 @@
           "required": true
         }
       ],
-      "name": "Kostenvoranschlag / Bestattungsauftrag",
+      "name": "Bestattungsauftrag und Vollmacht",
       "sort_order": 3,
       "file": "BESTATTUNGSAUFTRAG.docx",
       "required_fields": [
@@ -238,8 +238,55 @@
     {
       "category": "Auftrag",
       "active": true,
+      "layout": "kostenvoranschlag_v1",
+      "description": "Kostenvoranschlag mit voraussichtlichen Leistungen, Kosten und Umsatzsteuerübersicht (bisherige Vorlage des Kostenvoranschlags).",
+      "key": "KOSTENVORANSCHLAG",
+      "fields": [
+        {
+          "key": "service_lines",
+          "label": "Beauftragte Leistungen",
+          "source": "case.services",
+          "required": true
+        },
+        {
+          "key": "total_net",
+          "label": "Summe netto",
+          "source": "case.service_totals.net",
+          "required": true
+        },
+        {
+          "key": "total_vat",
+          "label": "Mehrwertsteuer",
+          "source": "case.service_totals.vat",
+          "required": true
+        },
+        {
+          "key": "total_gross",
+          "label": "Gesamtsumme",
+          "source": "case.service_totals.gross",
+          "required": true
+        }
+      ],
+      "name": "Kostenvoranschlag",
+      "sort_order": 3,
+      "file": "KOSTENVORANSCHLAG.docx",
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "order_client_name",
+        "order_client_address",
+        "order_number",
+        "order_date",
+        "services"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
+      "category": "Auftrag",
+      "active": true,
       "layout": "bestattungsvollmacht_v1",
-      "description": "Unterschriftsfähige DOCX-Vorlage zur Bevollmächtigung des Bestattungsunternehmens.",
+      "description": "Gesonderte Bestattungsvollmacht. Wird nur noch erzeugt, wenn die eingerichtete Auftragsvorlage keinen Vollmachtsteil enthält (eigene, ältere Auftragsvorlagen).",
       "key": "BESTATTUNGSVOLLMACHT",
       "fields": [],
       "name": "Bestattungsvollmacht",
@@ -250,6 +297,26 @@
         "last_name",
         "order_client_name",
         "order_client_address",
+        "order_number",
+        "order_date"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
+      "category": "Auftrag",
+      "active": true,
+      "layout": "widerrufsbelehrung_v1",
+      "description": "Widerrufsbelehrung mit Muster-Widerrufsformular (gesetzlicher Mustertext). Wird mit dem Auftrag erzeugt, wenn der Vertrag außerhalb der Geschäftsräume oder im Fernabsatz geschlossen wurde.",
+      "key": "WIDERRUFSBELEHRUNG",
+      "fields": [],
+      "name": "Widerrufsbelehrung",
+      "sort_order": 5,
+      "file": "WIDERRUFSBELEHRUNG.docx",
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "order_client_name",
         "order_number",
         "order_date"
       ],

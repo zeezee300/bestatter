@@ -303,6 +303,26 @@ export function phaseProgress(phases = []) {
 	})
 }
 
+/**
+ * 0.88.1: Schritte nach „jetzt offen“ (offen, überfällig), „später“ (Auslöser noch nicht eingetreten oder Angabe fehlt) und
+ * „erledigt“ (erledigt oder entfällt). Automatisch entfallene Schritte und gelöschte Aufgaben zählen wie in der Phasenleiste nicht.
+ */
+export function processStateCounts(phases = []) {
+	const counts = { open: 0, overdue: 0, later: 0, done: 0, total: 0 }
+	for (const phase of phases) for (const step of phase.steps || []) {
+		if (['autoskipped', 'deleted'].includes(step.state)) continue
+		counts.total++
+		if (['done', 'skipped'].includes(step.state)) counts.done++
+		else if (['open', 'overdue'].includes(step.state)) { counts.open++; if (step.state === 'overdue') counts.overdue++ }
+		else counts.later++
+	}
+	return counts
+}
+
+export function processCountsText(counts) {
+	return `${counts.open} jetzt offen · ${counts.later} später · ${counts.done} erledigt`
+}
+
 /** Euro-Eingabe („1.500,00“) in Cent. Leere Eingabe = 0; ungültig = null. */
 export function euroToCents(value) {
 	let raw = String(value ?? '').replace(/[€\s]/g, '')

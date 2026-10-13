@@ -17,6 +17,10 @@ class ProcessApiController extends ApiController {
 		parent::__construct($appName, $request);
 	}
 
+	/** 0.88.1: Unbesetzte Rollen der Abläufe (zentraler Hinweis bei Fallanlage und auf der Startseite). */
+	#[NoAdminRequired]
+	public function processRoleStatus(): DataResponse { return new DataResponse($this->process->roleStatus()); }
+
 	#[NoAdminRequired]
 	public function caseProcess(int $caseId): DataResponse { return new DataResponse($this->process->overview($caseId)); }
 

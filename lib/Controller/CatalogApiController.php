@@ -25,7 +25,7 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class CatalogApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private CustomizingService $customizingService, private ArticleService $articles, private ConfigurationService $configuration, private TeamService $teamService, private TemplateFieldCatalogService $templateFields, private InstallationConfigService $installationConfig, private \OCA\Bestatter\Service\CaseFolderPlanService $folderPlan, private AuditService $audit, private SurchargeRuleService $surcharges, private BurialVariantRuleService $burialRules, private DocumentService $documents, private CatalogStructureService $structure, private PriceListService $priceLists, private CaseStorageService $storage, private StorageMigrationService $storageMigration) {
+	public function __construct(string $appName, IRequest $request, private CustomizingService $customizingService, private ArticleService $articles, private ConfigurationService $configuration, private TeamService $teamService, private TemplateFieldCatalogService $templateFields, private InstallationConfigService $installationConfig, private \OCA\Bestatter\Service\CaseFolderPlanService $folderPlan, private AuditService $audit, private SurchargeRuleService $surcharges, private BurialVariantRuleService $burialRules, private DocumentService $documents, private CatalogStructureService $structure, private PriceListService $priceLists, private CaseStorageService $storage, private StorageMigrationService $storageMigration, private \OCA\Bestatter\Service\DocumentTemplateFileService $templateFiles) {
 		parent::__construct($appName, $request);
 	}
 
@@ -391,6 +391,20 @@ class CatalogApiController extends ApiController {
 	public function duplicateDocumentTemplate(int $id): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		return new DataResponse($this->configuration->duplicateDocument($id));
+	}
+
+	/** 0.88.2: Zustand der Vorlagendateien (Standardfassung, ältere Standardfassung, eigene Fassung, fehlt). */
+	#[NoAdminRequired]
+	public function documentTemplateFileStatus(): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		return new DataResponse($this->templateFiles->status());
+	}
+
+	/** 0.88.2: Mitgelieferte Standardfassung übernehmen; die bisherige Datei bleibt als datierte Kopie erhalten. */
+	#[NoAdminRequired]
+	public function adoptStandardDocumentTemplate(string $key): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		return new DataResponse($this->templateFiles->adoptStandard(strtoupper(trim($key))));
 	}
 
 	#[NoAdminRequired]

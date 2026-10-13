@@ -23,6 +23,7 @@ Eine ausführliche, bebilderte Beschreibung aller Funktionen enthält das **Anwe
 - [Installationspaket bauen und signieren](#installationspaket-bauen-und-signieren)
 - [Codequalität](#codequalität)
 - [Projektstruktur](#projektstruktur)
+- [Entstehung](#entstehung)
 - [Sicherheit & Datenschutz](#sicherheit--datenschutz)
 - [Lizenz](#lizenz)
 
@@ -143,7 +144,7 @@ bash tools/release/build-package.sh                     # releases/bestatter-<ve
 bash tools/release/build-package.sh --vendor-from ../vendor   # ohne Netz: vorhandenes vendor/ übernehmen
 ```
 
-Das Skript prüft vorher, dass `appinfo/info.xml`, `package.json`, `Application::VERSION` und der Abschnitt in `CHANGELOG.md` dieselbe Version tragen, nimmt nur Laufzeitdateien auf (keine Quellen der Oberfläche, kein `.git`) und installiert die PHP-Bibliotheken ohne Entwicklungsabhängigkeiten.
+Das Skript prüft vorher, dass `appinfo/info.xml`, `package.json`, `Application::VERSION` und der Abschnitt in `CHANGELOG.md` dieselbe Version tragen. Liegt der Ordner `tests/` vor, führt es außerdem die Tests und PHPStan aus (`PHPSTAN=/pfad/phpstan.phar`, Konfiguration über `PHPSTAN_CONFIG`); schlägt eins fehl, entsteht kein Paket (`--skip-checks` nur im Notfall). Es nimmt nur Laufzeitdateien auf (keine Quellen der Oberfläche, kein `.git`) und installiert die PHP-Bibliotheken ohne Entwicklungsabhängigkeiten.
 
 Für den Nextcloud App Store wird zusätzlich signiert. Dazu braucht es den privaten Schlüssel `bestatter.key` und das von Nextcloud ausgestellte Zertifikat `bestatter.crt` sowie eine laufende Nextcloud für `occ integrity:sign-app`:
 
@@ -178,6 +179,10 @@ templates/   Server-seitiges PHP-Template der App-Seite
 vendor/      PHP-Laufzeitabhängigkeiten (nicht im Repository, siehe oben)
 tools/       Release-Paket (tools/release), Update-Skript (tools/update), CI-Konfiguration (tools/ci)
 ```
+
+## Entstehung
+
+„Bestatter“ wird von Rainer Lüdeke entwickelt. Bei Code, Tests und Handbuch unterstützt Claude (Anthropic) als KI-Assistent; solche Commits tragen Claude als Mitautor. Rechteinhaber und verantwortlich für die App bleibt Rainer Lüdeke.
 
 ## Sicherheit & Datenschutz
 

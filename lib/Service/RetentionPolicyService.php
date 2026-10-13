@@ -70,8 +70,9 @@ class RetentionPolicyService {
 		$deleteMode = $settings['mode'] === 'DELETE';
 		return ['settings' => $settings, 'cutoff' => $cutoff, 'count' => count($rows), 'cases' => array_map(fn(array $row): array => [
 			'id' => (int)$row['id'], 'caseNumber' => (string)$row['case_number'], 'name' => trim((string)$row['first_name'] . ' ' . (string)$row['last_name']), 'status' => (string)$row['status'], 'lastChanged' => (string)$row['updated_at'], 'individualDueDate' => $row['retention_due_at'],
-			// Beim Anonymisieren bleiben Belege erhalten; Hinweise nur für den Modus „Löschen“.
-			'notices' => $deleteMode ? $this->deletion->notices((int)$row['id']) : [],
+			// Beim Anonymisieren bleiben Belege erhalten; Beleg-Hinweise nur für den Modus „Löschen“.
+			// 0.86.0: Personen im Adressbuch bleiben auch beim Anonymisieren stehen – Hinweis in beiden Modi.
+			'notices' => $deleteMode ? $this->deletion->notices((int)$row['id']) : array_values(array_filter([$this->deletion->addressBookNotice((int)$row['id'])])),
 		], $rows)];
 	}
 

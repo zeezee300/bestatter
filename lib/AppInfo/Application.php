@@ -19,7 +19,7 @@ use OCP\DB\Events\AddMissingIndicesEvent;
 
 class Application extends App implements IBootstrap {
     public const APP_ID = 'bestatter';
-	public const VERSION = '0.83.3';
+	public const VERSION = '0.88.2';
 	/**
 	 * Muss exakt dem max-version-Attribut in appinfo/info.xml entsprechen. Einzige Quelle
 	 * der Wahrheit für StabilizationService::nextcloudCompatibilityCheck(), damit das

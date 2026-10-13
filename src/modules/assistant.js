@@ -162,34 +162,83 @@ export function createAssistantModule(ctx) {
 		const memberOptions = (state.team.members || []).map((item) => `<option value="${esc(item.uid)}" ${data.responsible_employee === item.uid ? 'selected' : ''}>${esc(item.displayName)} (${esc(item.uid)})</option>`).join('')
 		const scan = capture().scanImport || {}
 		const scanPreview = scan.id ? `<aside class="bp-capture-original"><h4>Originalscan</h4><img src="${esc(OC.generateUrl(`/core/preview?fileId=${scan.fileId}&x=1100&y=1500&a=1`))}" alt="Vorschau des hochgeladenen Auftragserfassungsbogens">${capture().ocrText ? `<details><summary>Erkannter Text</summary><pre class="bp-ocr-text">${esc(capture().ocrText)}</pre></details>` : ''}<button type="button" class="bp-secondary" id="capture-scan-open">Original groß öffnen</button><small>Die OCR-Markierungen sind Vorschläge. Maßgeblich ist der sichtbare Originalscan.</small></aside>` : ''
-		return `<section class="bp-panel bp-capture-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Schritt 2</p><h3>Erkannte Angaben prüfen und ergänzen</h3></div></div><div class="${scan.id ? 'bp-capture-split' : ''}">${scanPreview}<div class="bp-capture-fields-side">${suggestionHtml}${conflictSection()}${questions.length ? `<section class="bp-capture-questions"><h4>Gezielte Rückfragen</h4><ul>${questions.map((item) => `<li><a href="#" data-focus-capture-field="${esc(item.field)}">${esc(item.question)}</a></li>`).join('')}</ul></section>` : ''}
-			<form id="capture-fields" class="bp-form-grid">
-				${captureField('salutation')}${captureField('title')}${captureField('first_name', 'text', true)}${captureField('last_name', 'text', true)}${captureField('birth_name')}
-				${captureField('date_of_birth', 'date')}${captureField('date_of_death', 'date')}
-				${captureField('birth_place')}${captureField('birth_registry_office')}${captureField('profession')}${captureField('pension_insurance_number')}${captureField('place_of_death')}${captureField('civil_status')}${captureField('spouse_first_name')}${captureField('spouse_last_name')}${captureField('spouse_date_of_birth', 'date')}${captureField('spouse_birth_place')}${captureField('spouse_residence')}${captureField('spouse_date_of_death', 'date')}${captureField('spouse_death_place')}${captureField('marriage_date', 'date')}${captureField('marriage_place')}${captureField('partnership_date', 'date')}${captureField('divorce_date', 'date')}${captureField('religion')}
-				${captureField('last_residence')}${captureField('last_residence_postal_code')}${captureField('last_residence_city')}${captureField('cemetery_contact')}
-				${captureField('order_client_relation')}${captureField('order_client_first_name')}${captureField('order_client_name')}${captureField('order_client_mobile', 'tel')}${captureField('certificate_free_count', 'number')}${captureField('certificate_paid_count', 'number')}
-				${burialChoice(data)}
-				<label><span>Niederlassung</span><select name="branch"><option value=""></option>${branchOptions}</select></label>
-				<label><span>Zuständiger Mitarbeiter</span><select name="responsible_employee"><option value=""></option>${memberOptions}</select></label>
-				<label class="bp-span-2"><span>Interne Gesprächsnotiz</span><textarea name="notes" rows="4">${esc(data.notes || capture().transcript)}</textarea></label>
+		return `<section class="bp-panel bp-capture-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Schritt 2</p><h3>Erkannte Angaben prüfen und ergänzen</h3></div></div><div class="${scan.id ? 'bp-capture-split' : ''}">${scanPreview}<div class="bp-capture-fields-side">${suggestionHtml}${conflictSection()}${questions.length ? `<section class="bp-capture-questions"><h4>Gezielte Rückfragen</h4><ul>${questions.map((item) => `<li><a href="#" data-focus-capture-field="${esc(item.field)}">${esc(item.question)}</a></li>`).join('')}</ul></section>` : ''}${followUpSection()}
+			<form id="capture-fields" class="bp-capture-groups">
+				${captureGroup('Verstorbene Person', `${captureField('salutation')}${captureField('title')}${captureField('first_name', 'text', true)}${captureField('last_name', 'text', true)}${captureField('birth_name')}${captureField('profession')}${captureField('religion')}`)}
+				${captureGroup('Geburt', `${captureField('date_of_birth', 'date')}${captureField('birth_place')}${captureField('birth_registry_office')}${captureField('pension_insurance_number')}`)}
+				${captureGroup('Sterbefall', `${captureField('date_of_death', 'date')}${captureField('place_of_death')}`)}
+				${captureGroup('Letzter Wohnsitz', `${captureField('last_residence')}${captureField('last_residence_postal_code')}${captureField('last_residence_city')}`)}
+				${captureGroup('Familienstand und Ehepartner/in', `${captureField('civil_status')}${captureField('spouse_first_name')}${captureField('spouse_last_name')}${captureField('spouse_date_of_birth', 'date')}${captureField('spouse_birth_place')}${captureField('spouse_residence')}${captureField('spouse_date_of_death', 'date')}${captureField('spouse_death_place')}${captureField('marriage_date', 'date')}${captureField('marriage_place')}${captureField('partnership_date', 'date')}${captureField('divorce_date', 'date')}`, true)}
+				${captureGroup('Auftraggeber/in', `${captureField('order_client_relation')}${captureField('order_client_first_name')}${captureField('order_client_name')}${captureField('order_client_mobile', 'tel')}`)}
+				${captureGroup('Bestattung und Urkunden', `${burialChoice(data)}${captureField('cemetery_contact')}${captureField('certificate_free_count', 'number')}${captureField('certificate_paid_count', 'number')}`)}
+				${captureGroup('Zuständigkeit', `<label><span>Niederlassung</span><select name="branch"><option value=""></option>${branchOptions}</select></label><label><span>Zuständiger Mitarbeiter</span><select name="responsible_employee"><option value=""></option>${memberOptions}</select></label>`)}
+				${captureGroup('Gesprächsnotiz', `<label class="bp-span-2"><span>Interne Gesprächsnotiz</span><textarea name="notes" rows="4">${esc(data.notes || capture().transcript)}</textarea></label>`, true)}
 			</form>
 			${(capture().warnings || []).length ? `<ul class="bp-capture-warnings">${capture().warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul>` : ''}</div></div>
 			<div class="bp-capture-actions"><button type="button" class="bp-secondary" data-capture-step="1">Zurück</button><button type="button" class="bp-primary" id="capture-review">Zur Prüfung</button></div>
 		</section>`
 	}
 
-	function captureField(name, type = 'text', required = false) {
-		return `<label><span>${esc(fieldLabels[name] || name)}${required ? ' *' : ''}</span><input name="${name}" type="${type}" value="${esc(capture().data[name] || '')}" ${required ? 'required' : ''}></label>`
+	/** 0.85.0: Folgeschritte aus dem Gespräch, die nach dem Anlegen als Aufgabe entstehen (abwählbar). */
+	function followUpSection() {
+		const items = capture().followUps || []
+		if (!items.length) return ''
+		return `<section class="bp-capture-followups"><h4>Nach dem Anlegen</h4>${items.map((item) => `<label class="bp-inline-check"><input type="checkbox" data-follow-up="${esc(item.key)}" ${capture().followUpSelected?.[item.key] !== false ? 'checked' : ''}> <span>Aufgabe anlegen: <b>${esc(item.label)}</b><small>Aus dem Gespräch: „${esc(item.source)}“. ${esc(followUpNote(item.key))}</small></span></label>`).join('')}</section>`
 	}
+
+	function followUpNote(key) {
+		return key === 'SIGNED_ORDER_UPLOAD' ? 'Als unterschrieben gilt der Auftrag erst, wenn der Scan in der Fallakte hochgeladen und geprüft ist.' : ''
+	}
+
+	const selectedFollowUps = () => (capture().followUps || []).filter((item) => capture().followUpSelected?.[item.key] !== false)
+
+	/** 0.84.0: Angaben in Blöcken wie bei „Neuer Fall“, aber auf einer Seite. Breite Blöcke nehmen die ganze Zeile ein. */
+	function captureGroup(title, fields, wide = false) {
+		return `<fieldset class="bp-capture-group${wide ? ' bp-capture-group-wide' : ''}"><legend>${esc(title)}</legend><div class="bp-form-grid">${fields}</div></fieldset>`
+	}
+
+	function captureField(name, type = 'text', required = false) {
+		// Aus Gespräch oder Bogen übernommene Werte hervorheben, damit sie gezielt geprüft werden.
+		const value = String(capture().data[name] || '')
+		const recognized = value !== '' && allSuggestions().some((item) => item.field === name && normalizeValue(item.value) === normalizeValue(value))
+		return `<label${recognized ? ' class="bp-capture-recognized" title="Aus Gespräch bzw. Bogen übernommen – bitte prüfen"' : ''}><span>${esc(fieldLabels[name] || name)}${required ? ' *' : ''}</span><input name="${name}" type="${type}" value="${esc(value)}" ${required ? 'required' : ''}></label>`
+	}
+
+	/** 0.84.1: Prüfansicht in denselben Blöcken wie Schritt 2; leere Blöcke entfallen. */
+	const reviewGroups = [
+		['Verstorbene Person', ['salutation', 'title', 'first_name', 'last_name', 'birth_name', 'profession', 'religion']],
+		['Geburt', ['date_of_birth', 'birth_place', 'birth_registry_office', 'pension_insurance_number']],
+		['Sterbefall', ['date_of_death', 'place_of_death']],
+		['Letzter Wohnsitz', ['last_residence', 'last_residence_postal_code', 'last_residence_city']],
+		['Familienstand und Ehepartner/in', ['civil_status', 'spouse_first_name', 'spouse_last_name', 'spouse_date_of_birth', 'spouse_birth_place', 'spouse_residence', 'spouse_date_of_death', 'spouse_death_place', 'marriage_date', 'marriage_place', 'partnership_date', 'divorce_date']],
+		['Auftraggeber/in', ['order_client_relation', 'order_client_first_name', 'order_client_name', 'order_client_mobile']],
+		['Bestattung und Urkunden', ['burial_variant_code', 'cemetery_contact', 'certificate_free_count', 'certificate_paid_count']],
+		['Zuständigkeit', ['branch', 'responsible_employee']],
+	]
 
 	function captureReview(data) {
 		const display = (key, value) => key === 'burial_variant_code' ? variantPath(value).map((item) => item.label).join(' → ') || value : key === 'branch' ? (state.branches || []).find((item) => item.key === value)?.name || value : key === 'responsible_employee' ? (state.team.members || []).find((item) => item.uid === value)?.displayName || value : /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? new Date(`${value}T00:00:00`).toLocaleDateString('de-DE') : value
-		const rows = Object.entries(data).filter(([key, value]) => key !== 'funeral_type' && String(value || '').trim() !== '').map(([key, value]) => `<div><dt>${esc(fieldLabels[key] || key)}</dt><dd>${esc(display(key, value))}</dd></div>`).join('')
+		const filled = (key) => key !== 'funeral_type' && String(data[key] ?? '').trim() !== ''
+		// Im Block „Auftraggeber/in“ bzw. „Familienstand und Ehepartner/in“ genügt die kurze Bezeichnung (Vorname statt Vorname Auftraggeber/in).
+		const row = (key) => `<div><dt>${esc(String(fieldLabels[key] || key).replace(/ (Auftraggeber\/in|Ehepartner\/in)( \(falls vorverstorben\))?$/, '$2'))}</dt><dd>${esc(display(key, data[key]))}</dd></div>`
+		const known = new Set(['notes', ...reviewGroups.flatMap(([, keys]) => keys)])
+		const groups = [...reviewGroups, ['Weitere Angaben', Object.keys(data).filter((key) => !known.has(key))]]
+			.map(([title, keys]) => [title, keys.filter(filled)]).filter(([, keys]) => keys.length)
+		const missing = ['first_name', 'last_name', 'date_of_death', 'burial_variant_code', 'branch', 'responsible_employee'].filter((key) => !filled(key)).map((key) => fieldLabels[key] || key)
+		// 0.85.0: Unbeantwortete Rückfragen gehören ebenfalls zu „Noch offen“; vorbelegte Werte mit Prüfhinweis (z. B. Aufteilung der Sterbeurkunden) zu „Bitte prüfen“.
+		const questions = capture().questions || []
+		for (const question of questions) if (question.kind !== 'CHECK' && question.field && !filled(question.field) && !missing.includes(question.label) && !missing.includes(fieldLabels[question.field])) missing.push(question.label || fieldLabels[question.field] || question.field)
+		const checks = questions.filter((question) => question.kind === 'CHECK' && filled(question.field))
+		const followUps = selectedFollowUps()
+		const cards = groups.map(([title, keys]) => `<section class="bp-capture-review-group"><h4>${esc(title)}</h4><dl>${keys.map(row).join('')}</dl></section>`).join('')
+		const note = filled('notes') ? `<section class="bp-capture-review-group bp-capture-review-note"><h4>Gesprächsnotiz</h4><p>${esc(data.notes)}</p></section>` : ''
 		return `<section class="bp-panel bp-capture-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Schritt 3</p><h3>Entwurf verbindlich anlegen</h3></div><span class="bp-status">Noch nicht gespeichert</span></div>
 			<p>Bitte kontrolliere besonders Namen, Datumsangaben, Bestattungsart, Niederlassung und Zuständigkeit. Der Assistent legt erst nach dem folgenden Klick einen Fall an.</p>
 			${(capture().duplicates || []).length ? `<div class="bp-warning" role="alert"><b>Möglicher Doppelfall:</b> ${capture().duplicates.map((item) => esc(`${item.caseNumber} · ${item.firstName} ${item.lastName}${item.dateOfDeath ? ` · † ${new Date(`${item.dateOfDeath}T00:00:00`).toLocaleDateString('de-DE')}` : ''}`)).join('; ')}. Bitte prüfen, ob der Sterbefall schon angelegt ist.</div>` : ''}
-			<dl class="bp-capture-review">${rows || '<div><dd>Keine Angaben vorhanden.</dd></div>'}</dl>
+			${missing.length ? `<p class="bp-capture-review-missing"><b>Noch offen:</b> ${missing.map((label) => esc(label)).join(', ')} – über „Zurück“ ergänzen oder später in der Fallakte.</p>` : ''}
+			${checks.length ? `<div class="bp-capture-review-missing bp-capture-review-checks"><b>Bitte prüfen:</b><ul>${checks.map((question) => `<li>${esc(question.question)}</li>`).join('')}</ul></div>` : ''}
+			${followUps.length ? `<div class="bp-capture-review-followups"><b>Nach dem Anlegen:</b><ul>${followUps.map((item) => `<li>Aufgabe <b>${esc(item.label)}</b> – ${esc(followUpNote(item.key))}</li>`).join('')}</ul></div>` : ''}
+			<div class="bp-capture-review">${cards || note ? cards + note : '<p>Keine Angaben vorhanden.</p>'}</div>
 			<div class="bp-capture-actions"><button type="button" class="bp-secondary" data-capture-step="2">Zurück</button><button type="button" class="bp-primary" id="capture-create-case" ${data.first_name && data.last_name ? '' : 'disabled'}>Geprüften Fall anlegen</button></div>
 		</section>`
 	}
@@ -231,7 +280,7 @@ export function createAssistantModule(ctx) {
 		const caseOptions = (state.cases || []).map((item) => `<option value="${item.id}" ${selectedCase === Number(item.id) ? 'selected' : ''}>${esc(item.caseNumber)} · ${esc(item.firstName)} ${esc(item.lastName)}</option>`).join('')
 		const selectedCaseData = (state.cases || []).find((item) => Number(item.id) === selectedCase) || (Number(state.currentCase?.id) === selectedCase ? state.currentCase : null)
 		const selectedCaseLabel = selectedCaseData ? `${selectedCaseData.caseNumber} · ${selectedCaseData.firstName} ${selectedCaseData.lastName}` : 'Kein Fall ausgewählt'
-		return `<button type="button" class="bp-assistant-toggle" id="assistant-sidebar-toggle" aria-controls="assistant-sidebar" aria-expanded="${side.open ? 'true' : 'false'}"><span aria-hidden="true">✦</span><span>Assistent</span></button>
+		return `<button type="button" class="bp-assistant-toggle" id="assistant-sidebar-toggle" aria-controls="assistant-sidebar" aria-expanded="${side.open ? 'true' : 'false'}"><span aria-hidden="true">✦</span><span class="bp-assistant-toggle-label">Assistent</span></button>
 		<aside id="assistant-sidebar" class="bp-assistant-sidebar ${side.open ? 'open' : ''}" aria-hidden="${side.open ? 'false' : 'true'}" aria-label="Bestatter-Assistent">
 			<header><div><p class="bp-eyebrow">Fallbezogene Hilfe</p><h2>Bestatter-Assistent</h2></div><button type="button" class="bp-icon-button" id="assistant-sidebar-close" aria-label="Assistent schließen">×</button></header>
 			<p class="bp-muted">Funktioniert auch ohne KI-Anbieter. Schreibende Vorschläge werden niemals ohne Ihre ausdrückliche Bestätigung ausgeführt.</p>
@@ -302,6 +351,7 @@ export function createAssistantModule(ctx) {
 			applyConflictChoice(field, value); persist(); render()
 			if (value === '') requestAnimationFrame(() => document.querySelector(`#capture-fields [name="${CSS.escape(field === 'funeral_type' ? 'burial_variant_code' : field)}"]`)?.focus())
 		}))
+		document.querySelectorAll('[data-follow-up]').forEach((input) => input.addEventListener('change', () => { capture().followUpSelected = { ...(capture().followUpSelected || {}), [input.dataset.followUp]: input.checked }; persist() }))
 		document.querySelectorAll('[data-focus-capture-field]').forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); document.querySelector(`#capture-fields [name="${CSS.escape(link.dataset.focusCaptureField)}"]`)?.focus() }))
 		document.getElementById('capture-review')?.addEventListener('click', async () => {
 			persistFields()
@@ -436,12 +486,14 @@ export function createAssistantModule(ctx) {
 		capture().transcript = textarea.value.trim()
 		if (!capture().transcript && capture().scanImport?.id) {
 			// Nur Scan: direkt zu den Angaben (Vorschläge aus der Texterkennung bzw. manuelle Übertragung)
-			capture().suggestions = []; capture().questions = []; capture().conflicts = []
+			capture().suggestions = []; capture().questions = []; capture().conflicts = []; capture().followUps = []; capture().followUpSelected = {}
 			capture().step = 2; capture().maxStep = Math.max(capture().maxStep, 2); persist(); render(); return
 		}
 		try {
 			const result = await api(`${ctx.apiBase}/assistant/analyze`, { method: 'POST', feedback: false, loadingLabel: 'Gesprächstext wird ausgewertet …', body: new URLSearchParams({ text: capture().transcript, context: 'CASE_CAPTURE' }) })
 			capture().suggestions = result.suggestions || []; capture().warnings = result.warnings || []; capture().questions = result.questions || []; capture().conflicts = result.conflicts || []; capture().conflictChoices = {}
+			// 0.85.0: Folgeschritte (z. B. Aufgabe zum unterschriebenen Auftrag) sind vorausgewählt, aber abwählbar.
+			capture().followUps = result.followUps || []; capture().followUpSelected = Object.fromEntries(capture().followUps.map((item) => [item.key, true]))
 			capture().step = 2; capture().maxStep = Math.max(capture().maxStep, 2); persist(); render()
 		} catch (error) { notifyError(error.message) }
 	}
@@ -583,6 +635,8 @@ export function createAssistantModule(ctx) {
 			if (corrections.length) await api(`${ctx.apiBase}/assistant/corrections`, { method: 'POST', feedback: false, loadingLabel: 'Bestätigte Korrekturen werden für die fachliche Prüfung vorgemerkt …', body: new URLSearchParams({ corrections: JSON.stringify(corrections) }) })
 			const result = await api(ctx.urls.cases, { method: 'POST', feedback: false, loadingLabel: 'Geprüfter Fall wird angelegt …', body: new URLSearchParams({ masterData: JSON.stringify(data), firstName: data.first_name, lastName: data.last_name, creationToken: capture().creationToken }) })
 			if(scanImport?.id){const ocrFields=new Set((capture().ocrSuggestions||[]).map((item)=>item.field));const confirmedFields=Object.entries(data).filter(([key,value])=>ocrFields.has(key)&&String(value||'').trim()!=='').map(([key])=>key);await api(`${ctx.apiBase}/assistant/capture-imports/${scanImport.id}/complete`,{method:'POST',feedback:false,loadingLabel:'Originalscan wird dem Fall zugeordnet …',body:new URLSearchParams({caseId:String(result.id),confirmedFields:JSON.stringify(confirmedFields)})})}
+			// 0.85.0: Folgeaufgaben aus dem Gespräch; ein Fehler verhindert die Fallanlage nicht.
+			const followUpWarnings = await createFollowUpTasks(result.id, data, selectedFollowUps())
 			state.currentCase = await api(`${ctx.urls.cases}/${result.id}`)
 			state.cases = await api(ctx.urls.cases)
 			pendingAudio = null
@@ -591,8 +645,24 @@ export function createAssistantModule(ctx) {
 			notifySuccess(`Fall ${state.currentCase.caseNumber} wurde angelegt.`)
 			const warnings = Array.isArray(result.validationWarnings) ? result.validationWarnings : []
 			if (warnings.length) notifyWarning(`Bitte prüfen: ${warnings.join(' ')}`)
+			if (followUpWarnings.length) notifyWarning(followUpWarnings.join(' '))
 			render()
 		} catch (error) { notifyError(error.message); if (button) { button.disabled = false; button.textContent = 'Geprüften Fall anlegen' } }
+	}
+
+	async function createFollowUpTasks(caseId, data, followUps) {
+		const warnings = []
+		const today = new Date(); const pad = (value) => String(value).padStart(2, '0')
+		const due = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}T17:00`
+		for (const item of followUps) {
+			const description = item.key === 'SIGNED_ORDER_UPLOAD'
+				? `Laut Gespräch liegt der unterschriebene Auftrag vor („${item.source}“). Scan in der Fallakte unter Dokumente → „Handschriftlich unterschriebener Vertrag“ hochladen und die Sichtprüfung bestätigen. Erst dann gilt der Auftrag als unterschrieben. Danach diese Aufgabe erledigen.`
+				: item.label
+			try {
+				await api(`${ctx.apiBase}/records/task`, { method: 'POST', feedback: false, loadingLabel: 'Folgeaufgabe wird angelegt …', body: new URLSearchParams({ title: item.label, date: due, status: 'OFFEN', caseId: String(caseId), data: JSON.stringify({ description, priority: 'HOCH', assigneeUid: data.responsible_employee || currentUser(), captureFollowUp: item.key }) }) })
+			} catch (error) { warnings.push(`Die Aufgabe „${item.label}“ konnte nicht angelegt werden (${error.message}). Bitte von Hand anlegen.`) }
+		}
+		return warnings
 	}
 
 	async function toggleRecording(event) {
@@ -718,7 +788,7 @@ export function createAssistantModule(ctx) {
 	}
 
 	function emptyCapture() {
-		return { step: 1, maxStep: 1, transcript: '', suggestions: [], ocrSuggestions: [], ocrText: '', duplicates: [], conflictChoices: {}, warnings: [], questions: [], conflicts: [], scanImport: null, recording: false, recordingStartedAt: null, transcriptionTaskId: null, transcriptionProgress: { visible: false, progress: null, label: '', status: 'idle' }, data: { salutation: '', title: '', first_name: '', last_name: '', birth_name: '', date_of_birth: '', date_of_death: '', burial_variant_code: '', place_of_death: '', birth_place: '', birth_registry_office: '', profession: '', pension_insurance_number: '', civil_status: '', spouse_first_name: '', spouse_last_name: '', spouse_date_of_birth: '', spouse_birth_place: '', spouse_residence: '', spouse_date_of_death: '', spouse_death_place: '', marriage_date: '', marriage_place: '', partnership_date: '', divorce_date: '', religion: '', last_residence: '', last_residence_postal_code: '', last_residence_city: '', cemetery_contact: '', order_client_relation: '', order_client_first_name: '', order_client_name: '', order_client_mobile: '', certificate_free_count: '', certificate_paid_count: '', branch: defaultBranch(), responsible_employee: currentUser(), notes: '' }, command: '', assistantCaseId: 0, intentPreview: null, creationToken: ctx.createToken() }
+		return { step: 1, maxStep: 1, transcript: '', suggestions: [], ocrSuggestions: [], ocrText: '', duplicates: [], conflictChoices: {}, warnings: [], questions: [], conflicts: [], followUps: [], followUpSelected: {}, scanImport: null, recording: false, recordingStartedAt: null, transcriptionTaskId: null, transcriptionProgress: { visible: false, progress: null, label: '', status: 'idle' }, data: { salutation: '', title: '', first_name: '', last_name: '', birth_name: '', date_of_birth: '', date_of_death: '', burial_variant_code: '', place_of_death: '', birth_place: '', birth_registry_office: '', profession: '', pension_insurance_number: '', civil_status: '', spouse_first_name: '', spouse_last_name: '', spouse_date_of_birth: '', spouse_birth_place: '', spouse_residence: '', spouse_date_of_death: '', spouse_death_place: '', marriage_date: '', marriage_place: '', partnership_date: '', divorce_date: '', religion: '', last_residence: '', last_residence_postal_code: '', last_residence_city: '', cemetery_contact: '', order_client_relation: '', order_client_first_name: '', order_client_name: '', order_client_mobile: '', certificate_free_count: '', certificate_paid_count: '', branch: defaultBranch(), responsible_employee: currentUser(), notes: '' }, command: '', assistantCaseId: 0, intentPreview: null, creationToken: ctx.createToken() }
 	}
 
 	function defaultBranch() { return state.branches.find((item) => item.active && (item.memberUids || []).includes(currentUser()))?.key || state.branches.find((item) => item.active)?.key || '' }

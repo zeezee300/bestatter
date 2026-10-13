@@ -24,6 +24,14 @@ use OCP\TaskProcessing\TaskTypes\TextToText;
 class AssistantService {
 	private const AUDIO_LIMIT = 25_000_000;
 	private const TEXT_LIMIT = 50_000; // 0.71.0: lange Gespräche und mehrseitige Bögen (vorher 12.000)
+	/** 0.84.0: Schlüsselwörter, die auch mit kleinen Tippfehlern erkannt werden (z. B. „Aufgtraggeber“, „Sterbeurkund“). */
+	private const TYPO_KEYWORDS = ['auftraggeber', 'auftraggeberin', 'sterbeurkunde', 'sterbeurkunden', 'verstorben', 'gestorben', 'feuerbestattung', 'erdbestattung', 'seebestattung', 'baumbestattung', 'waldbestattung', 'urnenbeisetzung', 'gebührenfrei', 'gebührenfreie', 'gebührenpflichtig', 'gebührenpflichtige', 'wohnhaft'];
+	/** 0.84.0: Typische Endungen deutscher Straßennamen (für Anschriften ohne festes Satzmuster). */
+	private const STREET_SUFFIX = '(?:straße|strasse|str\\.|weg|allee|platz|ring|gasse|damm|chaussee|ufer|steig|stieg|pfad|deich|markt|hof|berg|feld|graben|kamp|wall|tor|brücke|park|garten|siedlung|grund|höhe|aue|horst|heide|winkel|reihe|zeile|bogen|wiese|wiesen|stein|bruch|busch|brink|twiete|kai|insel|hafen|land|dorf|tal|blick|eck|ecke|gang|steg|bahn)';
+	/** @var list<array{field: string, label: string, question: string}> zusätzliche Rückfragen der laufenden Auswertung */
+	private array $extraQuestions = [];
+	/** 0.85.0: Folgeschritte nach dem Anlegen, z. B. Aufgabe „Unterschriebenen Auftrag hochladen und prüfen“. */
+	private array $followUps = [];
 	public const OCR_TASK_TYPE = 'core:image2text:ocr';
 	private const AUDIO_MIME_TYPES = [
 		'audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg',
@@ -136,6 +144,8 @@ class AssistantService {
 		if (mb_strlen($text) > self::TEXT_LIMIT) throw new \InvalidArgumentException('Der Gesprächstext ist für eine einzelne Auswertung zu lang.');
 
 		$suggestions = [];
+		$this->extraQuestions = [];
+		$this->followUps = [];
 		if ($context === 'OCR_FORM') {
 			// 0.79.0: Bögen nur über beschriftete, plausible Felder auswerten. Die Freitextregeln liefen bisher auch über den
 			// Vordruck („Überführung des Sarges …“ → Bestattungsart Überführung) und übernahmen Zeichensalat mit 93 %.
@@ -145,6 +155,8 @@ class AssistantService {
 			$this->applyApprovedRules($text, $suggestions);
 			return $this->result($context, $text, $suggestions);
 		}
+		$original = $text;
+		$text = self::correctKeywordTypos($text);
 		$this->suggestPersonalDetails($text, $suggestions);
 		$this->suggestName($text, $suggestions);
 		// 0.71.1: „am TT.MM.JJJJ“ nur mit „geboren“ davor oder danach (vorher wurde z. B. „verstorben am 21.09.2026“ als Geburtsdatum erkannt).
@@ -155,21 +167,24 @@ class AssistantService {
 		$this->suggestDate($text, $suggestions, 'date_of_death', '/(?:verstorben|gestorben)\s+(?:am\s+)?(\d{1,2}[.]\d{1,2}[.]\d{2,4})/iu', 'Sterbedatum');
 		$this->suggestDate($text, $suggestions, 'date_of_death', '/(?:verstorben|gestorben)\s+(?:am\s+)?([^,.;]+)/iu', 'Sterbedatum');
 		$this->suggestDate($text, $suggestions, 'date_of_death', '/\b(?:sie|er|die\s+person|der\s+verstorbene|die\s+verstorbene)\s+ist\s+am\s+(\d{1,2}[.]\d{1,2}[.]\d{2,4})\s+(?:verstorben|gestorben)\b/iu', 'Sterbedatum');
-		$this->suggestValue($text, $suggestions, 'place_of_death', '/(?:verstorben|gestorben)\s+(?:am\s+)?[^,.;]+\s+(?:im|in der|in)\s+([^,.;]+)/iu', 'Sterbeort / Einrichtung', .72);
-		$this->suggestValue($text, $suggestions, 'place_of_death', '/\b(?:verstorben|gestorben)\s+(?:und\s+zwar\s+)?(?:im|in\s+der|in)\s+([^,.;]+)/iu', 'Sterbeort / Einrichtung', .9);
+		$this->suggestPlaceOfDeath($text, $suggestions);
 		$this->suggestValue($text, $suggestions, 'birth_place', '/\bgeboren\s+(?:worden\s+)?in\s+(.+?)(?=\s+und\b|[,.;]|$)/iu', 'Geburtsort', .9);
 		$this->suggestValue($text, $suggestions, 'birth_place', '/\bgeboren\s+(?:am\s+)?\d{1,2}[.]\d{1,2}[.]\d{2,4}\s+in\s+(.+?)(?=\s+und\b|[,.;]|$)/iu', 'Geburtsort', .92);
-		$this->suggestValue($text, $suggestions, 'last_residence_city', '/(?:wohnhaft|zuletzt wohnhaft)\s+(?:in|unter)\s+([^,.;]+)/iu', 'Letzter Wohnort', .68);
 		$this->suggestResidence($text, $suggestions);
+		if ($this->suggestedValue($suggestions, 'last_residence') === '') $this->suggestResidenceAnyOrder($text, $suggestions);
+		// Rückfall: nur der Ort („wohnhaft in Bremen“); eine vorangestellte PLZ gehört nicht zum Ortsnamen.
+		if ($this->suggestedValue($suggestions, 'last_residence_city') === '' && preg_match('/(?:wohnhaft|zuletzt wohnhaft|wohnte\s+zuletzt|wohnt)\s+(?:in|unter)\s+(?:(\d{5})\s+)?([^,.;\d][^,.;]*)/iu', $text, $match)) {
+			if ($match[1] !== '') $this->add($suggestions, 'last_residence_postal_code', $match[1], 'PLZ', .9, $match[0]);
+			$this->add($suggestions, 'last_residence_city', trim($match[2]), 'Letzter Wohnort', .68, $match[0]);
+		}
 		$this->suggestCemetery($text, $suggestions);
 		$this->suggestAdministrativeDetails($text, $suggestions);
 		$this->suggestClientDetails($text, $suggestions);
 		$this->suggestCertificateCounts($text, $suggestions);
-		if (preg_match('/\bfeuerbestattung\b/iu', $text)) $this->add($suggestions, 'funeral_type', 'FEUERBESTATTUNG', 'Bestattungsart', .98, 'Feuerbestattung');
-		elseif (preg_match('/\berdbestattung\b/iu', $text)) $this->add($suggestions, 'funeral_type', 'ERDBESTATTUNG', 'Bestattungsart', .98, 'Erdbestattung');
-		elseif (preg_match('/\büberführung\b/iu', $text)) $this->add($suggestions, 'funeral_type', 'UEBERFUEHRUNG', 'Bestattungsart', .86, 'Überführung');
+		$this->suggestFuneralType($text, $suggestions);
+		$this->suggestSignedOrder($text);
 		$this->applyApprovedRules($text, $suggestions);
-		return $this->result($context, $text, $suggestions);
+		return $this->result($context, $original, $suggestions);
 	}
 
 	/** Hinweise, Rückfragen und Widersprüche zu den Vorschlägen. */
@@ -193,6 +208,7 @@ class AssistantService {
 		$questions = array_map(static fn(array $item): array => ['field' => $item[0], 'label' => $item[1], 'question' => 'Bitte „' . $item[1] . '“ ergänzen oder ausdrücklich als unbekannt bestätigen.'], array_values(array_filter([
 			['first_name', 'Vorname'], ['last_name', 'Nachname'], ['date_of_death', 'Sterbedatum'], ['place_of_death', 'Sterbeort'], ['funeral_type', 'Bestattungsart'], ['order_client_name', 'Auftraggeber/in'],
 		], static fn(array $item): bool => !in_array($item[0], $fields, true))));
+		foreach ($this->extraQuestions as $question) $questions[] = $question;
 
 		return [
 			'context' => $context,
@@ -201,6 +217,7 @@ class AssistantService {
 			'warnings' => $warnings,
 			'questions' => $questions,
 			'conflicts' => $conflicts,
+			'followUps' => $this->followUps,
 			'unmatchedText' => $text,
 			'engine' => 'BESTATTER_RULES_V2',
 			'requiresConfirmation' => true,
@@ -1024,6 +1041,108 @@ class AssistantService {
 		};
 	}
 
+	/**
+	 * 0.84.0: Tippfehler in Schlüsselwörtern berichtigen, bevor die Satzmuster greifen („Aufgtraggeber“ → „Auftraggeber“).
+	 * Nur Wörter ab 8 Buchstaben, höchstens 1 (8–9 Buchstaben) bzw. 2 Abweichungen (ab 10); Großschreibung bleibt erhalten.
+	 */
+	public static function correctKeywordTypos(string $text): string {
+		return preg_replace_callback('/\b\p{L}{8,}\b/u', static function (array $match): string {
+			$word = $match[0];
+			$lower = mb_strtolower($word);
+			if (in_array($lower, self::TYPO_KEYWORDS, true)) return $word;
+			$best = null; $bestDistance = PHP_INT_MAX;
+			foreach (self::TYPO_KEYWORDS as $keyword) {
+				if (abs(mb_strlen($keyword) - mb_strlen($lower)) > 2) continue;
+				$distance = levenshtein(self::ascii($lower), self::ascii($keyword));
+				if ($distance < $bestDistance) { $bestDistance = $distance; $best = $keyword; }
+			}
+			$allowed = mb_strlen($lower) >= 10 ? 2 : 1;
+			if ($best === null || $bestDistance === 0 || $bestDistance > $allowed) return $word;
+			$first = mb_substr($word, 0, 1);
+			return $first === mb_strtoupper($first) ? mb_strtoupper(mb_substr($best, 0, 1)) . mb_substr($best, 1) : $best;
+		}, $text) ?? $text;
+	}
+
+	private static function ascii(string $value): string {
+		return strtr($value, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
+	}
+
+	/** 0.84.0: Sterbeort auch nach einem Datum („gestorben 08.10.2026 in …“); „zuhause/daheim“ als „zu Hause“. */
+	private function suggestPlaceOfDeath(string $text, array &$suggestions): void {
+		$patterns = [
+			['/\b(?:verstorben|gestorben)\s+(?:am\s+)?\d{1,2}[.]\d{1,2}[.]\d{2,4}\s+(?:im|in\s+der|in)\s+([^,.;]+)/iu', .9],
+			['/\b(?:verstorben|gestorben)\s+(?:und\s+zwar\s+)?(?:im|in\s+der|in)\s+([^,.;]+)/iu', .9],
+			['/\b(?:verstorben|gestorben)\s+(?:am\s+)?[^,.;]+\s+(?:im|in der|in)\s+([^,.;]+)/iu', .72],
+			['/\b(zu\s*hause|daheim)\s+(?:in\s+[\p{Lu}][\p{L}\-]+\s+)?(?:verstorben|gestorben)/iu', .88],
+		];
+		foreach ($patterns as [$pattern, $confidence]) {
+			if (!preg_match($pattern, $text, $match)) continue;
+			$value = self::homePlace(trim($match[1]));
+			if ($value === '') continue;
+			$this->add($suggestions, 'place_of_death', $value, 'Sterbeort / Einrichtung', $confidence, $match[0]);
+			return;
+		}
+	}
+
+	/** „zuhause Bremen“, „in zuhause“, „zu Hause“ → „zu Hause“ bzw. „zu Hause, Bremen“. */
+	private static function homePlace(string $value): string {
+		if (!preg_match('/^(?:in\s+)?(?:zu\s*hause|daheim|der\s+eigenen\s+wohnung|seiner\s+wohnung|ihrer\s+wohnung)\b\s*(?:in\s+)?(.*)$/iu', $value, $match)) return $value;
+		$place = trim($match[1]);
+		return $place === '' ? 'zu Hause' : 'zu Hause, ' . $place;
+	}
+
+	/**
+	 * 0.84.0: Anschrift in beliebiger Reihenfolge in einem Satz über den Wohnsitz:
+	 * „wohnte zuletzt in 28357 Bremen, Brandenweg 5a“, „Anschrift: Am Markt 3, 12345 Ort“, „wohnt im Lindenweg 2 in 12345 Ort“.
+	 */
+	private function suggestResidenceAnyOrder(string $text, array &$suggestions): void {
+		$sentences = preg_split('/(?<=[.;!?])\s+(?=\p{Lu})/u', $text) ?: [$text];
+		foreach ($sentences as $sentence) {
+			if (!preg_match('/\b(?:wohnte|wohnt|wohnhaft|wohnsitz|anschrift|adresse|lebte|gemeldet)\b/iu', $sentence)) continue;
+			if (!preg_match('/\b(\d{5})\s+([\p{Lu}][\p{L}\-]+(?:\s+(?:am|an\s+der|im|in\s+der|ob\s+der|bei)\s+[\p{Lu}][\p{L}\-]+|\s*\([\p{L}\s]+\))?)/u', $sentence, $place)) continue;
+			$rest = str_replace($place[0], ' ', $sentence);
+			$number = '(\d{1,4}(?:\s?[a-zA-Z](?!\p{L}))?(?:\s?[-\/]\s?\d{1,4}(?:\s?[a-zA-Z](?!\p{L}))?)?)(?![\d.,]\d)';
+			$named = '((?:[\p{Lu}][\p{L}ß.\-]*[ \-]){0,3}[\p{Lu}\p{Ll}][\p{L}ß\-]*' . self::STREET_SUFFIX . ')';
+			$prefixed = '((?:Am|An\s+der|An\s+den|Auf\s+der|Auf\s+dem|Im|In\s+der|In\s+den|Zum|Zur|Hinter\s+der|Unter\s+den|Vor\s+dem|Alte[rs]?|Neue[rs]?)\s+[\p{Lu}][\p{L}ß.\-]*(?:\s+[\p{Lu}][\p{L}ß.\-]*)?)';
+			if (!preg_match('/\b' . $named . '\s+' . $number . '/u', $rest, $street) && !preg_match('/\b' . $prefixed . '\s+' . $number . '/u', $rest, $street)) {
+				// Nur der Ort ist bekannt.
+				$this->add($suggestions, 'last_residence_postal_code', $place[1], 'PLZ', .9, $sentence);
+				$this->add($suggestions, 'last_residence_city', trim($place[2]), 'Letzter Wohnort', .85, $sentence);
+				return;
+			}
+			$this->add($suggestions, 'last_residence', trim($street[1]) . ' ' . preg_replace('/\s+/u', '', $street[2]), 'Straße / Hausnummer', .86, $sentence);
+			$this->add($suggestions, 'last_residence_postal_code', $place[1], 'PLZ', .94, $sentence);
+			$this->add($suggestions, 'last_residence_city', trim($place[2]), 'Letzter Wohnort', .9, $sentence);
+			return;
+		}
+	}
+
+	/**
+	 * 0.84.0: Bestattungsart aus Begriffen und Zusammenhängen. Die Werte entsprechen den Bezeichnungen der mitgelieferten
+	 * Bestattungsvarianten (die Oberfläche ordnet sie dem Variantenbaum zu). Die Urnenübergabe hat Vorrang vor der
+	 * allgemeinen Feuerbestattung, weil sie die genauere Variante ist.
+	 */
+	private function suggestFuneralType(string $text, array &$suggestions): void {
+		$handover = '/\burne\b(?:(?!\.\s+\p{Lu}).){0,120}?\b(?:übergeben|übergabe|übergibt|aushändig\p{L}*|ausgehändigt|an\s+(?:die|den)\s+angehörigen|mit\s+nach\s+hause|garten|privatgrund\p{L}*|grundstück)/iu';
+		$handoverBefore = '/\b(?:übergabe|aushändigung)\s+der\s+urne\b|\b(?:im|in\s+(?:den|dem))\s+(?:eigenen\s+|heimischen\s+)?garten\b(?:(?!\.\s+\p{Lu}).){0,120}?\burne\b/iu';
+		$rules = [
+			['/\bseebestattung\b/iu', 'Seebestattung', .96],
+			['/\b(?:baumbestattung|friedwald|ruheforst)\b/iu', 'Baumbestattung', .94],
+			['/\bwaldbestattung\b/iu', 'Waldbestattung', .94],
+			[$handover, 'Urne an Angehörige', .86],
+			[$handoverBefore, 'Urne an Angehörige', .86],
+			['/\bfeuerbestattung\b/iu', 'FEUERBESTATTUNG', .98],
+			['/\berdbestattung\b/iu', 'ERDBESTATTUNG', .98],
+			['/\b(?:urnenbeisetzung|einäscherung|eingeäschert|kremation|urne)\b/iu', 'FEUERBESTATTUNG', .8],
+			['/\büberführung\b/iu', 'UEBERFUEHRUNG', .86],
+		];
+		foreach ($rules as [$pattern, $value, $confidence]) {
+			if (!preg_match($pattern, $text, $match)) continue;
+			$this->add($suggestions, 'funeral_type', $value, 'Bestattungsart', $confidence, $match[0]);
+			return;
+		}
+	}
+
 	private function suggestName(string $text, array &$suggestions): void {
 		if (!preg_match('/(?:sterbefall|verstorbene(?:r| person)?|verstorben ist|es\s+geht\s+um)\s+(?:frau\s+|herr\s+)?([\p{L}\'-]+)\s+([\p{L}\'-]+)(?=\s*[,.;]|\s+(?:geborene|geborener|geb[.]|ist|war|wurde)\b|$)/iu', $text, $match)) return;
 		$this->add($suggestions, 'first_name', $match[1], 'Vorname', .88, $match[0]);
@@ -1122,6 +1241,42 @@ class AssistantService {
 			if (!$explicit && !$elliptic) continue;
 			$value = $this->numberValue($match[1]);
 			if ($value !== null) $this->add($suggestions, $field, (string)$value, $label, .94, $match[0]);
+		}
+		// 0.84.0: Anzahl ohne Angabe gebührenfrei/-pflichtig nicht verwerfen. 0.85.0 (Entscheidung Kunde 12.10.2026): als
+		// gebührenpflichtig vorbelegen und die Aufteilung als Prüfhinweis nennen (gebührenfrei bleibt beim Standard des Auftrags).
+		$hasCount = $this->suggestedValue($suggestions, 'certificate_free_count') !== '' || $this->suggestedValue($suggestions, 'certificate_paid_count') !== '';
+		if (!$hasCount && preg_match('/\b(\d+|ein(?:e|en)?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn)\s+(?:\p{L}+\s+)?sterbeurkunden?\b/iu', $text, $match)) {
+			$count = $this->numberValue($match[1]);
+			if ($count !== null && $count > 0) {
+				$this->add($suggestions, 'certificate_paid_count', (string)$count, 'Sterbeurkunden gebührenpflichtig', .7, $match[0]);
+				$this->extraQuestions[] = ['field' => 'certificate_paid_count', 'label' => 'Sterbeurkunden', 'kind' => 'CHECK', 'question' => $count . ' Sterbeurkunde' . ($count === 1 ? '' : 'n') . ' erkannt – als gebührenpflichtig vorbelegt. Bitte prüfen, ob davon welche gebührenfrei sind, und die Aufteilung anpassen.'];
+			}
+		}
+	}
+
+	/**
+	 * 0.85.0: „Der unterschriebene Auftrag liegt vor“ setzt keinen Status. Als unterschrieben gilt der Auftrag erst, wenn
+	 * der Scan hochgeladen und geprüft ist (oder digital unterschrieben wurde). Erkannt wird deshalb nur ein Folgeschritt:
+	 * nach dem Anlegen die Aufgabe „Unterschriebenen Auftrag hochladen und prüfen“. Verneinungen („noch nicht
+	 * unterschrieben“) zählen nicht.
+	 */
+	private function suggestSignedOrder(string $text): void {
+		$document = '(?:bestattungs)?(?:auftrag(?:s(?:formular|bogen))?|vertrag|vollmacht)';
+		$signed = '(?:unterschrieben|unterzeichnet)';
+		$patterns = [
+			'/\b' . $signed . '(?:e|en|er|es)?\s+(?:bestattungs)?(?:auftrag(?:s(?:formular|bogen))?|vertrag)\b/iu',
+			'/\b' . $document . '\s+(?:ist|wurde|liegt|wird|haben\s+wir)?\s*(?:\p{L}+\s+){0,3}?' . $signed . '\b/iu',
+		];
+		foreach ($patterns as $pattern) {
+			if (preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE) !== 1) continue;
+			$offset = (int)$match[0][1];
+			// Nur den eigenen Satz betrachten („kein Grabschmuck o.ä. Der unterschriebene Auftrag …“ ist keine Verneinung).
+			$before = substr($text, max(0, $offset - 40), min(40, $offset));
+			$before = (string)preg_replace('/^.*[.;!?:]/su', '', $before);
+			$window = $before . (string)$match[0][0];
+			if (preg_match('/\b(?:nicht|kein(?:e|en|er)?|noch\s+nicht|ohne)\b/iu', $window) === 1) continue;
+			$this->followUps[] = ['key' => 'SIGNED_ORDER_UPLOAD', 'label' => 'Unterschriebenen Auftrag hochladen und prüfen', 'source' => trim((string)$match[0][0])];
+			return;
 		}
 	}
 

@@ -27,6 +27,9 @@ class AuditService {
 	private const CASE_DUPLICATE_TOP_LEVEL_KEYS = ['firstName', 'lastName', 'dateOfDeath', 'funeralType', 'burialVariantCode', 'withFuneralCeremony', 'pickupTime', 'bodyHeightCm', 'bodyWeightKg'];
 	private const TOP_LEVEL_IGNORE = ['id', 'caseId', 'caseNumber', 'updatedAt', 'ownerUid', 'createdBy', 'updatedBy'];
 	private const MAX_CHANGES = 20;
+	public const LOCK_TABLE = 'bestatter_audit_lock';
+	/** 0.84.1: So viele vorangehende Einträge werden betrachtet, um einen gleichzeitig geschriebenen Eintrag zu erkennen. */
+	private const CONCURRENT_WINDOW = 50;
 	private const FIELD_LABELS = [
 		'status' => 'Status', 'branch' => 'Niederlassung', 'responsibleEmployee' => 'Zuständige Person',
 		'retentionHold' => 'Aufbewahrungssperre', 'retentionDueAt' => 'Aufbewahrung fällig am',
@@ -66,22 +69,53 @@ class AuditService {
 		$userUid = $this->uid();
 		$before = $this->minimize($before);
 		$after = $this->minimize($after);
-		$previousHash = $this->lastHash();
-		$eventHash = hash('sha256', implode('|', [$previousHash, $caseId, $objectType, $objectId ?? '', $action, $userUid, $createdAt]));
-		$query = $this->db->getQueryBuilder();
-		$query->insert('bestatter_audit_log')->values([
-			'case_id' => $query->createNamedParameter($caseId),
-			'object_type' => $query->createNamedParameter($objectType),
-			'object_id' => $query->createNamedParameter($objectId),
-			'action' => $query->createNamedParameter($action),
-			'before_data' => $query->createNamedParameter($before === null ? null : json_encode($before, JSON_THROW_ON_ERROR)),
-			'after_data' => $query->createNamedParameter($after === null ? null : json_encode($after, JSON_THROW_ON_ERROR)),
-			'user_uid' => $query->createNamedParameter($userUid),
-			'created_at' => $query->createNamedParameter($createdAt),
-			'previous_hash' => $query->createNamedParameter($previousHash !== '' ? $previousHash : null),
-			'event_hash' => $query->createNamedParameter($eventHash),
-		])->executeStatement();
+		// 0.84.1: Lesen des letzten Hashs und Einfügen müssen ununterbrochen nacheinander geschehen. Ohne Sperre lasen
+		// zwei gleichzeitige Vorgänge (z. B. Klick und Hintergrundjob) denselben Vorgänger und die Kette verzweigte.
+		// Die Sperrzeile in bestatter_audit_lock reiht alle Schreibvorgänge hintereinander ein; Nextcloud arbeitet mit
+		// READ COMMITTED, der nach der Sperre gelesene letzte Hash ist daher immer der aktuelle.
+		$ownTransaction = !$this->db->inTransaction();
+		if ($ownTransaction) $this->db->beginTransaction();
+		try {
+			$this->lockChain();
+			$previousHash = $this->lastHash();
+			$eventHash = hash('sha256', implode('|', [$previousHash, $caseId, $objectType, $objectId ?? '', $action, $userUid, $createdAt]));
+			$query = $this->db->getQueryBuilder();
+			$query->insert('bestatter_audit_log')->values([
+				'case_id' => $query->createNamedParameter($caseId),
+				'object_type' => $query->createNamedParameter($objectType),
+				'object_id' => $query->createNamedParameter($objectId),
+				'action' => $query->createNamedParameter($action),
+				'before_data' => $query->createNamedParameter($before === null ? null : json_encode($before, JSON_THROW_ON_ERROR)),
+				'after_data' => $query->createNamedParameter($after === null ? null : json_encode($after, JSON_THROW_ON_ERROR)),
+				'user_uid' => $query->createNamedParameter($userUid),
+				'created_at' => $query->createNamedParameter($createdAt),
+				'previous_hash' => $query->createNamedParameter($previousHash !== '' ? $previousHash : null),
+				'event_hash' => $query->createNamedParameter($eventHash),
+			])->executeStatement();
+			if ($ownTransaction) $this->db->commit();
+		} catch (\Throwable $error) {
+			if ($ownTransaction) $this->db->rollBack();
+			throw $error;
+		}
 		$this->activity->publishAuditEvent($caseId, $objectType, $objectId, $action, $before, $after);
+	}
+
+	/**
+	 * 0.84.1: Sperrt die eine Zeile in bestatter_audit_lock bis zum Ende der Transaktion. Weitere Schreibvorgänge warten
+	 * an dieser Stelle, bis der vorherige Eintrag gespeichert ist. Fehlt die Zeile (z. B. nach manuellem Leeren der
+	 * Tabelle), wird sie ohne Konflikt neu angelegt.
+	 */
+	private function lockChain(): void {
+		for ($attempt = 0; $attempt < 2; $attempt++) {
+			$query = $this->db->getQueryBuilder();
+			$locked = $query->update(self::LOCK_TABLE)
+				->set('counter', $query->createFunction($query->getColumnName('counter') . ' + 1'))
+				->where($query->expr()->eq('id', $query->createNamedParameter(1, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT)))
+				->executeStatement();
+			if ($locked > 0) return;
+			$this->db->insertIgnoreConflict(self::LOCK_TABLE, ['id' => 1, 'counter' => 0]);
+		}
+		throw new \RuntimeException('Audit-Protokoll: Schreibsperre konnte nicht gesetzt werden.');
 	}
 
 	/**
@@ -108,20 +142,56 @@ class AuditService {
 		return $count;
 	}
 
+	/**
+	 * Prüft die Hash-Kette. Ergebnis:
+	 * - brokenIds: echte Auffälligkeiten (Inhalt passt nicht zum Hash, oder der Vorgänger fehlt bzw. wurde verändert) → ERROR
+	 * - concurrentIds (0.84.1): Einträge, deren eigener Hash stimmt und deren Vorgänger einer der kurz zuvor geschriebenen
+	 *   Einträge ist. Das entsteht, wenn zwei Vorgänge gleichzeitig geschrieben haben (vor 0.84.1 möglich); es ist kein
+	 *   Hinweis auf eine Veränderung → WARN. Das Protokoll selbst wird nie umgeschrieben.
+	 * @return array{status: string, checked: int, brokenIds: list<int>, concurrentIds: list<int>, message: string}
+	 */
 	public function verifyIntegrity(): array {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('id', 'case_id', 'object_type', 'object_id', 'action', 'user_uid', 'created_at', 'previous_hash', 'event_hash')
 			->from('bestatter_audit_log')->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
-		$previous = ''; $broken = [];
+		return self::classifyChain($rows);
+	}
+
+	/**
+	 * 0.84.1: Bewertet die nach ID sortierten Protokollzeilen (ohne Datenbank, auch für Tests).
+	 * @param list<array<string, mixed>> $rows
+	 * @return array{status: string, checked: int, brokenIds: list<int>, concurrentIds: list<int>, message: string}
+	 */
+	public static function classifyChain(array $rows): array {
+		$previous = ''; $broken = []; $concurrent = []; $recent = [];
 		foreach ($rows as $row) {
 			$stored = (string)($row['event_hash'] ?? '');
-			if ($stored === '') { $previous = ''; continue; } // Altbestand beginnt vor Einführung der Verkettung.
+			if ($stored === '') { $previous = ''; $recent = []; continue; } // Altbestand beginnt vor Einführung der Verkettung.
 			$expectedPrevious = (string)($row['previous_hash'] ?? '');
 			$expected = hash('sha256', implode('|', [$expectedPrevious, (int)$row['case_id'], (string)$row['object_type'], $row['object_id'] ?? '', (string)$row['action'], (string)$row['user_uid'], (string)$row['created_at']]));
-			if ($expectedPrevious !== $previous || !hash_equals($expected, $stored)) $broken[] = (int)$row['id'];
+			if (!hash_equals($expected, $stored)) {
+				$broken[] = (int)$row['id'];
+			} elseif ($expectedPrevious !== $previous) {
+				// Gleichzeitig geschrieben: Der Vorgänger ist ein kurz zuvor gespeicherter Eintrag (oder dessen Vorgänger).
+				if ($expectedPrevious !== '' && isset($recent[$expectedPrevious])) $concurrent[] = (int)$row['id'];
+				else $broken[] = (int)$row['id'];
+			}
+			$recent[$stored] = true;
+			if ($expectedPrevious !== '') $recent[$expectedPrevious] = true;
+			if (count($recent) > 2 * self::CONCURRENT_WINDOW) $recent = array_slice($recent, -self::CONCURRENT_WINDOW, null, true);
 			$previous = $stored;
 		}
-		return ['status' => $broken === [] ? 'OK' : 'ERROR', 'checked' => count($rows), 'brokenIds' => $broken];
+		$status = $broken !== [] ? 'ERROR' : ($concurrent !== [] ? 'WARN' : 'OK');
+		return ['status' => $status, 'checked' => count($rows), 'brokenIds' => $broken, 'concurrentIds' => $concurrent, 'message' => self::integrityMessage(count($rows), $broken, $concurrent)];
+	}
+
+	/** 0.84.1: Klartext zum Prüfergebnis, z. B. „1283 Einträge geprüft – 1 Eintrag gleichzeitig geschrieben (Nr. 976), Inhalt unverändert“. */
+	public static function integrityMessage(int $checked, array $broken, array $concurrent): string {
+		$list = static fn(array $ids): string => 'Nr. ' . implode(', ', array_slice($ids, 0, 10)) . (count($ids) > 10 ? ' und ' . (count($ids) - 10) . ' weitere' : '');
+		$parts = [];
+		if ($broken !== []) $parts[] = (count($broken) === 1 ? '1 Eintrag beschädigt oder Vorgänger fehlt' : count($broken) . ' Einträge beschädigt oder Vorgänger fehlt') . ' (' . $list($broken) . ')';
+		if ($concurrent !== []) $parts[] = (count($concurrent) === 1 ? '1 Eintrag gleichzeitig geschrieben' : count($concurrent) . ' Einträge gleichzeitig geschrieben') . ' (' . $list($concurrent) . '), Inhalt unverändert';
+		return $checked . ' Einträge geprüft' . ($parts === [] ? ', Kette vollständig' : ' – ' . implode('; ', $parts));
 	}
 
 	private function lastHash(): string {

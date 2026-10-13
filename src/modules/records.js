@@ -436,8 +436,16 @@ export function createRecordsModule(ctx) {
 		document.getElementById('cancel-contact').onclick = () => root.querySelector('.bp-modal').remove()
 		document.getElementById('contact-form').onsubmit = async (event) => {
 			event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); data.categories = category
-			await api(recordUrl('contact'), { method: 'POST', body: new URLSearchParams({ title: data.title, status: 'AKTIV', caseId: state.currentCase?.id || 0, data: JSON.stringify(data) }) })
-			await loadRecordType('contact'); if (state.currentCase) { const masterData = { ...state.currentCase.masterData, [target]: data.title }; state.currentCase = await api(`${urls.cases}/${state.currentCase.id}/master-data`, { method: 'PUT', body: new URLSearchParams({ masterData: JSON.stringify(masterData), expectedUpdatedAt: state.currentCase.updatedAt || '' }) }) }
+			// 0.86.0: vor dem Anlegen auf Dubletten prüfen (Name, Telefon, E-Mail, Anschrift); nichts wird automatisch zusammengeführt.
+			let chosenTitle = data.title; let reuse = false
+			const check = await api(`${ctx.apiBase}/contacts/duplicates`, { method: 'POST', feedback: false, body: new URLSearchParams({ title: data.title, data: JSON.stringify(data) }) })
+			if ((check.duplicates || []).length) {
+				const choice = await ctx.chooseDuplicate(check.duplicates, data.title)
+				if (!choice) return
+				if (choice.useId) { chosenTitle = choice.duplicate.title; reuse = true }
+			}
+			if (!reuse) await api(recordUrl('contact'), { method: 'POST', body: new URLSearchParams({ title: data.title, status: 'AKTIV', caseId: state.currentCase?.id || 0, data: JSON.stringify(data) }) })
+			await loadRecordType('contact'); if (state.currentCase) { const masterData = { ...state.currentCase.masterData, [target]: chosenTitle }; state.currentCase = await api(`${urls.cases}/${state.currentCase.id}/master-data`, { method: 'PUT', body: new URLSearchParams({ masterData: JSON.stringify(masterData), expectedUpdatedAt: state.currentCase.updatedAt || '' }) }) }
 			root.querySelector('.bp-modal').remove(); render()
 		}
 	}

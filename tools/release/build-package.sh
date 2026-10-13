@@ -10,6 +10,12 @@
 #   --occ "BEFEHL"        occ-Aufruf einer Nextcloud-Instanz für "integrity:sign-app",
 #                         z. B. "php /var/www/nextcloud/occ" oder "docker exec -u www-data nextcloud-test php occ"
 #   --container NAME      bei Docker: Name des Containers, in den Paket, Schlüssel und Zertifikat kurz kopiert werden
+#   --skip-checks         Tests und PHPStan vor dem Bauen auslassen (nur im Notfall; das Paket wird als ungeprüft gemeldet)
+#
+# Vor dem Bauen laufen die Tests (node tests/run-all.mjs) und PHPStan. Schlägt eins fehl, entsteht kein Paket.
+# PHPStan wird gesucht als $PHPSTAN (z. B. Pfad zu phpstan.phar), vendor/bin/phpstan oder phpstan im Suchpfad;
+# Konfiguration: $PHPSTAN_CONFIG, sonst phpstan.neon. Fehlt der Ordner tests/ (öffentliche Arbeitskopie, CI), werden
+# beide Prüfungen mit Hinweis übersprungen – die CI führt PHPStan in einem eigenen Schritt aus.
 #
 # Ohne --key/--cert entsteht ein unsigniertes Paket (Testinstallation). Mit --key/--cert/--occ wird zuerst
 # appinfo/signature.json erzeugt (Nextcloud-Codesignatur) und danach die App-Store-Signatur des tar.gz in
@@ -17,7 +23,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT="$ROOT/releases"; VENDOR_FROM=""; KEY=""; CERT=""; OCC=""; CONTAINER=""
+OUT="$ROOT/releases"; VENDOR_FROM=""; KEY=""; CERT=""; OCC=""; CONTAINER=""; SKIP_CHECKS=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--out) OUT="$2"; shift 2 ;;
@@ -26,7 +32,8 @@ while [ $# -gt 0 ]; do
 		--cert) CERT="$2"; shift 2 ;;
 		--occ) OCC="$2"; shift 2 ;;
 		--container) CONTAINER="$2"; shift 2 ;;
-		-h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+		--skip-checks) SKIP_CHECKS=1; shift ;;
+		-h|--help) sed -n '2,26p' "$0"; exit 0 ;;
 		*) echo "Unbekannte Option: $1" >&2; exit 2 ;;
 	esac
 done
@@ -42,6 +49,31 @@ grep -q "VERSION = '$VERSION'" "$ROOT/lib/AppInfo/Application.php" || fail "Appl
 grep -qE "^## $VERSION( |$)" "$ROOT/CHANGELOG.md" || fail "CHANGELOG.md hat keinen Abschnitt „## $VERSION“ (Format des App Stores: ^## x.y.z)"
 [ -f "$ROOT/js/main.js" ] || fail "js/main.js fehlt – vorher „pnpm run build“ ausführen"
 if [ -n "$KEY$CERT" ] && { [ -z "$KEY" ] || [ -z "$CERT" ] || [ -z "$OCC" ]; }; then fail "Zum Signieren sind --key, --cert und --occ nötig"; fi
+
+# 1b. Prüfungen vor dem Bauen: Tests und PHPStan müssen grün sein, sonst entsteht kein Paket.
+CHECKS="nicht ausgeführt"
+if [ $SKIP_CHECKS -eq 1 ]; then
+	echo "WARNUNG: --skip-checks – Tests und PHPStan wurden NICHT ausgeführt; das Paket ist ungeprüft." >&2
+	CHECKS="übersprungen (--skip-checks)"
+elif [ ! -f "$ROOT/tests/run-all.mjs" ]; then
+	echo "Hinweis: kein Ordner tests/ (öffentliche Arbeitskopie bzw. CI) – Tests und PHPStan werden hier nicht ausgeführt."
+	CHECKS="hier nicht ausgeführt (kein tests/)"
+else
+	command -v node >/dev/null || fail "node nicht gefunden – für die Tests wird Node.js ≥ 22 benötigt (oder --skip-checks)"
+	echo "Prüfung: Tests …"
+	node "$ROOT/tests/run-all.mjs" "$ROOT" > "$OUT/.tests-$VERSION.log" 2>&1 || { tail -40 "$OUT/.tests-$VERSION.log" >&2; fail "Tests fehlgeschlagen – kein Paket gebaut (Protokoll: $OUT/.tests-$VERSION.log)"; }
+	echo "  $(tail -1 "$OUT/.tests-$VERSION.log")"
+	rm -f "$OUT/.tests-$VERSION.log"
+	PHPSTAN_BIN="${PHPSTAN:-}"
+	[ -n "$PHPSTAN_BIN" ] || { [ -x "$ROOT/vendor/bin/phpstan" ] && PHPSTAN_BIN="$ROOT/vendor/bin/phpstan"; } || true
+	[ -n "$PHPSTAN_BIN" ] || PHPSTAN_BIN="$(command -v phpstan || true)"
+	[ -n "$PHPSTAN_BIN" ] || fail "PHPStan nicht gefunden – PHPSTAN=/pfad/phpstan.phar setzen, composer install (Entwicklung) ausführen oder --skip-checks"
+	echo "Prüfung: PHPStan …"
+	(cd "$ROOT" && php -d memory_limit=4G "$PHPSTAN_BIN" analyse -c "${PHPSTAN_CONFIG:-$ROOT/phpstan.neon}" --no-progress > "$OUT/.phpstan-$VERSION.log" 2>&1) || { tail -40 "$OUT/.phpstan-$VERSION.log" >&2; fail "PHPStan meldet Fehler – kein Paket gebaut (Protokoll: $OUT/.phpstan-$VERSION.log)"; }
+	rm -f "$OUT/.phpstan-$VERSION.log"
+	echo "  PHPStan: keine Fehler"
+	CHECKS="Tests und PHPStan bestanden"
+fi
 
 # 2. Paketordner zusammenstellen (nur Laufzeitdateien)
 BUILD="$(mktemp -d)"; trap 'rm -rf "$BUILD"' EXIT
@@ -114,5 +146,6 @@ fi
 echo "Paket:   $TAR ($(du -h "$TAR" | cut -f1), $(tar -tzf "$TAR" | grep -vc '/$') Dateien)"
 [ -f "$ZIP" ] && echo "Zip:     $ZIP"
 echo "SHA-256: $(sha256sum "$TAR" | cut -d' ' -f1)"
+echo "Prüfungen: $CHECKS"
 if [ -n "$KEY" ]; then echo "Signiert: appinfo/signature.json im Paket, App-Store-Signatur in $TAR.sig"
 else echo "Hinweis: unsigniert – für den App Store mit --key/--cert/--occ erneut bauen."; fi

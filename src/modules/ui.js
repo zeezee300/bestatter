@@ -166,6 +166,8 @@ export function createUi(root, esc) {
 		]
 		deleteButtons.forEach(([selector, label]) => scope.querySelectorAll(selector).forEach((button) => {
 			if (button.classList.contains('bp-delete-icon-button')) return
+			// 0.88.1: Im beschrifteten Menü „Weitere Aktionen“ bleibt der Text neben dem Symbol stehen.
+			if (button.closest('.bp-action-menu')) { if (!button.querySelector('.bp-trash-icon')) button.insertAdjacentHTML('afterbegin', trashIcon); return }
 			const accessibleLabel = button.getAttribute('aria-label') || label
 			button.setAttribute('aria-label', accessibleLabel)
 			if (!button.hasAttribute('title')) button.setAttribute('title', accessibleLabel)
@@ -173,7 +175,8 @@ export function createUi(root, esc) {
 			button.innerHTML = trashIcon
 		}))
 		scope.querySelectorAll('[required]').forEach((field) => field.setAttribute('aria-required', 'true'))
-		scope.querySelectorAll('[data-state],.bp-save-state,.bp-card-state').forEach((status) => { status.setAttribute('role', status.dataset.state === 'error' ? 'alert' : 'status'); status.setAttribute('aria-live', 'polite') })
+		// 0.88.1: gespiegelte Statusfelder meldet die Anzeige im Fallkopf (keine doppelte Ansage)
+		scope.querySelectorAll('[data-state],.bp-save-state,.bp-card-state').forEach((status) => { if (status.classList.contains('bp-save-mirrored')) { status.setAttribute('aria-hidden', 'true'); return } status.setAttribute('role', status.dataset.state === 'error' ? 'alert' : 'status'); status.setAttribute('aria-live', 'polite') })
 		scope.querySelectorAll('input,select,textarea').forEach((field) => {
 			field.addEventListener('invalid', () => field.setAttribute('aria-invalid', 'true'))
 			field.addEventListener('input', () => { if (field.checkValidity()) field.removeAttribute('aria-invalid') })

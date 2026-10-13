@@ -16,8 +16,10 @@ class DocumentService {
 	];
 	private const STATUSES = ['ENTWURF', 'FINAL'];
 	/** Only byte-identical former package defaults may be refreshed automatically. */
-	private const REPLACEABLE_STANDARD_TEMPLATE_HASHES = [
-		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad'],
+	public const REPLACEABLE_STANDARD_TEMPLATE_HASHES = [
+		// 0.88.0: Die bisherige Standardvorlage (Kostenvoranschlag/Auftrag, 5b8c72…) wird durch „Bestattungsauftrag und Vollmacht“
+		// ersetzt; ihr Layout lebt als KOSTENVORANSCHLAG.docx weiter.
+		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad', '5b8c7241cecb29aad903d4342faaa18bf06a10139168e8015f75f2df899cab80'],
 		// Package version 0.58.0. Individually changed invoice templates remain untouched.
 		'RECHNUNG.docx' => ['94695c36a21897c5b60ac269830ceaad3af40f1dcd327b4bfe07540859582f41'],
 		// 0.81.0: Abmelde- und Mitteilungsschreiben nennen „Unser Zeichen“ (Fallnummer). Unveränderte Vorgängerfassungen werden ersetzt.
@@ -46,7 +48,14 @@ class DocumentService {
 		private FacturXPdfService $facturX,
 		private ?BranchLogoService $logos = null,
 		private ?LabelService $labels = null,
+		private ?CustomizingService $customizing = null,
 	) {}
+
+	/** 0.88.0: Platzhalter, an dem die zusammengefasste Vorlage „Bestattungsauftrag und Vollmacht“ erkannt wird. */
+	public const COMBINED_ORDER_MARKER = '{{order.poa_registry}}';
+	/** 0.88.0: Vertragsschluss im Auftrag (order_contract_conclusion); außerhalb und Fernabsatz → Widerrufsbelehrung. */
+	public const CONTRACT_CONCLUSIONS = ['GESCHAEFTSRAEUME' => 'in den Geschäftsräumen', 'AUSSERHALB' => 'außerhalb der Geschäftsräume (z. B. Hausbesuch, Klinik, Heim)', 'FERNABSATZ' => 'im Fernabsatz (Telefon, E-Mail, online)'];
+	private ?bool $combinedOrderTemplateCache = null;
 
 	/** 0.73.0: set only while the binding invoice document is rendered; asks the converter for PDF/A first. */
 	private bool $preferPdfA = false;
@@ -58,9 +67,64 @@ class DocumentService {
 
 	/** @return list<string> */
 	public function orderDocumentKeys(array $case): array {
-		return strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA'
-			? ['BESTATTUNGSAUFTRAG']
-			: ['BESTATTUNGSAUFTRAG', 'BESTATTUNGSVOLLMACHT'];
+		if (strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA') return ['BESTATTUNGSAUFTRAG'];
+		// 0.88.0: Die Standardvorlage enthält die Vollmacht. Eine eigene, ältere Auftragsvorlage ohne Vollmachtsteil erhält
+		// weiterhin die gesonderte Bestattungsvollmacht. Die Widerrufsbelehrung kommt nur bei Vertragsschluss außerhalb der
+		// Geschäftsräume oder im Fernabsatz hinzu.
+		$keys = ['BESTATTUNGSAUFTRAG'];
+		if (!$this->combinedOrderTemplate() && $this->templateActive('BESTATTUNGSVOLLMACHT')) $keys[] = 'BESTATTUNGSVOLLMACHT';
+		if (self::withdrawalApplies($case['masterData'] ?? []) && $this->templateActive('WIDERRUFSBELEHRUNG')) $keys[] = 'WIDERRUFSBELEHRUNG';
+		return $keys;
+	}
+
+	/** 0.88.0: Dokumente des Auftragspakets mit Bezeichnung (für Vorschau und Entwurfspaket in der Oberfläche). */
+	public function orderDocumentList(array $case): array {
+		$isEstimate = strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA';
+		return array_map(fn(string $key): array => ['key' => $key, 'title' => match ($key) {
+			'BESTATTUNGSAUFTRAG' => $isEstimate ? 'Kostenvoranschlag' : ($this->combinedOrderTemplate() ? 'Bestattungsauftrag und Vollmacht' : 'Bestattungsauftrag'),
+			'BESTATTUNGSVOLLMACHT' => 'Bestattungsvollmacht',
+			'WIDERRUFSBELEHRUNG' => 'Widerrufsbelehrung',
+			default => $key,
+		}], $this->orderDocumentKeys($case));
+	}
+
+	public static function withdrawalApplies(array $master): bool {
+		return in_array(strtoupper(trim((string)($master['order_contract_conclusion'] ?? ''))), ['AUSSERHALB', 'FERNABSATZ'], true);
+	}
+
+	private function templateActive(string $key): bool {
+		foreach ($this->configuration->documents() as $template) if ($template['key'] === $key) return (bool)$template['active'];
+		return false;
+	}
+
+	/** Enthält die eingerichtete Auftragsvorlage den Vollmachtsteil (Standardvorlage ab 0.88.0)? */
+	public function combinedOrderTemplate(): bool {
+		if ($this->combinedOrderTemplateCache !== null) return $this->combinedOrderTemplateCache;
+		try {
+			$fileName = '';
+			foreach ($this->configuration->documents() as $template) if ($template['key'] === 'BESTATTUNGSAUFTRAG') $fileName = $this->resolveConfiguredTemplateName((string)$template['fileName']);
+			if ($fileName === '') return $this->combinedOrderTemplateCache = false;
+			$folder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath());
+			$content = (string)$this->template($folder, $fileName)->getContent();
+			return $this->combinedOrderTemplateCache = self::docxContainsText($content, self::COMBINED_ORDER_MARKER);
+		} catch (\Throwable) {
+			return $this->combinedOrderTemplateCache = false;
+		}
+	}
+
+	public static function docxContainsText(string $docx, string $needle): bool {
+		$temp = tempnam(sys_get_temp_dir(), 'bestatter-docx-');
+		if ($temp === false) return false;
+		try {
+			file_put_contents($temp, $docx);
+			$zip = new \ZipArchive();
+			if ($zip->open($temp) !== true) return false;
+			$xml = (string)$zip->getFromName('word/document.xml');
+			$zip->close();
+			return str_contains(html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8'), $needle);
+		} finally {
+			@unlink($temp);
+		}
 	}
 
 	/**
@@ -82,6 +146,7 @@ class DocumentService {
 		}
 		$userFolder = $this->folders->baseFolder();
 		$templateFolder = $this->installationConfig->ensurePath($userFolder, $this->installationConfig->templatesPath());
+		$this->seedEstimateTemplate($templateFolder, $definition);
 		$template = $this->template(
 			$templateFolder,
 			$definition['fileName'],
@@ -781,6 +846,7 @@ class DocumentService {
 		}
 		$userFolder = $this->folders->baseFolder();
 		$templateFolder = $this->installationConfig->ensurePath($userFolder, $this->installationConfig->templatesPath());
+		$this->seedEstimateTemplate($templateFolder, $definition);
 		$template = $this->template(
 			$templateFolder,
 			$definition['fileName'],
@@ -885,6 +951,7 @@ class DocumentService {
 		if ($missing !== [] && (!$allowIncomplete || $status !== 'ENTWURF')) throw new \InvalidArgumentException('Dokument kann noch nicht erzeugt werden. Bitte ergänzen: ' . implode(', ', $missing));
 		if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true) && (!$createPdf || !$definition['supportsPdf'])) throw new \InvalidArgumentException('Finale Dokumente müssen als nicht bearbeitbare PDF-Ausgabe erzeugt werden.');
 
+		$this->seedEstimateTemplate($templateFolder, $definition);
 		$template = $this->template(
 			$templateFolder,
 			$definition['fileName'],
@@ -1090,8 +1157,16 @@ class DocumentService {
 		$branch = $this->configuration->branchByKey((string)($case['branch'] ?? $case['masterData']['branch'] ?? '')) ?? ['countryCode' => 'DE'];
 		$templateNamespace = $this->countryConfiguration->templateNamespace($branch);
 		if ($templateNamespace === 'DE') $templateNamespace = '';
-		foreach ($this->configuration->documents() as $template) {
-			if ($template['key'] !== $key || !$template['active'] || !str_ends_with(strtolower((string)$template['fileName']), '.docx')) continue;
+		$templates = $this->configuration->documents();
+		// 0.88.0: Der Kostenvoranschlag hat eine eigene Vorlage (KOSTENVORANSCHLAG); Schlüssel und Ablage bleiben BESTATTUNGSAUFTRAG.
+		$lookup = $key;
+		if ($key === 'BESTATTUNGSAUFTRAG' && $isEstimate) {
+			foreach ($templates as $template) if ($template['key'] === 'KOSTENVORANSCHLAG' && $template['active'] && str_ends_with(strtolower((string)$template['fileName']), '.docx')) $lookup = 'KOSTENVORANSCHLAG';
+		}
+		foreach ($templates as $template) {
+			if ($template['key'] !== $lookup || !$template['active'] || !str_ends_with(strtolower((string)$template['fileName']), '.docx')) continue;
+			$required = (array)$template['requiredFields'];
+			if ($key === 'BESTATTUNGSAUFTRAG' && !$isEstimate && !in_array('order_contract_conclusion', $required, true)) $required[] = 'order_contract_conclusion';
 			return [
 				'key' => $key,
 				'fileName' => $this->resolveConfiguredTemplateName((string)$template['fileName']),
@@ -1099,12 +1174,31 @@ class DocumentService {
 				// 0.72.0: Vorlagenziel über den Ordnerplan auflösen (bleibt nach Umbenennung gültig).
 				'subfolder' => ($template['outputSubfolder'] !== '' ? $this->installationConfig->resolveSubfolder((string)$template['outputSubfolder']) : null) ?? ($template['category'] === 'Auftrag' ? $this->installationConfig->orderFolder() : $this->installationConfig->authoritiesFolder()),
 				'supportsPdf' => (bool)$template['supportsPdf'], 'category' => (string)($template['category'] ?? 'Allgemein'),
-				'requiredFields' => (array)$template['requiredFields'],
+				'requiredFields' => $required,
 				'templateNamespace' => $templateNamespace,
+				'seedFrom' => $lookup === 'KOSTENVORANSCHLAG' ? 'BESTATTUNGSAUFTRAG' : '',
 				'regionalTemplateRequired' => $templateNamespace !== '' && in_array($key, self::REGIONAL_TEMPLATE_REQUIRED, true),
 			];
 		}
 		throw new \InvalidArgumentException('Die gewählte Dokumentvorlage ist nicht als aktive DOCX-Vorlage eingerichtet.');
+	}
+
+	/**
+	 * 0.88.0: Bisher erzeugte BESTATTUNGSAUFTRAG.docx auch den Kostenvoranschlag. Hat ein Betrieb diese Vorlage angepasst,
+	 * übernimmt die neue KOSTENVORANSCHLAG.docx beim ersten Kostenvoranschlag sein Layout – statt der mitgelieferten Fassung.
+	 * Unveränderte Standardfassungen und die neue Vorlage „Bestattungsauftrag und Vollmacht“ werden nicht übernommen.
+	 */
+	private function seedEstimateTemplate(Folder $folder, array $definition): void {
+		if (($definition['seedFrom'] ?? '') === '' || $folder->nodeExists((string)$definition['fileName'])) return;
+		$orderFile = '';
+		foreach ($this->configuration->documents() as $template) if ($template['key'] === $definition['seedFrom']) $orderFile = $this->resolveConfiguredTemplateName((string)$template['fileName']);
+		if ($orderFile === '' || !$folder->nodeExists($orderFile)) return;
+		$node = $folder->get($orderFile);
+		if (!$node instanceof \OCP\Files\File) return;
+		$content = (string)$node->getContent();
+		if (in_array(hash('sha256', $content), self::REPLACEABLE_STANDARD_TEMPLATE_HASHES['BESTATTUNGSAUFTRAG.docx'], true)) return;
+		if (self::docxContainsText($content, self::COMBINED_ORDER_MARKER)) return;
+		$folder->newFile((string)$definition['fileName'], $content);
 	}
 
 	private function resolveConfiguredTemplateName(string $configuredName): string {
@@ -1130,6 +1224,7 @@ class DocumentService {
 			'order_client_name' => 'Auftraggeber', 'order_client_address' => 'Anschrift Auftraggeber',
 			'order_number' => 'KVA-/Auftragsnummer', 'order_date' => 'KVA-/Auftragsdatum', 'services' => 'beauftragte Leistungen',
 			'funeral_event_date' => 'Datum der verknüpften Trauerfeier',
+			'order_contract_conclusion' => 'Vertragsschluss (Geschäftsräume, außerhalb oder Fernabsatz)',
 		];
 		$missing = [];
 		foreach ($definition['requiredFields'] as $field) {
@@ -1692,9 +1787,70 @@ class DocumentService {
 			'{{order.taxable_net}}' => $this->money((int)($costing['invoiceTaxableNetCents'] ?? $taxableNetFromItems)),
 			'{{order.pass_through_total}}' => $this->money((int)($costing['invoicePassThroughCents'] ?? $passThroughFromItems)),
 		];
+		$overrides += $this->orderPowerOfAttorneyValues($case, $m, $branch, $costing);
 		// 0.76.0: {{marker}} und {{marker.SCHLUESSEL}}
 		$labelValues = $this->labels !== null && (int)($case['id'] ?? 0) > 0 ? $this->labels->placeholderValues((int)$case['id']) : [];
 		return array_merge($values, $overrides, $labelValues);
+	}
+
+	/**
+	 * 0.88.0: Platzhalter der Vorlage „Bestattungsauftrag und Vollmacht“ und der Widerrufsbelehrung. Kästchen werden aus dem
+	 * Fall vorbelegt (☒), alle übrigen bleiben zum Ankreuzen (☐). Die Erklärungen zum Leistungsbeginn kreuzt nur der/die
+	 * Auftraggeber/in selbst an; sie erscheinen nur, wenn der Vertrag außerhalb der Geschäftsräume oder im Fernabsatz geschlossen wurde.
+	 * @return array<string, string>
+	 */
+	private function orderPowerOfAttorneyValues(array $case, array $m, array $branch, array $costing): array {
+		$value = static fn(string $key): string => trim((string)($m[$key] ?? ''));
+		$box = static fn(bool $checked): string => $checked ? '☒' : '☐';
+		$groups = [];
+		foreach (($costing['items'] ?? []) as $item) {
+			if (($item['serviceStatus'] ?? '') === 'STORNIERT') continue;
+			$number = (string)($item['articleNumber'] ?? '');
+			if ($number !== '') $groups[substr($number, 0, 2)] = true;
+		}
+		$variants = $this->customizing?->valuesForKey('BURIAL_VARIANT') ?? [];
+		$facts = ProcessRules::funeralFacts((string)($case['burialVariantCode'] ?? $m['burial_variant_code'] ?? ''), (string)($case['funeralType'] ?? $m['funeral_type'] ?? ''), $variants);
+		$ceremony = ($case['withFuneralCeremony'] ?? null) === true || isset($groups['14']);
+		$formalities = isset($groups['15']);
+		$conclusion = strtoupper($value('order_contract_conclusion'));
+		$withdrawal = self::withdrawalApplies($m);
+		$postalCity = $value('order_client_postal_city');
+		$country = $value('order_client_country');
+		$payment = ['TRANSFER' => 'Überweisung', 'SEPA_DIRECT_DEBIT' => 'SEPA-Lastschrift'][strtoupper($value('payment_method'))] ?? '';
+		$register = trim((string)($branch['registerCourt'] ?? '') . ' ' . (string)($branch['registerNumber'] ?? ''));
+		return [
+			'{{order.client_address}}' => implode(', ', array_filter([$value('order_client_street'), $postalCity, $country !== '' && mb_strtolower($country) !== 'deutschland' ? $country : ''])),
+			'{{order.client_phone_line}}' => implode(' / ', array_filter([$value('order_client_phone'), $value('order_client_mobile')])),
+			'{{order.contractor_contact}}' => implode(' · ', array_filter([(string)($branch['phone'] ?? ''), (string)($branch['email'] ?? '')])),
+			'{{order.contractor_legal}}' => implode(' · ', array_filter([
+				($branch['vatId'] ?? '') !== '' ? 'USt-IdNr. ' . $branch['vatId'] : '',
+				$register,
+				($branch['managingDirectors'] ?? '') !== '' ? 'vertreten durch ' . $branch['managingDirectors'] : '',
+			])),
+			'{{order.scope_transfer}}' => $box(isset($groups['11']) || isset($groups['12'])),
+			'{{order.scope_ceremony}}' => $box($ceremony),
+			'{{order.scope_formalities}}' => $box($formalities),
+			'{{order.payment_terms}}' => implode(' · ', array_filter([$payment, $value('order_payment_terms')])),
+			'{{order.special_terms}}' => $value('order_special_terms'),
+			'{{order.poa_registry}}' => $box(true),
+			'{{order.poa_crematorium}}' => $box($facts['scope'] === 'CREMATION' || isset($groups['63'])),
+			'{{order.poa_ceremony}}' => $box($ceremony),
+			'{{order.poa_deregistration}}' => $box($formalities),
+			'{{order.poa_other}}' => $box($value('order_poa_other') !== ''),
+			'{{order.poa_other_text}}' => $value('order_poa_other'),
+			'{{order.contract_conclusion}}' => self::CONTRACT_CONCLUSIONS[$conclusion] ?? '',
+			'{{order.withdrawal_note}}' => match ($conclusion) {
+				'AUSSERHALB', 'FERNABSATZ' => 'Dieser Vertrag wurde ' . self::CONTRACT_CONCLUSIONS[$conclusion] . ' geschlossen. Ihnen steht ein gesetzliches Widerrufsrecht zu; die Widerrufsbelehrung mit Muster-Widerrufsformular ist beigefügt. Die folgenden Erklärungen sind freiwillig; das Widerrufsrecht wird durch die Beauftragung nicht ausgeschlossen.',
+				'GESCHAEFTSRAEUME' => 'Dieser Vertrag wurde in den Geschäftsräumen des Bestattungsunternehmens geschlossen. Eine Widerrufsbelehrung für außerhalb von Geschäftsräumen oder im Fernabsatz geschlossene Verträge ist daher nicht beigefügt.',
+				default => 'Ort des Vertragsschlusses: bitte im Auftrag angeben (Geschäftsräume, außerhalb der Geschäftsräume oder Fernabsatz).',
+			},
+			'{{order.withdrawal_request_box}}' => $withdrawal ? '☐' : '',
+			'{{order.withdrawal_request}}' => $withdrawal ? 'Ich verlange ausdrücklich, dass das Bestattungsunternehmen vor Ablauf der Widerrufsfrist mit den beauftragten Dienstleistungen beginnt.' : '',
+			'{{order.withdrawal_ack_box}}' => $withdrawal ? '☐' : '',
+			'{{order.withdrawal_ack}}' => $withdrawal ? 'Mir ist bekannt, dass ich bei einem Widerruf einen angemessenen Betrag für die bis dahin erbrachten Dienstleistungen zu zahlen habe und dass mein Widerrufsrecht bei vollständiger Erbringung der Dienstleistungen erlischt.' : '',
+			'{{order.digital_signature_line}}' => $value('order_signature_name') !== '' ? 'Digital bestätigt durch ' . $value('order_signature_name') . ($value('order_signature_date') !== '' ? ' am ' . $this->formatDocumentDate($value('order_signature_date')) : '') . '.' : '',
+			'{{order.withdrawal_enclosure}}' => $withdrawal ? ' sowie der Widerrufsbelehrung mit Muster-Widerrufsformular' : '',
+		];
 	}
 
 	private function deathDisplay(array $m, string $fallback = ''): string {

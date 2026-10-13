@@ -42,6 +42,12 @@ class DocumentApiController extends ApiController {
 		return new DataResponse(['packageId' => $package['packageId'], 'files' => $package['files'], 'records' => $records, 'cleanupWarnings' => $cleanupWarnings], 201);
 	}
 
+	/** 0.88.0: Dokumente des Auftragspakets (Kostenvoranschlag bzw. Auftrag und Vollmacht, ggf. Widerrufsbelehrung). */
+	#[NoAdminRequired]
+	public function orderDocumentList(int $id): DataResponse {
+		return new DataResponse(['documents' => $this->documents->orderDocumentList($this->caseService->getCase($id))]);
+	}
+
 	#[NoAdminRequired]
 	public function previewOrderDocument(int $id, string $templateKey): DataDownloadResponse {
 		$preview = $this->documents->previewOrderDocumentPdf($this->caseService->getCase($id), $templateKey);

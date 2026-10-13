@@ -160,6 +160,8 @@ return ['routes' => [
 	['name' => 'catalogApi#saveDocumentTemplate', 'url' => '/api/document-templates/{id}', 'verb' => 'PUT'],
 	['name' => 'catalogApi#duplicateDocumentTemplate', 'url' => '/api/document-templates/{id}/duplicate', 'verb' => 'POST'],
 	['name' => 'catalogApi#provisionDocumentTemplates', 'url' => '/api/document-templates/provision', 'verb' => 'POST'],
+	['name' => 'catalogApi#documentTemplateFileStatus', 'url' => '/api/document-templates/file-status', 'verb' => 'GET'],
+	['name' => 'catalogApi#adoptStandardDocumentTemplate', 'url' => '/api/document-templates/{key}/adopt-standard', 'verb' => 'POST'],
 	['name' => 'catalogApi#deregistrationTemplates', 'url' => '/api/deregistration-templates', 'verb' => 'GET'],
 	['name' => 'catalogApi#saveDeregistrationTemplate', 'url' => '/api/deregistration-templates/{id}', 'verb' => 'PUT'],
 	['name' => 'catalogApi#branches', 'url' => '/api/branches', 'verb' => 'GET'],
@@ -178,6 +180,7 @@ return ['routes' => [
 	['name' => 'catalogApi#invoiceSettings', 'url' => '/api/invoice-settings', 'verb' => 'GET'],
 	['name' => 'catalogApi#saveInvoiceSettings', 'url' => '/api/invoice-settings', 'verb' => 'PUT'],
 	['name' => 'catalogApi#deleteConfiguration', 'url' => '/api/configuration/{type}/{id}', 'verb' => 'DELETE'],
+	['name' => 'documentApi#orderDocumentList', 'url' => '/api/cases/{id}/order-documents', 'verb' => 'GET'],
 	['name' => 'documentApi#generateOrderDocuments', 'url' => '/api/cases/{id}/order-documents', 'verb' => 'POST'],
 	['name' => 'documentApi#previewOrderDocument', 'url' => '/api/cases/{id}/order-documents/{templateKey}/preview.pdf', 'verb' => 'GET'],
 	['name' => 'documentApi#documentPreview', 'url' => '/api/cases/{id}/documents/{templateKey}/preview', 'verb' => 'GET'],
@@ -214,6 +217,7 @@ return ['routes' => [
 	['name' => 'recordApi#availableActions', 'url' => '/api/records/{recordId}/actions', 'verb' => 'GET'],
 	['name' => 'recordApi#executeAction', 'url' => '/api/records/{recordId}/actions/{actionKey}', 'verb' => 'POST'],
 	// 0.66.0 – Ablaufvorlagen in 7 Phasen
+	['name' => 'processApi#processRoleStatus', 'url' => '/api/process/role-status', 'verb' => 'GET'],
 	['name' => 'processApi#caseProcess', 'url' => '/api/cases/{caseId}/process', 'verb' => 'GET'],
 	['name' => 'processApi#addProcessStep', 'url' => '/api/cases/{caseId}/process/steps/{stepId}', 'verb' => 'POST'],
 	['name' => 'processApi#saveProcessAttributes', 'url' => '/api/cases/{caseId}/process/attributes', 'verb' => 'PUT'],
@@ -233,6 +237,8 @@ return ['routes' => [
 	['name' => 'processApi#exportProcessTemplateJson', 'url' => '/api/process-templates/{key}/export-json', 'verb' => 'GET'],
 	['name' => 'processApi#importProcessTemplateJson', 'url' => '/api/process-templates/{key}/import-json', 'verb' => 'POST'],
 	// 0.76.0 – Marker
+	['name' => 'contactApi#duplicates', 'url' => '/api/contacts/duplicates', 'verb' => 'POST'],
+	['name' => 'contactApi#savePerson', 'url' => '/api/cases/{caseId}/address-book-person', 'verb' => 'POST'],
 	['name' => 'labelApi#catalog', 'url' => '/api/labels', 'verb' => 'GET'],
 	['name' => 'labelApi#createLabel', 'url' => '/api/labels', 'verb' => 'POST'],
 	['name' => 'labelApi#activateLabels', 'url' => '/api/labels/activate', 'verb' => 'POST'],
