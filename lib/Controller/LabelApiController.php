@@ -17,12 +17,19 @@ use OCP\IRequest;
  * Aufgaben übernommen werden.
  */
 class LabelApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private LabelService $labels, private ProcessService $process) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private LabelService $labels,
+		private ProcessService $process,
+	) {
 		parent::__construct($appName, $request);
 	}
 
 	#[NoAdminRequired]
-	public function catalog(): DataResponse { return new DataResponse($this->labels->catalog()); }
+	public function catalog(): DataResponse {
+		return new DataResponse($this->labels->catalog());
+	}
 
 	#[NoAdminRequired]
 	public function createLabel(string $label = '{}'): DataResponse {
@@ -54,7 +61,9 @@ class LabelApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function caseLabels(int $caseId): DataResponse { return new DataResponse($this->labels->forCase($caseId)); }
+	public function caseLabels(int $caseId): DataResponse {
+		return new DataResponse($this->labels->forCase($caseId));
+	}
 
 	#[NoAdminRequired]
 	public function setCaseLabel(int $caseId, string $key, string $value = '', ?string $note = null): DataResponse {

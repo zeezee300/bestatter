@@ -32,7 +32,9 @@ class BestatterAccessMiddleware extends Middleware {
 	public function beforeController(Controller $controller, string $methodName): void {
 		// Einzige öffentliche Integrationsroute; sie authentifiziert sich selbst mit
 		// einem separaten, konstantzeitlich geprüften Webhook-Geheimnis.
-		if ($controller instanceof PaperlessWebhookController && $methodName === 'receive') return;
+		if ($controller instanceof PaperlessWebhookController && $methodName === 'receive') {
+			return;
+		}
 		$this->teamService->requireBestatterMember();
 	}
 

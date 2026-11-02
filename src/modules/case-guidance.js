@@ -1,3 +1,4 @@
+import { helpExplainButton } from './handbook.js'
 // 0.88.1: Orientierung und Bedienführung in der Fallakte
 // - Speicherstatus im Fallkopf (Stammdaten, Auftrag, Leistungen): „Speichert …“, „Gespeichert um …“, Fehler bleiben stehen
 // - ausstehende automatische Speicherungen werden vor einem Bereichswechsel bzw. dem Verlassen der Seite sofort ausgeführt
@@ -25,6 +26,9 @@ export function saveIndicatorState(sources = {}, hasAutosave = false) {
 	if (entries.some(([, entry]) => entry.state === 'saving')) return { state: 'saving', text: 'Speichert …' }
 	const warning = entries.find(([, entry]) => entry.state === 'warning')
 	if (warning) return { state: 'warning', source: warning[0], text: warning[1].text }
+	// 0.89.7: fehlender Name während der Eingabe – neutraler Hinweis statt Fehler
+	const pending = entries.find(([, entry]) => entry.state === 'pending')
+	if (pending) return { state: 'pending', source: pending[0], text: pending[1].text }
 	const saved = entries.filter(([, entry]) => entry.state === 'saved').sort((left, right) => right[1].at - left[1].at)[0]
 	if (saved) return { state: 'saved', text: `Gespeichert um ${clock(saved[1].at)}` }
 	return hasAutosave ? { state: '', text: 'Änderungen werden automatisch gespeichert.' } : null
@@ -217,7 +221,7 @@ export function createCaseGuidance(ctx) {
 		const unresolved = state.roleStatus?.unresolved || []
 		if (!unresolved.length || readDismissed() === roleSignature(unresolved)) return ''
 		const usersUrl = globalThis.OC?.generateUrl ? globalThis.OC.generateUrl('/settings/users') : '/index.php/settings/users'
-		return `<aside class="bp-warning bp-role-notice" role="note"><div><b>Rollen für Abläufe unbesetzt:</b> ${unresolved.map((role) => `${esc(role.label)} (${esc(role.reason)})`).join(', ')}. Aufgaben dieser Rollen gehen an die jeweilige Fallverantwortung. In den Installationsparametern die Gruppen-ID eintragen und in der Nextcloud-Benutzerverwaltung Mitglieder aufnehmen.</div><div class="bp-row-actions">${roleSettingsButton()}<a class="bp-secondary bp-link-as-button" href="${esc(usersUrl)}" target="_blank" rel="noopener">Nextcloud-Benutzerverwaltung</a><button type="button" class="bp-secondary" data-dismiss-role-notice="${esc(roleSignature(unresolved))}">Ausblenden</button></div></aside>`
+		return `<aside class="bp-warning bp-role-notice" role="note"><div><b>Rollen für Abläufe unbesetzt:</b> ${unresolved.map((role) => `${esc(role.label)} (${esc(role.reason)})`).join(', ')}. Aufgaben dieser Rollen gehen an die jeweilige Fallverantwortung. In den Installationsparametern die Gruppen-ID eintragen und in der Nextcloud-Benutzerverwaltung Mitglieder aufnehmen.${helpExplainButton('h-hinweis-rollen-fuer-ablaeufe-unbesetzt', esc)}</div><div class="bp-row-actions">${roleSettingsButton()}<a class="bp-secondary bp-link-as-button" href="${esc(usersUrl)}" target="_blank" rel="noopener">Nextcloud-Benutzerverwaltung</a><button type="button" class="bp-secondary" data-dismiss-role-notice="${esc(roleSignature(unresolved))}">Ausblenden</button></div></aside>`
 	}
 
 	/** Nach dem ersten Speichern eines neuen Falls: Ablauf laden, Hinweis vormerken und kurz melden. */

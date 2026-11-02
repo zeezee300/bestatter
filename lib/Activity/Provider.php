@@ -26,14 +26,17 @@ class Provider implements IProvider {
 		'backup_failed' => 'Automatische Datensicherung: {title}',
 	];
 
-	public function __construct(private IURLGenerator $urlGenerator) {}
+	public function __construct(
+		private IURLGenerator $urlGenerator,
+	) {
+	}
 
 	public function parse($language, IEvent $event, ?IEvent $previousEvent = null) {
 		if ($event->getApp() !== Application::APP_ID || !isset(self::SUBJECTS[$event->getSubject()])) {
 			throw new UnknownActivityException();
 		}
 
-		$parameters = array_map(static fn(mixed $value): string => is_scalar($value) ? (string)$value : '', $event->getSubjectParameters());
+		$parameters = array_map(static fn (mixed $value): string => is_scalar($value) ? (string)$value : '', $event->getSubjectParameters());
 		$subject = self::SUBJECTS[$event->getSubject()];
 		foreach ($parameters as $name => $value) {
 			$subject = str_replace('{' . $name . '}', $value, $subject);

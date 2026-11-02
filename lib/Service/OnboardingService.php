@@ -23,18 +23,20 @@ class OnboardingService {
 		private IConfig $config,
 		private AuditService $audit,
 		private LabelService $labels,
-	) {}
+		private ?\OCP\IDBConnection $db = null,
+	) {
+	}
 
 	public function status(): array {
 		$settings = $this->installation->settings();
 		$member = $this->groupStatus($settings['memberGroup']);
-		$admins = array_map(fn(string $name): array => $this->groupStatus($name), $settings['adminGroups']);
+		$admins = array_map(fn (string $name): array => $this->groupStatus($name), $settings['adminGroups']);
 		$adminCount = array_sum(array_column($admins, 'members'));
 		$currentUid = $this->userSession->getUser()?->getUID() ?? '';
 		$currentIsSystemAdmin = $currentUid !== '' && $this->groups->isAdmin($currentUid);
 		$branches = $this->configuration->branches();
-		$activeBranches = array_values(array_filter($branches, static fn(array $branch): bool => (bool)$branch['active']));
-		$templates = array_values(array_filter($this->configuration->documents(), static fn(array $template): bool => (bool)$template['active']));
+		$activeBranches = array_values(array_filter($branches, static fn (array $branch): bool => (bool)$branch['active']));
+		$templates = array_values(array_filter($this->configuration->documents(), static fn (array $template): bool => (bool)$template['active']));
 		$checks = [
 			['key' => 'memberGroup', 'label' => 'Bestatter-Mitgliedergruppe', 'status' => $member['exists'] && $member['members'] > 0 ? 'OK' : 'ERROR', 'message' => $member['exists'] ? $member['members'] . ' Mitglied(er)' : 'Gruppe fehlt'],
 			['key' => 'adminGroup', 'label' => 'Bestatter-Administration', 'status' => $adminCount > 0 || $currentIsSystemAdmin ? 'OK' : 'ERROR', 'message' => $adminCount > 0 ? $adminCount . ' zugeordnete(r) Administrator(en)' : ($currentIsSystemAdmin ? 'Nextcloud-Systemadministrator ist handlungsfähig; Gruppenzuordnung empfohlen' : 'Keine administrative Person zugeordnet')],
@@ -43,38 +45,72 @@ class OnboardingService {
 		];
 		// 0.76.0: Marker werden bei der Einrichtung ausgewählt (mitgeliefert, aber inaktiv) – nur Hinweis, kein Hindernis.
 		$labels = $this->labels->definitions();
-		$activeLabels = count(array_filter($labels, static fn(array $label): bool => $label['active']));
-		$checks[] = ['key' => 'labels', 'label' => 'Marker', 'status' => $activeLabels > 0 ? 'OK' : 'WARN', 'message' => $activeLabels > 0 ? $activeLabels . ' aktive Marker' : 'Noch keine Marker ausgewählt (optional, auch später unter Customizing → Marker)'];
-		$ready = !array_filter($checks, static fn(array $check): bool => $check['status'] === 'ERROR');
+		$activeLabels = count(array_filter($labels, static fn (array $label): bool => $label['active']));
+		$checks[] = ['key' => 'labels', 'label' => 'Marker', 'status' => $activeLabels > 0 ? 'OK' : 'WARN', 'message' => $activeLabels > 0 ? $activeLabels . ' aktive Marker' : ($labels === [] ? 'Keine Marker vorhanden – sie kommen mit dem Einrichtungspaket oder werden unter Customizing → Marker angelegt (optional)' : 'Noch keine Marker ausgewählt (optional, auch später unter Customizing → Marker)')];
+		// 0.89.5: Eine neue Installation startet mit leerem Leistungskatalog; Inhalte kommen mit dem Einrichtungspaket.
+		$articleCount = 0;
+		if ($this->db !== null) {
+			$query = $this->db->getQueryBuilder();
+			$articleCount = (int)$query->select($query->func()->count('*', 'count'))->from('bestatter_articles')->executeQuery()->fetchOne();
+		}
+		$checks[] = ['key' => 'catalog', 'label' => 'Leistungskatalog', 'status' => $articleCount > 0 ? 'OK' : 'WARN', 'message' => $articleCount > 0 ? $articleCount . ' Artikel' : 'Leer – Einrichtungspaket einspielen (Administration → Einrichtungspaket) oder den Katalog anlegen (auch später möglich)'];
+		$ready = !array_filter($checks, static fn (array $check): bool => $check['status'] === 'ERROR');
 		return ['ready' => $ready, 'completed' => $this->config->getAppValue(Application::APP_ID, 'onboarding_completed', '0') === '1', 'blocking' => false, 'settings' => $settings, 'groups' => ['member' => $member, 'admins' => $admins], 'branches' => $branches, 'checks' => $checks, 'users' => $this->availableUsers(), 'currentUid' => $currentUid,
-			'labels' => array_map(static fn(array $label): array => ['key' => $label['key'], 'name' => $label['name'], 'description' => $label['description'], 'kind' => $label['kind'], 'color' => $label['color'], 'icon' => $label['icon'], 'active' => $label['active'], 'origin' => $label['origin']], $labels)];
+			'labels' => array_map(static fn (array $label): array => ['key' => $label['key'], 'name' => $label['name'], 'description' => $label['description'], 'kind' => $label['kind'], 'color' => $label['color'], 'icon' => $label['icon'], 'active' => $label['active'], 'origin' => $label['origin']], $labels)];
 	}
 
 	public function configure(array $input): array {
 		$settings = $this->installation->save((array)($input['settings'] ?? []));
 		$groupNames = array_unique([$settings['memberGroup'], ...$settings['adminGroups']]);
-		if ((bool)($input['createMissingGroups'] ?? false)) foreach ($groupNames as $name) if ($this->groups->get($name) === null) $this->groups->createGroup($name);
-		foreach ($groupNames as $name) if ($this->groups->get($name) === null) throw new \InvalidArgumentException('Die Gruppe "' . $name . '" existiert nicht. Bitte anlegen oder die automatische Anlage bestätigen.');
+		if ((bool)($input['createMissingGroups'] ?? false)) {
+			foreach ($groupNames as $name) {
+				if ($this->groups->get($name) === null) {
+					$this->groups->createGroup($name);
+				}
+			}
+		}
+		foreach ($groupNames as $name) {
+			if ($this->groups->get($name) === null) {
+				throw new \InvalidArgumentException('Die Gruppe "' . $name . '" existiert nicht. Bitte anlegen oder die automatische Anlage bestätigen.');
+			}
+		}
 		$memberUids = $this->validUids((array)($input['memberUids'] ?? []));
 		$adminUids = $this->validUids((array)($input['adminUids'] ?? []));
-		if ((bool)($input['singlePerson'] ?? false)) $memberUids = array_values(array_unique([...$memberUids, ...$adminUids]));
-		if ($memberUids === [] || $adminUids === []) throw new \InvalidArgumentException('Mindestens ein Fachbenutzer und ein Bestatter-Administrator müssen ausgewählt werden.');
+		if ((bool)($input['singlePerson'] ?? false)) {
+			$memberUids = array_values(array_unique([...$memberUids, ...$adminUids]));
+		}
+		if ($memberUids === [] || $adminUids === []) {
+			throw new \InvalidArgumentException('Mindestens ein Fachbenutzer und ein Bestatter-Administrator müssen ausgewählt werden.');
+		}
 		$memberGroup = $this->groups->get($settings['memberGroup']);
-		foreach ($memberUids as $uid) $memberGroup?->addUser($this->requiredUser($uid));
+		foreach ($memberUids as $uid) {
+			$memberGroup?->addUser($this->requiredUser($uid));
+		}
 		$adminGroup = $this->groups->get($settings['adminGroups'][0]);
-		foreach ($adminUids as $uid) $adminGroup?->addUser($this->requiredUser($uid));
-		$this->customizing->ensureSeedData(); $this->configuration->ensureSeedData(); $this->folders->templatesFolder();
+		foreach ($adminUids as $uid) {
+			$adminGroup?->addUser($this->requiredUser($uid));
+		}
+		$this->customizing->ensureSeedData();
+		$this->configuration->ensureSeedData();
+		$this->folders->templatesFolder();
 		$branch = (array)($input['branch'] ?? []);
 		if (trim((string)($branch['key'] ?? '')) !== '' || trim((string)($branch['name'] ?? '')) !== '') {
-			$branch['memberUids'] = $memberUids; $branch['active'] = true;
+			$branch['memberUids'] = $memberUids;
+			$branch['active'] = true;
 			$this->configuration->saveBranch($branch, (int)($branch['id'] ?? 0));
 		}
-		if ((bool)($input['provisionTemplates'] ?? true)) $this->configuration->provisionTemplates();
+		if ((bool)($input['provisionTemplates'] ?? true)) {
+			$this->configuration->provisionTemplates();
+		}
 		// 0.76.0: ausgewählte Marker aktivieren (abgewählte bleiben unverändert; deaktivieren geht im Customizing).
-		$labelKeys = array_values(array_filter(array_map(static fn(mixed $key): string => strtoupper(trim((string)$key)), (array)($input['labelKeys'] ?? []))));
-		if ($labelKeys !== []) $this->labels->activate($labelKeys);
+		$labelKeys = array_values(array_filter(array_map(static fn (mixed $key): string => strtoupper(trim((string)$key)), (array)($input['labelKeys'] ?? []))));
+		if ($labelKeys !== []) {
+			$this->labels->activate($labelKeys);
+		}
 		$status = $this->status();
-		if (!$status['ready']) throw new \RuntimeException('Die Einrichtung ist noch nicht betriebsbereit. Bitte die markierten Punkte ergänzen.');
+		if (!$status['ready']) {
+			throw new \RuntimeException('Die Einrichtung ist noch nicht betriebsbereit. Bitte die markierten Punkte ergänzen.');
+		}
 		$this->config->setAppValue(Application::APP_ID, 'onboarding_completed', '1');
 		$this->audit->logSystem('ONBOARDING', 'COMPLETED', ['memberGroup' => $settings['memberGroup'], 'adminGroups' => $settings['adminGroups'], 'memberCount' => count($memberUids), 'adminCount' => count($adminUids)]);
 		return $this->status();
@@ -82,14 +118,25 @@ class OnboardingService {
 
 	private function groupStatus(string $name): array {
 		$group = $this->groups->get($name);
-		$uids = $group === null ? [] : array_map(static fn(\OCP\IUser $user): string => $user->getUID(), $group->getUsers());
+		$uids = $group === null ? [] : array_map(static fn (\OCP\IUser $user): string => $user->getUID(), $group->getUsers());
 		sort($uids, SORT_NATURAL | SORT_FLAG_CASE);
 		return ['name' => $name, 'exists' => $group !== null, 'members' => count($uids), 'uids' => $uids];
 	}
 	private function availableUsers(): array {
-		$result = []; foreach ($this->users->search('', 100) as $user) $result[] = ['uid' => $user->getUID(), 'displayName' => $user->getDisplayName() ?: $user->getUID(), 'email' => $user->getEMailAddress() ?: ''];
-		usort($result, static fn(array $left, array $right): int => strcasecmp($left['displayName'], $right['displayName'])); return $result;
+		$result = [];
+		foreach ($this->users->search('', 100) as $user) {
+			$result[] = ['uid' => $user->getUID(), 'displayName' => $user->getDisplayName() ?: $user->getUID(), 'email' => $user->getEMailAddress() ?: ''];
+		}
+		usort($result, static fn (array $left, array $right): int => strcasecmp($left['displayName'], $right['displayName']));
+		return $result;
 	}
-	private function validUids(array $uids): array { return array_values(array_unique(array_filter(array_map('trim', array_map('strval', $uids))))); }
-	private function requiredUser(string $uid): \OCP\IUser { $user = $this->users->get($uid); if ($user === null) throw new \InvalidArgumentException('Der ausgewählte Nextcloud-Benutzer "' . $uid . '" existiert nicht.'); return $user; }
+	private function validUids(array $uids): array {
+		return array_values(array_unique(array_filter(array_map('trim', array_map('strval', $uids)))));
+	}
+	private function requiredUser(string $uid): \OCP\IUser {
+		$user = $this->users->get($uid);
+		if ($user === null) {
+			throw new \InvalidArgumentException('Der ausgewählte Nextcloud-Benutzer "' . $uid . '" existiert nicht.');
+		} return $user;
+	}
 }

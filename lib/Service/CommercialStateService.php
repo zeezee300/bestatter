@@ -8,14 +8,19 @@ use OCP\IDBConnection;
 
 /** Single source of truth for the editable/frozen state of an order or quote. */
 class CommercialStateService {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function state(int $caseId, ?int $sideOrderId = null): array {
 		$caseQuery = $this->db->getQueryBuilder();
 		$masterJson = $caseQuery->select('master_data')->from('bestatter_cases')
 			->where($caseQuery->expr()->eq('id', $caseQuery->createNamedParameter($caseId)))
 			->executeQuery()->fetchOne();
-		if ($masterJson === false) throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
+		if ($masterJson === false) {
+			throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
+		}
 		$master = json_decode((string)$masterJson, true) ?: [];
 		$storedStatus = trim((string)($master['order_status'] ?? 'Entwurf')) ?: 'Entwurf';
 		if ($sideOrderId !== null) {
@@ -24,7 +29,9 @@ class CommercialStateService {
 				->where($sideOrderQuery->expr()->eq('id', $sideOrderQuery->createNamedParameter($sideOrderId)))
 				->andWhere($sideOrderQuery->expr()->eq('case_id', $sideOrderQuery->createNamedParameter($caseId)))
 				->executeQuery()->fetchOne();
-			if ($sideOrderStatus === false) throw new \InvalidArgumentException('Nebenauftrag wurde nicht gefunden.');
+			if ($sideOrderStatus === false) {
+				throw new \InvalidArgumentException('Nebenauftrag wurde nicht gefunden.');
+			}
 			$storedStatus = strtoupper((string)$sideOrderStatus);
 		}
 
@@ -36,8 +43,20 @@ class CommercialStateService {
 			->orderBy('created_at', 'DESC')->addOrderBy('id', 'DESC')
 			->executeQuery()->fetchAllAssociative();
 		$document = null;
-		foreach ($documents as $candidate) if ((string)$candidate['document_type'] === 'ORDER') { $document = $candidate; break; }
-		if ($document === null) foreach ($documents as $candidate) if ((string)$candidate['document_type'] === 'QUOTE' && (string)$candidate['status'] !== 'UEBERNOMMEN') { $document = $candidate; break; }
+		foreach ($documents as $candidate) {
+			if ((string)$candidate['document_type'] === 'ORDER') {
+				$document = $candidate;
+				break;
+			}
+		}
+		if ($document === null) {
+			foreach ($documents as $candidate) {
+				if ((string)$candidate['document_type'] === 'QUOTE' && (string)$candidate['status'] !== 'UEBERNOMMEN') {
+					$document = $candidate;
+					break;
+				}
+			}
+		}
 
 		$invoiceQuery = $this->db->getQueryBuilder();
 		$invoiceCount = (int)$invoiceQuery->select($invoiceQuery->func()->count('*', 'count'))->from('bestatter_invoices')

@@ -18,12 +18,17 @@ use OCP\Migration\SimpleMigrationStep;
  * Einträge denselben Vorgänger erhalten). Die Tabelle enthält keine Fachdaten.
  */
 class Version5620Date20261012000000 extends SimpleMigrationStep {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if ($schema->hasTable(AuditService::LOCK_TABLE)) return null;
+		if ($schema->hasTable(AuditService::LOCK_TABLE)) {
+			return null;
+		}
 		$t = $schema->createTable(AuditService::LOCK_TABLE);
 		$t->addColumn('id', Types::INTEGER, ['unsigned' => true]);
 		$t->addColumn('counter', Types::BIGINT, ['unsigned' => true, 'default' => 0]);

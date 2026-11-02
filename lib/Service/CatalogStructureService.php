@@ -13,22 +13,15 @@ use OCP\IDBConnection;
  * Artikel, Variantenregeln oder Fallpositionen angepasst werden müssen.
  */
 class CatalogStructureService {
-	private const SEED_FILE = __DIR__ . '/../../resources/article-catalog.json';
-
-	public function __construct(private IDBConnection $db) {}
-
-	public function ensureSeedData(): void {
-		$query = $this->db->getQueryBuilder();
-		if ((int)$query->select($query->func()->count('*', 'count'))->from('bestatter_article_areas')->executeQuery()->fetchOne() > 0) return;
-		$seed = $this->seed();
-		foreach ((array)($seed['areas'] ?? []) as $area) $this->insertArea((string)$area['key'], (string)$area['name'], (int)($area['sortOrder'] ?? 0));
-		foreach ((array)($seed['groups'] ?? []) as $group) if ($this->group((string)$group['key']) === null) $this->insertGroup($group);
+	public function __construct(
+		private IDBConnection $db,
+	) {
 	}
 
 	public function areas(): array {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('area_key', 'name', 'sort_order')->from('bestatter_article_areas')->orderBy('sort_order', 'ASC')->addOrderBy('area_key', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => ['key' => (string)$row['area_key'], 'name' => (string)$row['name'], 'sortOrder' => (int)$row['sort_order']], $rows);
+		return array_map(static fn (array $row): array => ['key' => (string)$row['area_key'], 'name' => (string)$row['name'], 'sortOrder' => (int)$row['sort_order']], $rows);
 	}
 
 	public function groups(): array {
@@ -36,8 +29,8 @@ class CatalogStructureService {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_article_groups')->where($query->expr()->isNotNull('group_key'))
 			->orderBy('sort_order', 'ASC')->addOrderBy('group_key', 'ASC')->executeQuery()->fetchAllAssociative();
-		$groups = array_map(fn(array $row): array => $this->mapGroup($row, $areas), $rows);
-		usort($groups, static fn(array $left, array $right): int => [$left['areaSortOrder'], $left['sortOrder'], $left['key']] <=> [$right['areaSortOrder'], $right['sortOrder'], $right['key']]);
+		$groups = array_map(fn (array $row): array => $this->mapGroup($row, $areas), $rows);
+		usort($groups, static fn (array $left, array $right): int => [$left['areaSortOrder'], $left['sortOrder'], $left['key']] <=> [$right['areaSortOrder'], $right['sortOrder'], $right['key']]);
 		return $groups;
 	}
 
@@ -47,7 +40,9 @@ class CatalogStructureService {
 	}
 
 	public function group(string $key): ?array {
-		if (trim($key) === '') return null;
+		if (trim($key) === '') {
+			return null;
+		}
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('*')->from('bestatter_article_groups')->where($query->expr()->eq('group_key', $query->createNamedParameter($key)))->executeQuery()->fetchAssociative();
 		return $row ? $this->mapGroup($row, array_column($this->areas(), null, 'key')) : null;
@@ -61,17 +56,33 @@ class CatalogStructureService {
 		$scope = strtoupper(trim((string)($data['funeralScope'] ?? 'ALL')));
 		$sort = max(0, min(99999, (int)($data['sortOrder'] ?? 0)));
 		$active = filter_var($data['active'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
-		if (!preg_match('/^[0-9A-Z]{1,20}$/', $key)) throw new \InvalidArgumentException('Der Warengruppen-Schlüssel besteht aus bis zu 20 Ziffern oder Großbuchstaben (z. B. 210).');
-		if ($name === '' || mb_strlen($name) > 150) throw new \InvalidArgumentException('Bitte eine Bezeichnung der Warengruppe (höchstens 150 Zeichen) angeben.');
-		if (!in_array($area, array_column($this->areas(), 'key'), true)) throw new \InvalidArgumentException('Bitte einen gültigen Bereich wählen.');
-		if (!isset(CatalogRules::SELECTION_RULES[$rule])) throw new \InvalidArgumentException('Die Auswahlregel ist ungültig.');
-		if (!isset(CatalogRules::FUNERAL_SCOPES[$scope])) throw new \InvalidArgumentException('Der Bestattungsbezug ist ungültig.');
+		if (!preg_match('/^[0-9A-Z]{1,20}$/', $key)) {
+			throw new \InvalidArgumentException('Der Warengruppen-Schlüssel besteht aus bis zu 20 Ziffern oder Großbuchstaben (z. B. 210).');
+		}
+		if ($name === '' || mb_strlen($name) > 150) {
+			throw new \InvalidArgumentException('Bitte eine Bezeichnung der Warengruppe (höchstens 150 Zeichen) angeben.');
+		}
+		if (!in_array($area, array_column($this->areas(), 'key'), true)) {
+			throw new \InvalidArgumentException('Bitte einen gültigen Bereich wählen.');
+		}
+		if (!isset(CatalogRules::SELECTION_RULES[$rule])) {
+			throw new \InvalidArgumentException('Die Auswahlregel ist ungültig.');
+		}
+		if (!isset(CatalogRules::FUNERAL_SCOPES[$scope])) {
+			throw new \InvalidArgumentException('Der Bestattungsbezug ist ungültig.');
+		}
 		$existing = $this->group($key);
-		if ($create && $existing !== null) throw new \InvalidArgumentException('Der Warengruppen-Schlüssel ' . $key . ' ist bereits vergeben.');
-		if (!$create && $existing === null) throw new \InvalidArgumentException('Die Warengruppe wurde nicht gefunden.');
+		if ($create && $existing !== null) {
+			throw new \InvalidArgumentException('Der Warengruppen-Schlüssel ' . $key . ' ist bereits vergeben.');
+		}
+		if (!$create && $existing === null) {
+			throw new \InvalidArgumentException('Die Warengruppe wurde nicht gefunden.');
+		}
 		$query = $this->db->getQueryBuilder();
 		$duplicate = $query->select('group_key')->from('bestatter_article_groups')->where($query->expr()->eq('group_name', $query->createNamedParameter($name)))->executeQuery()->fetchOne();
-		if ($duplicate !== false && (string)$duplicate !== $key) throw new \InvalidArgumentException('Eine Warengruppe mit dieser Bezeichnung besteht bereits.');
+		if ($duplicate !== false && (string)$duplicate !== $key) {
+			throw new \InvalidArgumentException('Eine Warengruppe mit dieser Bezeichnung besteht bereits.');
+		}
 		$now = date('c');
 		if ($create) {
 			$this->insertGroup(['key' => $key, 'name' => $name, 'area' => $area, 'selectionRule' => $rule, 'funeralScope' => $scope, 'sortOrder' => $sort, 'active' => $active]);
@@ -93,37 +104,53 @@ class CatalogStructureService {
 	}
 
 	public function deleteGroup(string $key): void {
-		if ($this->group($key) === null) throw new \InvalidArgumentException('Die Warengruppe wurde nicht gefunden.');
+		if ($this->group($key) === null) {
+			throw new \InvalidArgumentException('Die Warengruppe wurde nicht gefunden.');
+		}
 		$query = $this->db->getQueryBuilder();
 		$used = (int)$query->select($query->func()->count('*', 'count'))->from('bestatter_articles')->where($query->expr()->eq('article_group', $query->createNamedParameter($key)))->executeQuery()->fetchOne();
 		$query = $this->db->getQueryBuilder();
 		$rules = (int)$query->select($query->func()->count('*', 'count'))->from('bestatter_burial_variant_rules')->where($query->expr()->eq('article_group', $query->createNamedParameter($key)))->executeQuery()->fetchOne();
-		if ($used > 0 || $rules > 0) throw new \InvalidArgumentException('Die Warengruppe wird noch von Artikeln oder Variantenregeln verwendet und kann nur deaktiviert werden.');
+		if ($used > 0 || $rules > 0) {
+			throw new \InvalidArgumentException('Die Warengruppe wird noch von Artikeln oder Variantenregeln verwendet und kann nur deaktiviert werden.');
+		}
 		$delete = $this->db->getQueryBuilder();
 		$delete->delete('bestatter_article_groups')->where($delete->expr()->eq('group_key', $delete->createNamedParameter($key)))->executeStatement();
 	}
 
 	/** Warengruppen als CSV (Klartext für Excel; der Import erkennt Schlüssel und Klartext). */
 	public function exportGroupsCsv(): string {
-		$rows = array_map(static fn(array $group): array => [$group['key'], $group['name'], $group['areaKey'] . ' · ' . $group['areaName'], (string)$group['sortOrder'], CatalogRules::SELECTION_RULES[$group['selectionRule']] ?? $group['selectionRule'], CatalogRules::FUNERAL_SCOPES[$group['funeralScope']] ?? $group['funeralScope'], $group['active'] ? 'ja' : 'nein'], $this->groups());
+		$rows = array_map(static fn (array $group): array => [$group['key'], $group['name'], $group['areaKey'] . ' · ' . $group['areaName'], (string)$group['sortOrder'], CatalogRules::SELECTION_RULES[$group['selectionRule']] ?? $group['selectionRule'], CatalogRules::FUNERAL_SCOPES[$group['funeralScope']] ?? $group['funeralScope'], $group['active'] ? 'ja' : 'nein'], $this->groups());
 		return CsvTools::write(['Schlüssel', 'Bezeichnung', 'Bereich', 'Sortierung', 'Auswahlregel', 'Bestattungsbezug', 'Aktiv'], $rows);
 	}
 
-	/** @return array{created: int, updated: int} */
+	/** @return array{created: int, updated: int, areasCreated: int} */
 	public function importGroupsCsv(string $content): array {
 		$map = ['schluessel' => 'key', 'warengruppe' => 'key', 'key' => 'key', 'bezeichnung' => 'name', 'name' => 'name', 'bereich' => 'areaKey', 'area' => 'areaKey', 'areakey' => 'areaKey',
 			'sortierung' => 'sortOrder', 'sortorder' => 'sortOrder', 'auswahlregel' => 'selectionRule', 'selectionrule' => 'selectionRule', 'bestattungsbezug' => 'funeralScope', 'funeralscope' => 'funeralScope', 'aktiv' => 'active', 'active' => 'active'];
-		$rows = CsvTools::read($content, static fn(string $header): string => $map[CsvTools::headerKey($header)] ?? $header);
-		if ($rows !== [] && !array_key_exists('key', $rows[0]['values'])) throw new \InvalidArgumentException('Die CSV-Datei enthält keine Spalte „Schlüssel“.');
+		$rows = CsvTools::read($content, static fn (string $header): string => $map[CsvTools::headerKey($header)] ?? $header);
+		if ($rows !== [] && !array_key_exists('key', $rows[0]['values'])) {
+			throw new \InvalidArgumentException('Die CSV-Datei enthält keine Spalte „Schlüssel“.');
+		}
 		$areaKeys = array_column($this->areas(), 'key');
 		$pick = static function (string $value, array $options, string $default): string {
 			$raw = trim($value);
-			if ($raw === '') return $default;
-			if (isset($options[strtoupper($raw)])) return strtoupper($raw);
-			foreach ($options as $code => $label) if (mb_strtolower($label) === mb_strtolower($raw) || str_starts_with(mb_strtolower($label), mb_strtolower($raw))) return (string)$code;
+			if ($raw === '') {
+				return $default;
+			}
+			if (isset($options[strtoupper($raw)])) {
+				return strtoupper($raw);
+			}
+			foreach ($options as $code => $label) {
+				if (mb_strtolower($label) === mb_strtolower($raw) || str_starts_with(mb_strtolower($label), mb_strtolower($raw))) {
+					return (string)$code;
+				}
+			}
 			return strtoupper($raw);
 		};
-		$created = 0; $updated = 0;
+		$created = 0;
+		$updated = 0;
+		$areasCreated = 0;
 		$this->db->beginTransaction();
 		try {
 			foreach ($rows as $row) {
@@ -131,9 +158,23 @@ class CatalogStructureService {
 				$key = strtoupper(trim($values['key'] ?? ''));
 				$existing = $this->group($key);
 				$area = trim($values['areaKey'] ?? '');
-				if (preg_match('/^([0-9A-Z]{1,20})\s*[·\-–:]/u', strtoupper($area), $match)) $area = $match[1];
-				if ($area === '' && $existing !== null) $area = $existing['areaKey'];
-				if (!in_array($area, $areaKeys, true)) throw new \InvalidArgumentException('CSV-Zeile ' . $row['line'] . ' (' . $key . '): Bereich „' . trim($values['areaKey'] ?? '') . '“ ist unbekannt. Gültig sind: ' . implode(', ', $areaKeys) . '.');
+				$areaName = '';
+				if (preg_match('/^([0-9A-Z]{1,20})\s*[·\-–:]\s*(.*)$/u', $area, $match)) {
+					$area = strtoupper($match[1]);
+					$areaName = trim($match[2]);
+				}
+				if ($area === '' && $existing !== null) {
+					$area = $existing['areaKey'];
+				}
+				// 0.89.5: Bereiche aus „Schlüssel · Bezeichnung“ (Export, Einrichtungspaket) werden angelegt, wenn sie fehlen – z. B. in einer neuen Installation mit leerem Katalog.
+				if (!in_array($area, $areaKeys, true) && $areaName !== '' && preg_match('/^[0-9A-Z]{1,10}$/', $area)) {
+					$this->insertArea($area, mb_substr($areaName, 0, 120), ctype_digit($area) ? (int)$area * 10 : (count($areaKeys) + 1) * 10);
+					$areaKeys[] = $area;
+					$areasCreated++;
+				}
+				if (!in_array($area, $areaKeys, true)) {
+					throw new \InvalidArgumentException('CSV-Zeile ' . $row['line'] . ' (' . $key . '): Bereich „' . trim($values['areaKey'] ?? '') . '“ ist unbekannt. Gültig sind: ' . implode(', ', $areaKeys) . '.');
+				}
 				try {
 					$this->saveGroup([
 						'key' => $key, 'name' => trim($values['name'] ?? '') !== '' ? $values['name'] : ($existing['name'] ?? ''), 'areaKey' => $area,
@@ -152,39 +193,63 @@ class CatalogStructureService {
 			$this->db->rollBack();
 			throw $error;
 		}
-		return ['created' => $created, 'updated' => $updated];
+		return ['created' => $created, 'updated' => $updated, 'areasCreated' => $areasCreated];
 	}
 
 	public function saveArea(array $data): array {
 		$key = strtoupper(trim((string)($data['key'] ?? '')));
 		$name = trim((string)($data['name'] ?? ''));
-		if (!preg_match('/^[0-9A-Z]{1,10}$/', $key) || $name === '' || mb_strlen($name) > 120) throw new \InvalidArgumentException('Bitte Schlüssel (bis 10 Zeichen) und Bezeichnung des Bereichs angeben.');
+		if (!preg_match('/^[0-9A-Z]{1,10}$/', $key) || $name === '' || mb_strlen($name) > 120) {
+			throw new \InvalidArgumentException('Bitte Schlüssel (bis 10 Zeichen) und Bezeichnung des Bereichs angeben.');
+		}
 		$sort = max(0, min(99999, (int)($data['sortOrder'] ?? 0)));
 		$query = $this->db->getQueryBuilder();
 		$exists = $query->select('id')->from('bestatter_article_areas')->where($query->expr()->eq('area_key', $query->createNamedParameter($key)))->executeQuery()->fetchOne();
-		if ($exists === false) $this->insertArea($key, $name, $sort);
-		else {
+		if ($exists === false) {
+			$this->insertArea($key, $name, $sort);
+		} else {
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_article_areas')->set('name', $update->createNamedParameter($name))->set('sort_order', $update->createNamedParameter($sort))
 				->set('updated_at', $update->createNamedParameter(date('c')))->where($update->expr()->eq('area_key', $update->createNamedParameter($key)))->executeStatement();
 		}
-		foreach ($this->areas() as $area) if ($area['key'] === $key) return $area;
+		foreach ($this->areas() as $area) {
+			if ($area['key'] === $key) {
+				return $area;
+			}
+		}
 		throw new \RuntimeException('Der Bereich konnte nicht gelesen werden.');
 	}
 
 	/** Nächste freie Artikelnummer im Nummernkreis der Warengruppe (Schlüssel + zweistellige Folge in Zehnerschritten). */
 	public function suggestArticleNumber(string $groupKey): string {
-		if (!preg_match('/^[0-9]{3}$/', $groupKey)) return '';
+		if (!preg_match('/^[0-9]{3}$/', $groupKey)) {
+			return '';
+		}
 		$query = $this->db->getQueryBuilder();
 		$numbers = $query->select('article_number')->from('bestatter_articles')->where($query->expr()->like('article_number', $query->createNamedParameter($groupKey . '%')))->executeQuery()->fetchFirstColumn();
 		$max = 0;
 		$used = [];
-		foreach ($numbers as $number) if (preg_match('/^' . $groupKey . '(\d{2})$/', (string)$number, $match)) { $max = max($max, (int)$match[1]); $used[(int)$match[1]] = true; }
+		foreach ($numbers as $number) {
+			if (preg_match('/^' . $groupKey . '(\d{2})$/', (string)$number, $match)) {
+				$max = max($max, (int)$match[1]);
+				$used[(int)$match[1]] = true;
+			}
+		}
 		$next = (int)(floor($max / 10) * 10) + 10;
-		if ($next <= 99) return $groupKey . sprintf('%02d', $next);
+		if ($next <= 99) {
+			return $groupKey . sprintf('%02d', $next);
+		}
 		// Zehnerschritte ausgeschöpft: erste freie Nummer der Warengruppe (z. B. 21015), damit auch große Sortimente Platz haben.
-		for ($candidate = 10; $candidate <= 99; $candidate++) if (!isset($used[$candidate])) return $groupKey . sprintf('%02d', $candidate);
-		for ($candidate = 1; $candidate <= 9; $candidate++) if (!isset($used[$candidate])) return $groupKey . sprintf('%02d', $candidate);
+		for ($candidate = 10; $candidate <= 99; $candidate++) {
+			if (!isset($used[$candidate])) {
+				return $groupKey . sprintf('%02d', $candidate);
+			}
+		}
+		for ($candidate = 1; $candidate <= 9; $candidate++) {
+			if (!isset($used[$candidate])) {
+				return $groupKey . sprintf('%02d', $candidate);
+			}
+		}
 		return '';
 	}
 
@@ -220,9 +285,4 @@ class CatalogStructureService {
 		])->executeStatement();
 	}
 
-	private function seed(): array {
-		if (!is_file(self::SEED_FILE)) return [];
-		$data = json_decode((string)file_get_contents(self::SEED_FILE), true);
-		return is_array($data) ? $data : [];
-	}
 }

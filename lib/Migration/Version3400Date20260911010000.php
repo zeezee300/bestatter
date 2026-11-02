@@ -15,7 +15,9 @@ class Version3400Date20260911010000 extends SimpleMigrationStep {
 		$schema = $schemaClosure();
 		if ($schema->hasTable('bestatter_invoices')) {
 			$table = $schema->getTable('bestatter_invoices');
-			if (!$table->hasColumn('payment_snapshot')) $table->addColumn('payment_snapshot', 'text', ['notnull' => false]);
+			if (!$table->hasColumn('payment_snapshot')) {
+				$table->addColumn('payment_snapshot', 'text', ['notnull' => false]);
+			}
 		}
 		return $schema;
 	}

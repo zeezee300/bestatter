@@ -30,7 +30,8 @@ class PaperlessInboxService {
 		private GroupwareService $groupware,
 		private ProcessService $process,
 		private IUserSession $userSession,
-	) {}
+	) {
+	}
 
 	public function inbox(): array {
 		$inbox = $this->paperless->inbox();
@@ -38,15 +39,20 @@ class PaperlessInboxService {
 		if ($inbox['enabled']) {
 			$enriched = 0;
 			foreach ($inbox['items'] as $item) {
-				if (!empty($item['metadata']['enrichedAt']) || $enriched >= self::ENRICH_PER_REQUEST) continue;
+				if (!empty($item['metadata']['enrichedAt']) || $enriched >= self::ENRICH_PER_REQUEST) {
+					continue;
+				}
 				$enriched++;
 				$this->enrich($item);
 			}
 			if ($this->paperless->settings()['autoFile']) {
 				foreach ($this->paperless->inbox()['items'] as $item) {
 					$suggestion = (array)($item['metadata']['suggestion'] ?? []);
-					if (empty($suggestion['autoFile']) || empty($suggestion['caseId']) || !empty($item['metadata']['autoFileTried'])) continue;
-					$metadata = $item['metadata']; $metadata['autoFileTried'] = date('c');
+					if (empty($suggestion['autoFile']) || empty($suggestion['caseId']) || !empty($item['metadata']['autoFileTried'])) {
+						continue;
+					}
+					$metadata = $item['metadata'];
+					$metadata['autoFileTried'] = date('c');
 					$this->paperless->updateInboxMetadata((int)$item['id'], $metadata);
 					try {
 						$result = $this->assign((int)$item['id'], (int)$suggestion['caseId'], (string)$suggestion['kindKey'], [], true);
@@ -60,9 +66,11 @@ class PaperlessInboxService {
 			$inbox = $this->paperless->inbox();
 		}
 		$kinds = [];
-		foreach ($this->kinds->definitions() as $kind) $kinds[$kind['key']] = $kind;
-		$inbox['items'] = array_map(fn(array $item): array => $this->decorate($item, $kinds), $inbox['items']);
-		$inbox['kinds'] = array_values(array_filter($kinds, static fn(array $kind): bool => $kind['active']));
+		foreach ($this->kinds->definitions() as $kind) {
+			$kinds[$kind['key']] = $kind;
+		}
+		$inbox['items'] = array_map(fn (array $item): array => $this->decorate($item, $kinds), $inbox['items']);
+		$inbox['kinds'] = array_values(array_filter($kinds, static fn (array $kind): bool => $kind['active']));
 		$inbox['caseNumberField'] = $this->paperless->settings()['caseNumberField'];
 		$inbox['autoFiled'] = $autoFiled;
 		return $inbox;
@@ -77,13 +85,19 @@ class PaperlessInboxService {
 	public function overview(int $caseId = 0): array {
 		$inbox = $this->paperless->inbox();
 		$kinds = [];
-		foreach ($this->kinds->definitions() as $kind) $kinds[$kind['key']] = $kind;
+		foreach ($this->kinds->definitions() as $kind) {
+			$kinds[$kind['key']] = $kind;
+		}
 		$items = [];
 		$unrated = 0;
 		foreach ($inbox['items'] as $item) {
-			if (empty($item['metadata']['enrichedAt'])) $unrated++;
+			if (empty($item['metadata']['enrichedAt'])) {
+				$unrated++;
+			}
 			$decorated = $this->decorate($item, $kinds);
-			if ($caseId > 0 && (int)($decorated['suggestedCaseId'] ?? 0) !== $caseId) continue;
+			if ($caseId > 0 && (int)($decorated['suggestedCaseId'] ?? 0) !== $caseId) {
+				continue;
+			}
 			$items[] = [
 				'id' => (int)$decorated['id'], 'title' => (string)($decorated['title'] ?? ''), 'createdAt' => (string)($decorated['createdAt'] ?? ''),
 				'kindKey' => $decorated['suggestedKind'], 'kindName' => $decorated['suggestedKind'] !== '' ? (string)$kinds[$decorated['suggestedKind']]['name'] : '',
@@ -101,11 +115,15 @@ class PaperlessInboxService {
 			$details = $this->paperless->documentDetails((string)$item['externalDocumentId']);
 			$fieldName = mb_strtolower(trim($this->paperless->settings()['caseNumberField']));
 			$fieldValue = '';
-			foreach ($details['customFields'] as $name => $value) if ($fieldName !== '' && mb_strtolower(trim((string)$name)) === $fieldName) $fieldValue = is_scalar($value) ? (string)$value : '';
+			foreach ($details['customFields'] as $name => $value) {
+				if ($fieldName !== '' && mb_strtolower(trim((string)$name)) === $fieldName) {
+					$fieldValue = is_scalar($value) ? (string)$value : '';
+				}
+			}
 			$suggestion = DocumentKindRules::suggest(
 				['documentTypeId' => $details['documentTypeId'], 'caseNumberField' => $fieldValue, 'content' => $details['content']],
 				$this->kinds->definitions(),
-				fn(string $number): ?array => $this->cases->findCaseByNumber($number),
+				fn (string $number): ?array => $this->cases->findCaseByNumber($number),
 				$this->cases->matchingCandidates(),
 			);
 			$metadata['paperless'] = ['documentTypeId' => $details['documentTypeId'], 'caseNumberField' => $fieldValue, 'tags' => $details['tags']];
@@ -123,10 +141,13 @@ class PaperlessInboxService {
 	/** Vorschlag erneut ermitteln (z. B. nachdem in Paperless Dokumenttyp oder Fallnummer gesetzt wurden). */
 	public function refresh(int $externalId): array {
 		$item = $this->paperless->inboxItem($externalId);
-		$metadata = $item['metadata']; unset($metadata['enrichedAt'], $metadata['autoFileTried'], $metadata['autoFileError']);
+		$metadata = $item['metadata'];
+		unset($metadata['enrichedAt'], $metadata['autoFileTried'], $metadata['autoFileError']);
 		$item = $this->paperless->updateInboxMetadata($externalId, $metadata);
 		$kinds = [];
-		foreach ($this->kinds->definitions() as $kind) $kinds[$kind['key']] = $kind;
+		foreach ($this->kinds->definitions() as $kind) {
+			$kinds[$kind['key']] = $kind;
+		}
 		return $this->decorate($this->enrich($item), $kinds);
 	}
 
@@ -138,20 +159,30 @@ class PaperlessInboxService {
 		$item = $this->paperless->inboxItem($externalId);
 		$kind = $this->kinds->activeDefinition($kindKey !== '' ? $kindKey : 'EINGANGSRECHNUNG');
 		$case = $this->cases->getCase($caseId);
-		if ((string)($case['anonymizedAt'] ?? '') !== '') throw new \InvalidArgumentException('Einem anonymisierten Fall können keine Dokumente zugeordnet werden.');
+		if ((string)($case['anonymizedAt'] ?? '') !== '') {
+			throw new \InvalidArgumentException('Einem anonymisierten Fall können keine Dokumente zugeordnet werden.');
+		}
 		$deregistration = $kind['effect'] === 'DEREGISTRATION' ? $this->openDeregistration($caseId, (int)($data['deregistrationId'] ?? 0)) : null;
 		$count = 0;
 		if ($kind['countLabel'] !== '' && trim((string)($data['count'] ?? '')) !== '') {
 			$count = (int)$data['count'];
-			if ($count < 1 || $count > 99) throw new \InvalidArgumentException('Bitte eine Anzahl ' . $kind['countLabel'] . ' zwischen 1 und 99 angeben.');
+			if ($count < 1 || $count > 99) {
+				throw new \InvalidArgumentException('Bitte eine Anzahl ' . $kind['countLabel'] . ' zwischen 1 und 99 angeben.');
+			}
 		}
 		$paperlessDocumentId = (string)$item['externalDocumentId'];
 		$download = $this->paperless->downloadDocument($paperlessDocumentId);
-		if ($kind['effect'] === 'PAPER_CONTRACT' && $download['extension'] !== 'pdf') throw new \InvalidArgumentException('Ein unterschriebener Vertrag muss als PDF vorliegen.');
+		if ($kind['effect'] === 'PAPER_CONTRACT' && $download['extension'] !== 'pdf') {
+			throw new \InvalidArgumentException('Ein unterschriebener Vertrag muss als PDF vorliegen.');
+		}
 		$temp = tempnam(sys_get_temp_dir(), 'bestatter-paperless-');
-		if ($temp === false) throw new \RuntimeException('Für den Paperless-Import konnte keine temporäre Datei angelegt werden.');
+		if ($temp === false) {
+			throw new \RuntimeException('Für den Paperless-Import konnte keine temporäre Datei angelegt werden.');
+		}
 		try {
-			if (file_put_contents($temp, $download['content'], LOCK_EX) === false) throw new \RuntimeException('Das Paperless-Dokument konnte nicht temporär gespeichert werden.');
+			if (file_put_contents($temp, $download['content'], LOCK_EX) === false) {
+				throw new \RuntimeException('Das Paperless-Dokument konnte nicht temporär gespeichert werden.');
+			}
 			$upload = ['name' => $this->fileName($kind, $paperlessDocumentId, $download['extension']), 'tmp_name' => $temp, 'size' => strlen($download['content']), 'error' => UPLOAD_ERR_OK, 'type' => $download['mimeType']];
 			$extra = ['source' => 'PAPERLESS', 'documentKind' => $kind['key'], 'paperlessDocumentId' => $paperlessDocumentId] + ($count > 0 ? ['documentCount' => $count] : []);
 			$folder = $this->kinds->folderName($kind);
@@ -164,20 +195,29 @@ class PaperlessInboxService {
 					'nextStep' => sprintf('%s im Ordner „%s“ gespeichert und als Eingangsrechnung erfasst. Bitte im Reiter „Finanzen“ Positionen prüfen und Leistungen zuordnen.', $kind['name'], $folder)];
 			}
 			$title = trim((string)($data['title'] ?? ''));
-			if ($title === '') $title = $kind['name'] . ($count > 0 ? sprintf(' (%d %s)', $count, $kind['countLabel']) : '') . ($item['title'] !== '' && mb_strtolower($item['title']) !== mb_strtolower($kind['name']) ? ' – ' . $item['title'] : '');
+			if ($title === '') {
+				$title = $kind['name'] . ($count > 0 ? sprintf(' (%d %s)', $count, $kind['countLabel']) : '') . ($item['title'] !== '' && mb_strtolower($item['title']) !== mb_strtolower($kind['name']) ? ' – ' . $item['title'] : '');
+			}
 			$title = mb_substr($title, 0, 200);
 			$stored = $kind['effect'] === 'PAPER_CONTRACT'
 				? $this->caseFiles->uploadPaperContract($case, $upload, 'EXTERNAL', 0, $folder, $extra)
 				: $this->caseFiles->upload($case, $upload, $folder, $kind['category'], $title, [], $extra);
-			$record = $stored['record']; $file = $stored['file'];
+			$record = $stored['record'];
+			$file = $stored['file'];
 			$link = $this->paperless->linkInboxDocument($externalId, $caseId, (int)$record['id'], (int)$file['fileId'], hash('sha256', $download['content']), 'CASE_DOCUMENT', $kind['key'], $automatic);
 			$messages = [sprintf('%s im Ordner „%s“ abgelegt.', $kind['name'], $file['subfolder'] ?? $folder)];
-			if ($deregistration !== null) $messages[] = $this->confirmDeregistration($deregistration, $record, $file);
-			if ($kind['effect'] === 'PAPER_CONTRACT') $messages[] = 'Bitte im Reiter „Dokumente“ die Unterschriften prüfen und bestätigen.';
+			if ($deregistration !== null) {
+				$messages[] = $this->confirmDeregistration($deregistration, $record, $file);
+			}
+			if ($kind['effect'] === 'PAPER_CONTRACT') {
+				$messages[] = 'Bitte im Reiter „Dokumente“ die Unterschriften prüfen und bestätigen.';
+			}
 			$this->process->reconcileQuietly($caseId);
 			return ['kind' => $kind, 'record' => $record, 'file' => $file, 'externalDocument' => $link, 'openTab' => 'document', 'path' => (string)($file['path'] ?? ''), 'nextStep' => implode(' ', $messages)];
 		} finally {
-			if (is_file($temp)) @unlink($temp);
+			if (is_file($temp)) {
+				@unlink($temp);
+			}
 		}
 	}
 
@@ -187,17 +227,23 @@ class PaperlessInboxService {
 
 	/** Offene Abmeldungen eines Falls, deren Rückmeldung aussteht (für die Auswahl im Zuordnungsdialog). */
 	public function openDeregistrations(int $caseId): array {
-		return array_values(array_map(static fn(array $item): array => ['id' => (int)$item['id'], 'title' => (string)$item['title'], 'status' => (string)$item['status'], 'sentAt' => (string)($item['data']['sentAt'] ?? '')],
-			array_filter($this->deregistrations->list($caseId), static fn(array $item): bool => strtoupper((string)$item['status']) === 'VERSENDET')));
+		return array_values(array_map(static fn (array $item): array => ['id' => (int)$item['id'], 'title' => (string)$item['title'], 'status' => (string)$item['status'], 'sentAt' => (string)($item['data']['sentAt'] ?? '')],
+			array_filter($this->deregistrations->list($caseId), static fn (array $item): bool => strtoupper((string)$item['status']) === 'VERSENDET')));
 	}
 
 	// ------------------------------------------------------------------ intern
 
 	private function openDeregistration(int $caseId, int $deregistrationId): ?array {
-		if ($deregistrationId <= 0) return null;
+		if ($deregistrationId <= 0) {
+			return null;
+		}
 		$record = $this->records->get($deregistrationId);
-		if ($record['type'] !== 'deregistration' || (int)$record['caseId'] !== $caseId) throw new \InvalidArgumentException('Die gewählte Abmeldung gehört nicht zu diesem Fall.');
-		if (strtoupper((string)$record['status']) !== 'VERSENDET') throw new \InvalidArgumentException('Die gewählte Abmeldung ist nicht versendet oder bereits bestätigt.');
+		if ($record['type'] !== 'deregistration' || (int)$record['caseId'] !== $caseId) {
+			throw new \InvalidArgumentException('Die gewählte Abmeldung gehört nicht zu diesem Fall.');
+		}
+		if (strtoupper((string)$record['status']) !== 'VERSENDET') {
+			throw new \InvalidArgumentException('Die gewählte Abmeldung ist nicht versendet oder bereits bestätigt.');
+		}
 		return $record;
 	}
 
@@ -210,9 +256,14 @@ class PaperlessInboxService {
 		}
 		$closed = 0;
 		foreach ($this->records->list('task', (int)$deregistration['caseId']) as $task) {
-			if ((int)($task['data']['deregistrationId'] ?? 0) !== (int)$deregistration['id'] || in_array(strtoupper((string)$task['status']), ['ERLEDIGT', 'ABGEBROCHEN'], true)) continue;
-			try { $this->groupware->update(array_replace($task, ['status' => 'ERLEDIGT', 'data' => $task['data'] + ['completedReason' => 'Rückmeldung der Abmeldestelle eingegangen']]), (string)($task['ownerUid'] ?? '')); $closed++; }
-			catch (\Throwable) { /* Aufgabe bleibt offen; die Abmeldung ist bestätigt */ }
+			if ((int)($task['data']['deregistrationId'] ?? 0) !== (int)$deregistration['id'] || in_array(strtoupper((string)$task['status']), ['ERLEDIGT', 'ABGEBROCHEN'], true)) {
+				continue;
+			}
+			try {
+				$this->groupware->update(array_replace($task, ['status' => 'ERLEDIGT', 'data' => $task['data'] + ['completedReason' => 'Rückmeldung der Abmeldestelle eingegangen']]), (string)($task['ownerUid'] ?? ''));
+				$closed++;
+			} catch (\Throwable) { /* Aufgabe bleibt offen; die Abmeldung ist bestätigt */
+			}
 		}
 		return sprintf('Abmeldung „%s“ als bestätigt markiert%s.', $deregistration['title'], $closed > 0 ? ', Aufgabe „Rückmeldung prüfen“ erledigt' : '');
 	}
@@ -221,8 +272,12 @@ class PaperlessInboxService {
 	private function withClassification(array $data, array $kind): array {
 		$classification = $kind['classification'] !== '' ? $kind['classification'] : 'CLASSIFICATION_PENDING';
 		foreach ((array)($data['items'] ?? []) as $index => $line) {
-			if (!is_array($line)) continue;
-			if (trim((string)($line['classification'] ?? '')) === '') $data['items'][$index]['classification'] = $classification;
+			if (!is_array($line)) {
+				continue;
+			}
+			if (trim((string)($line['classification'] ?? '')) === '') {
+				$data['items'][$index]['classification'] = $classification;
+			}
 		}
 		return $data;
 	}
@@ -236,7 +291,10 @@ class PaperlessInboxService {
 		$suggestion = (array)($item['metadata']['suggestion'] ?? []);
 		$kindKey = (string)($suggestion['kindKey'] ?? '');
 		// Eingänge aus der Zeit vor 0.80.0 waren immer Eingangsrechnungen – solange Paperless keinen anderen Typ nennt.
-		if ($item['recordType'] === 'INCOMING_INVOICE' && ($suggestion['kindSource'] ?? '') !== 'PAPERLESS_TYPE') { $kindKey = 'EINGANGSRECHNUNG'; $suggestion['kindSource'] = 'LEGACY'; }
+		if ($item['recordType'] === 'INCOMING_INVOICE' && ($suggestion['kindSource'] ?? '') !== 'PAPERLESS_TYPE') {
+			$kindKey = 'EINGANGSRECHNUNG';
+			$suggestion['kindSource'] = 'LEGACY';
+		}
 		$item['suggestedKind'] = $kindKey !== '' && isset($kinds[$kindKey]) && $kinds[$kindKey]['active'] ? $kindKey : '';
 		$item['suggestedKindSource'] = (string)($suggestion['kindSource'] ?? '');
 		$item['suggestedCaseId'] = isset($suggestion['caseId']) && $suggestion['caseId'] ? (int)$suggestion['caseId'] : null;
@@ -248,8 +306,15 @@ class PaperlessInboxService {
 		$item['enrichError'] = (string)($item['metadata']['enrichError'] ?? '');
 		$item['autoFileError'] = (string)($item['metadata']['autoFileError'] ?? '');
 		if ($item['suggestedCaseId'] !== null) {
-			try { $case = $this->cases->getCase($item['suggestedCaseId']); $item['suggestedCaseName'] = trim($case['firstName'] . ' ' . $case['lastName']); }
-			catch (\Throwable) { $item['suggestedCaseId'] = null; $item['suggestedCaseNumber'] = ''; $item['suggestedCaseReason'] = ''; $item['suggestedCaseReasonLabel'] = ''; }
+			try {
+				$case = $this->cases->getCase($item['suggestedCaseId']);
+				$item['suggestedCaseName'] = trim($case['firstName'] . ' ' . $case['lastName']);
+			} catch (\Throwable) {
+				$item['suggestedCaseId'] = null;
+				$item['suggestedCaseNumber'] = '';
+				$item['suggestedCaseReason'] = '';
+				$item['suggestedCaseReasonLabel'] = '';
+			}
 		}
 		return $item;
 	}

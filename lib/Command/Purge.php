@@ -16,7 +16,11 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 class Purge extends Command {
 	private const CONFIRMATION = 'BESTATTER-ENDGUELTIG-LOESCHEN';
-	public function __construct(private PurgeService $purge) { parent::__construct(); }
+	public function __construct(
+		private PurgeService $purge,
+	) {
+		parent::__construct();
+	}
 	protected function configure(): void {
 		$this->setName('bestatter:purge')->setDescription('Zeigt oder entfernt alle Bestatter-Daten; mit --remove-app wird die App vollständig aus Nextcloud entfernt. Standard ist ein rein lesender Trockenlauf.')
 			->addOption('execute', null, InputOption::VALUE_NONE, 'Bereinigung ausführen')
@@ -30,18 +34,30 @@ class Purge extends Command {
 		$preview = $this->purge->preview();
 		$output->writeln('<info>Bestatter-Purge – Vorschau</info>');
 		$output->writeln(json_encode($preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-		foreach ($preview['notices'] as $notice) $output->writeln('<comment>Hinweis: ' . $notice . '</comment>');
+		foreach ($preview['notices'] as $notice) {
+			$output->writeln('<comment>Hinweis: ' . $notice . '</comment>');
+		}
 		if (!$input->getOption('execute')) {
 			$output->writeln('<comment>Keine Daten verändert. Ausführen mit --execute --confirmation=' . self::CONFIRMATION . ' und --backup-package=… oder --without-backup; optional --remove-app.</comment>');
 			return self::SUCCESS;
 		}
-		if ((string)$input->getOption('confirmation') !== self::CONFIRMATION) { $output->writeln('<error>Bestätigungscode fehlt oder ist falsch.</error>'); return self::INVALID; }
+		if ((string)$input->getOption('confirmation') !== self::CONFIRMATION) {
+			$output->writeln('<error>Bestätigungscode fehlt oder ist falsch.</error>');
+			return self::INVALID;
+		}
 		try {
 			$result = $this->purge->purge(trim((string)$input->getOption('backup-package')), (bool)$input->getOption('without-backup'), (bool)$input->getOption('despite-legal-hold'), (bool)$input->getOption('remove-app'));
-		} catch (\RuntimeException $error) { $output->writeln('<error>' . $error->getMessage() . '</error>'); return self::FAILURE; }
+		} catch (\RuntimeException $error) {
+			$output->writeln('<error>' . $error->getMessage() . '</error>');
+			return self::FAILURE;
+		}
 		$output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-		foreach ($result['warnings'] as $warning) $output->writeln('<comment>Hinweis: ' . $warning . '</comment>');
-		foreach ($result['nextSteps'] as $step) $output->writeln('<info>Nächster Schritt: ' . $step . '</info>');
+		foreach ($result['warnings'] as $warning) {
+			$output->writeln('<comment>Hinweis: ' . $warning . '</comment>');
+		}
+		foreach ($result['nextSteps'] as $step) {
+			$output->writeln('<info>Nächster Schritt: ' . $step . '</info>');
+		}
 		return self::SUCCESS;
 	}
 }

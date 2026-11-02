@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 /**
@@ -30,7 +31,8 @@ class CaseDeletionService {
 		private CaseStorageService $storage,
 		private PermanentDeletion $permanent,
 		private AppCalendarObjects $calendar,
-	) {}
+	) {
+	}
 
 	/**
 	 * Hinweise vor dem Löschen. Sperren nichts; die Oberfläche und occ zeigen sie zur Bestätigung an.
@@ -47,22 +49,39 @@ class CaseDeletionService {
 		foreach ($rules as [$table, $numberColumn, $dateColumn, $years, $code, $singular, $plural, $condition]) {
 			$query = $this->db->getQueryBuilder();
 			$query->select($numberColumn, $dateColumn)->from($table)->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)));
-			if ($condition !== null) $query->andWhere($condition);
-			$open = []; $latest = null;
+			if ($condition !== null) {
+				$query->andWhere($condition);
+			}
+			$open = [];
+			$latest = null;
 			foreach ($query->executeQuery()->fetchAllAssociative() as $row) {
 				$until = $this->retentionEnd((string)($row[$dateColumn] ?? ''), $years);
-				if ($until === null || $until < $today) continue;
+				if ($until === null || $until < $today) {
+					continue;
+				}
 				$open[] = trim((string)($row[$numberColumn] ?? '')) ?: '(ohne Nummer)';
-				if ($latest === null || $until > $latest) $latest = $until;
+				if ($latest === null || $until > $latest) {
+					$latest = $until;
+				}
 			}
-			if ($open === [] || $latest === null) continue;
+			if ($open === [] || $latest === null) {
+				continue;
+			}
 			$label = count($open) === 1 ? $singular . ' ' . $open[0] : count($open) . ' ' . $plural . ' (' . implode(', ', array_slice($open, 0, 5)) . (count($open) > 5 ? ', …' : '') . ')';
 			$notices[] = ['code' => $code, 'text' => $label . ': gesetzliche Aufbewahrung (' . $years . ' Jahre) läuft bis ' . $latest->format('d.m.Y') . '. Bitte vor dem Löschen sicherstellen, dass die Belege in der Buchhaltung (z. B. DATEV) archiviert sind.'];
 		}
+		$linked = $this->linkedCasesNotice($caseId);
+		if ($linked !== null) {
+			$notices[] = $linked;
+		}
 		$paperless = $this->paperlessDocuments($caseId);
 		$addressBook = $this->addressBookNotice($caseId);
-		if ($addressBook !== null) $notices[] = $addressBook;
-		if ($paperless > 0) $notices[] = ['code' => 'PAPERLESS', 'text' => $paperless . ' Dokument' . ($paperless === 1 ? '' : 'e') . ' in Paperless ' . ($paperless === 1 ? 'wird' : 'werden') . ' nicht mitgelöscht. Bitte bei Bedarf in Paperless entfernen.'];
+		if ($addressBook !== null) {
+			$notices[] = $addressBook;
+		}
+		if ($paperless > 0) {
+			$notices[] = ['code' => 'PAPERLESS', 'text' => $paperless . ' Dokument' . ($paperless === 1 ? '' : 'e') . ' in Paperless ' . ($paperless === 1 ? 'wird' : 'werden') . ' nicht mitgelöscht. Bitte bei Bedarf in Paperless entfernen.'];
+		}
 		return $notices;
 	}
 
@@ -78,15 +97,21 @@ class CaseDeletionService {
 		$this->db->beginTransaction();
 		try {
 			$this->deleteCaseData($caseId);
+			$this->unlinkCase($caseId);
 			$this->audit->redactCase($caseId);
 			$query = $this->db->getQueryBuilder();
 			$query->delete('bestatter_cases')->where($query->expr()->eq('id', $query->createNamedParameter($caseId)))->executeStatement();
 			// Dateien innerhalb der offenen Transaktion: schlägt das Löschen fehl, bleibt der Fall unverändert.
 			$folders = $this->deleteCaseFolders($caseNumber);
 			$this->db->commit();
-		} catch (\Throwable $error) { $this->db->rollBack(); throw $error; }
+		} catch (\Throwable $error) {
+			$this->db->rollBack();
+			throw $error;
+		}
 		$calendar = $this->calendar->delete($calendarTargets);
-		if ($calendar['errors'] !== []) $notices[] = ['code' => 'CALENDAR', 'text' => count($calendar['errors']) . ' Kalendereintrag/-einträge konnten nicht entfernt werden und müssen im Kalender gelöscht werden.'];
+		if ($calendar['errors'] !== []) {
+			$notices[] = ['code' => 'CALENDAR', 'text' => count($calendar['errors']) . ' Kalendereintrag/-einträge konnten nicht entfernt werden und müssen im Kalender gelöscht werden.'];
+		}
 		$this->audit->logSystem($trigger === 'RETENTION' ? 'RETENTION' : 'CASE', 'DELETED', [
 			'caseId' => $caseId, 'caseNumber' => $caseNumber, 'trigger' => $trigger,
 			'folders' => count($folders['deleted']), 'calendarDeleted' => $calendar['deleted'], 'calendarErrors' => count($calendar['errors']),
@@ -97,37 +122,62 @@ class CaseDeletionService {
 
 	/** Ende der Aufbewahrung: 31.12. des Entstehungsjahres + $years. */
 	public function retentionEnd(string $date, int $years): ?\DateTimeImmutable {
-		if (!preg_match('/^(\d{4})-\d{2}-\d{2}/', trim($date), $match)) return null;
+		if (!preg_match('/^(\d{4})-\d{2}-\d{2}/', trim($date), $match)) {
+			return null;
+		}
 		return new \DateTimeImmutable(((int)$match[1] + $years) . '-12-31');
 	}
 
 	private function deleteCaseData(int $caseId): void {
-		foreach ($this->ids('bestatter_external_documents', 'case_id', $caseId) as $id) $this->deleteWhere('bestatter_integration_jobs', 'object_id', $id);
+		foreach ($this->ids('bestatter_external_documents', 'case_id', $caseId) as $id) {
+			$this->deleteWhere('bestatter_integration_jobs', 'object_id', $id);
+		}
 		$recordIds = $this->ids('bestatter_records', 'case_id', $caseId);
 		foreach ($recordIds as $recordId) {
 			$this->deleteWhere('bestatter_action_runs', 'source_record_id', $recordId);
 			$this->deleteWhere('bestatter_record_assignees', 'record_id', $recordId);
 		}
-		foreach ($this->ids('bestatter_invoices', 'case_id', $caseId) as $id) $this->deleteWhere('bestatter_invoice_items', 'invoice_id', $id);
-		foreach ($this->ids('bestatter_incoming_invoices', 'case_id', $caseId) as $id) $this->deleteWhere('bestatter_incoming_items', 'incoming_invoice_id', $id);
+		foreach ($this->ids('bestatter_invoices', 'case_id', $caseId) as $id) {
+			$this->deleteWhere('bestatter_invoice_items', 'invoice_id', $id);
+		}
+		foreach ($this->ids('bestatter_incoming_invoices', 'case_id', $caseId) as $id) {
+			$this->deleteWhere('bestatter_incoming_items', 'incoming_invoice_id', $id);
+		}
 		foreach ([
 			'bestatter_capture_imports', 'bestatter_order_form_entries', 'bestatter_external_documents', 'bestatter_process_runs',
 			'bestatter_schedule_history', 'bestatter_mail_outbox', 'bestatter_dereg_mail_outbox', 'bestatter_records',
 			'bestatter_invoices', 'bestatter_commercial_docs', 'bestatter_incoming_invoices', 'bestatter_case_services', 'bestatter_side_orders',
 			'bestatter_case_labels',
-		] as $table) $this->deleteWhere($table, 'case_id', $caseId);
+			// 0.89.7: Vorsorge
+			'bestatter_precare_funding', 'bestatter_precare',
+		] as $table) {
+			$this->deleteWhere($table, 'case_id', $caseId);
+		}
 	}
 
 	/** @return array{deleted:list<string>,missing:list<string>} */
 	private function deleteCaseFolders(string $caseNumber): array {
-		$year = substr($caseNumber, 0, 4);
-		if (!preg_match('/^20\d{2}$/', $year)) throw new \RuntimeException('Fallordner konnte wegen ungültiger Fallnummer nicht sicher bestimmt werden.');
-		$relative = $this->installationConfig->casesPath() . '/' . $year . '/' . $caseNumber;
+		// 0.89.7: Oberordner je Vorgangsart (Aufträge „A-…“, Vorsorgen „V-…“), Jahr nach dem Präfix.
+		try {
+			$relative = $this->installationConfig->caseFolderPath($caseNumber);
+		} catch (\InvalidArgumentException) {
+			throw new \RuntimeException('Fallordner konnte wegen ungültiger Fallnummer nicht sicher bestimmt werden.');
+		}
 		$result = ['deleted' => [], 'missing' => []];
 		$entries = $this->storage->existingFolders($relative);
-		if ($entries === []) { $result['missing'][] = $relative; return $result; }
-		foreach ($entries as $entry) if (!$entry['folder']->isDeletable()) throw new \RuntimeException('Fallordner ist nicht löschbar: ' . $entry['label']);
-		foreach ($entries as $entry) { $this->permanent->delete($entry['folder']); $result['deleted'][] = $entry['label']; }
+		if ($entries === []) {
+			$result['missing'][] = $relative;
+			return $result;
+		}
+		foreach ($entries as $entry) {
+			if (!$entry['folder']->isDeletable()) {
+				throw new \RuntimeException('Fallordner ist nicht löschbar: ' . $entry['label']);
+			}
+		}
+		foreach ($entries as $entry) {
+			$this->permanent->delete($entry['folder']);
+			$result['deleted'][] = $entry['label'];
+		}
 		return $result;
 	}
 
@@ -148,9 +198,13 @@ class CaseDeletionService {
 			$data = json_decode((string)($row['payload'] ?? '{}'), true) ?: [];
 			$source = (string)($data['source'] ?? '');
 			$linked = ($source === 'order-client' && !empty($data['contactId'])) || ($source === 'case-person' && !empty($data['addressBook']['contactId']));
-			if ($linked) $names[] = trim((string)$row['title']) ?: 'ohne Namen';
+			if ($linked) {
+				$names[] = trim((string)$row['title']) ?: 'ohne Namen';
+			}
 		}
-		if ($names === []) return null;
+		if ($names === []) {
+			return null;
+		}
 		return ['code' => 'ADDRESS_BOOK', 'text' => (count($names) === 1 ? '1 Person dieses Falls steht' : count($names) . ' Personen dieses Falls stehen') . ' im Nextcloud-Adressbuch (' . implode(', ', array_slice($names, 0, 5)) . (count($names) > 5 ? ', …' : '') . '). Diese Einträge werden nicht mitgelöscht; bitte bei Bedarf in Nextcloud Kontakte entfernen.'];
 	}
 
@@ -166,11 +220,57 @@ class CaseDeletionService {
 	private function caseNumber(int $caseId): string {
 		$query = $this->db->getQueryBuilder();
 		$value = $query->select('case_number')->from('bestatter_cases')->where($query->expr()->eq('id', $query->createNamedParameter($caseId)))->executeQuery()->fetchOne();
-		if ($value === false) throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
+		if ($value === false) {
+			throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
+		}
 		return (string)$value;
 	}
 
 	/** @return list<int> */
+	/**
+	 * 0.89.7: Verknüpfte Akten (Vorsorge eingelöst, Auftrag als Sterbefall weitergeführt) bleiben erhalten – nur der Verweis
+	 * auf den gelöschten Fall entfällt. Sonst ließen sich die verknüpften Akten danach nicht mehr vollständig öffnen.
+	 */
+	private function unlinkCase(int $caseId): void {
+		foreach ($this->ids('bestatter_cases', 'origin_case_id', $caseId) as $derivedId) {
+			$query = $this->db->getQueryBuilder();
+			$query->update('bestatter_cases')->set('origin_case_id', $query->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+				->where($query->expr()->eq('id', $query->createNamedParameter($derivedId, IQueryBuilder::PARAM_INT)))->executeStatement();
+			$this->audit->log($derivedId, 'CASE', $derivedId, 'ORIGIN_UNLINKED', ['originCaseId' => $caseId], ['originCaseId' => 0]);
+		}
+		$query = $this->db->getQueryBuilder();
+		$precareIds = array_map('intval', $query->select('case_id')->from('bestatter_precare')
+			->where($query->expr()->eq('redeemed_case_id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->executeQuery()->fetchFirstColumn());
+		foreach ($precareIds as $precareId) {
+			$update = $this->db->getQueryBuilder();
+			$update->update('bestatter_precare')->set('redeemed_case_id', $update->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+				->where($update->expr()->eq('case_id', $update->createNamedParameter($precareId, IQueryBuilder::PARAM_INT)))->executeStatement();
+			$this->audit->log($precareId, 'PRECARE', $precareId, 'REDEEMED_CASE_UNLINKED', ['redeemedCaseId' => $caseId], ['redeemedCaseId' => 0]);
+		}
+	}
+
+	/** @return array{code:string,text:string}|null */
+	private function linkedCasesNotice(int $caseId): ?array {
+		$numbers = static fn (array $rows): string => implode(', ', array_map(static fn (array $row): string => (string)$row['case_number'], $rows));
+		$query = $this->db->getQueryBuilder();
+		$derived = $query->select('case_number')->from('bestatter_cases')
+			->where($query->expr()->eq('origin_case_id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->executeQuery()->fetchAllAssociative();
+		$query = $this->db->getQueryBuilder();
+		$origin = $query->select('o.case_number')->from('bestatter_cases', 'c')->innerJoin('c', 'bestatter_cases', 'o', $query->expr()->eq('o.id', 'c.origin_case_id'))
+			->where($query->expr()->eq('c.id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->executeQuery()->fetchAllAssociative();
+		$parts = [];
+		if ($derived !== []) {
+			$parts[] = 'Aus diesem Fall ' . (count($derived) === 1 ? 'ging' : 'gingen') . ' ' . $numbers($derived) . ' hervor';
+		}
+		if ($origin !== []) {
+			$parts[] = 'dieser Fall wurde aus ' . $numbers($origin) . ' übernommen';
+		}
+		if ($parts === []) {
+			return null;
+		}
+		return ['code' => 'LINKED_CASES', 'text' => ucfirst(implode('; ', $parts)) . '. Die verknüpften Akten bleiben erhalten (eine eingelöste Vorsorge bleibt eingelöst), nur der Verweis auf diesen Fall entfällt.'];
+	}
+
 	private function ids(string $table, string $field, int $value): array {
 		$query = $this->db->getQueryBuilder();
 		return array_map('intval', $query->select('id')->from($table)->where($query->expr()->eq($field, $query->createNamedParameter($value)))->executeQuery()->fetchFirstColumn());

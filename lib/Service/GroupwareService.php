@@ -25,7 +25,8 @@ class GroupwareService {
 		private TeamService $team,
 		private IURLGenerator $urlGenerator,
 		private IUserManager $users,
-	) {}
+	) {
+	}
 
 	public function createTask(string $title, string $due = '', string $status = 'OFFEN', string $data = '{}', int $caseId = 0): array {
 		return $this->createRecord('task', $title, $due, $status, $data, $caseId);
@@ -42,7 +43,7 @@ class GroupwareService {
 
 	/**
 	 * @param string|null $ownerUid 0.66.0: interner Aufruf des Ablaufs (Autoerledigung, Fristnachführung,
-	 *        Übernahme) im Namen des Aufgabeninhabers; ohne Angabe gilt wie bisher die angemeldete Person.
+	 *                              Übernahme) im Namen des Aufgabeninhabers; ohne Angabe gilt wie bisher die angemeldete Person.
 	 */
 	public function update(array $record, ?string $ownerUid = null): array {
 		if (!in_array($record['type'] ?? '', ['task', 'schedule'], true)) {
@@ -97,7 +98,9 @@ class GroupwareService {
 			]);
 			unset($meta['nextcloud']['syncError'], $meta['nextcloud']['remoteDeletedAt']);
 			$meta['nextcloudCopies'] = $this->writeCopies((string)$record['type'], $uid, $ics, $meta, $previousCopies);
-			if (!self::hasSyncError($meta)) unset($meta['nextcloud']['lastRetryAt']);
+			if (!self::hasSyncError($meta)) {
+				unset($meta['nextcloud']['lastRetryAt']);
+			}
 		} catch (\Throwable $error) {
 			$meta['nextcloud']['stored'] = false;
 			$meta['nextcloud']['syncError'] = $error->getMessage();
@@ -124,7 +127,9 @@ class GroupwareService {
 		$summary = ['checked' => 0, 'repaired' => 0, 'waiting' => 0, 'failed' => 0];
 		$previousUser = $this->userSession->getUser();
 		try {
-			foreach ($this->records->syncFailures($limit) as $row) $this->retryRecord($row, $summary);
+			foreach ($this->records->syncFailures($limit) as $row) {
+				$this->retryRecord($row, $summary);
+			}
 		} finally {
 			$this->userSession->setVolatileActiveUser($previousUser);
 		}
@@ -135,7 +140,10 @@ class GroupwareService {
 	private function retryRecord(array $row, array &$summary): void {
 		$summary['checked']++;
 		$owner = $this->users->get($row['ownerUid']);
-		if ($owner === null) { $summary['failed']++; return; }
+		if ($owner === null) {
+			$summary['failed']++;
+			return;
+		}
 		// Im Hintergrundjob gibt es keine angemeldete Person: im Namen der Eigentümerin bzw. des Eigentümers arbeiten.
 		$this->userSession->setVolatileActiveUser($owner);
 		try {
@@ -143,25 +151,46 @@ class GroupwareService {
 			$meta = is_array($record['data'] ?? null) ? $record['data'] : [];
 			$nextcloud = is_array($meta['nextcloud'] ?? null) ? $meta['nextcloud'] : [];
 			$lastRetry = strtotime((string)($nextcloud['lastRetryAt'] ?? '')) ?: 0;
-			if (($nextcloud['remoteDeletedAt'] ?? '') !== '' || $lastRetry > time() - self::RETRY_BACKOFF_SECONDS) { $summary['waiting']++; return; }
+			if (($nextcloud['remoteDeletedAt'] ?? '') !== '' || $lastRetry > time() - self::RETRY_BACKOFF_SECONDS) {
+				$summary['waiting']++;
+				return;
+			}
 			$component = ($record['type'] ?? '') === 'task' ? 'VTODO' : 'VEVENT';
 			$pending = [];
-			if (!($nextcloud['stored'] ?? false)) $pending[] = (string)($nextcloud['ownerUid'] ?? '') !== '' ? (string)$nextcloud['ownerUid'] : $row['ownerUid'];
-			foreach ((array)($meta['nextcloudCopies'] ?? []) as $copy) if (is_array($copy) && !($copy['stored'] ?? false)) $pending[] = (string)($copy['ownerUid'] ?? '');
-			$ready = array_filter(array_unique($pending), fn(string $uid): bool => $uid !== '' && $this->hasWritableCalendar($uid, $component));
-			if ($ready === []) { $summary['waiting']++; return; }
+			if (!($nextcloud['stored'] ?? false)) {
+				$pending[] = (string)($nextcloud['ownerUid'] ?? '') !== '' ? (string)$nextcloud['ownerUid'] : $row['ownerUid'];
+			}
+			foreach ((array)($meta['nextcloudCopies'] ?? []) as $copy) {
+				if (is_array($copy) && !($copy['stored'] ?? false)) {
+					$pending[] = (string)($copy['ownerUid'] ?? '');
+				}
+			}
+			$ready = array_filter(array_unique($pending), fn (string $uid): bool => $uid !== '' && $this->hasWritableCalendar($uid, $component));
+			if ($ready === []) {
+				$summary['waiting']++;
+				return;
+			}
 			$record['data']['nextcloud']['lastRetryAt'] = date('c');
 			$updated = $this->update($record, $row['ownerUid']);
-			if (self::hasSyncError(is_array($updated['data'] ?? null) ? $updated['data'] : [])) $summary['failed']++;
-			else $summary['repaired']++;
+			if (self::hasSyncError(is_array($updated['data'] ?? null) ? $updated['data'] : [])) {
+				$summary['failed']++;
+			} else {
+				$summary['repaired']++;
+			}
 		} catch (\Throwable) {
 			$summary['failed']++;
 		}
 	}
 
 	public static function hasSyncError(array $meta): bool {
-		if ((string)($meta['nextcloud']['syncError'] ?? '') !== '') return true;
-		foreach ((array)($meta['nextcloudCopies'] ?? []) as $copy) if (is_array($copy) && !($copy['stored'] ?? false)) return true;
+		if ((string)($meta['nextcloud']['syncError'] ?? '') !== '') {
+			return true;
+		}
+		foreach ((array)($meta['nextcloudCopies'] ?? []) as $copy) {
+			if (is_array($copy) && !($copy['stored'] ?? false)) {
+				return true;
+			}
+		}
 		return false;
 	}
 
@@ -169,7 +198,9 @@ class GroupwareService {
 		try {
 			foreach ($this->calendarManager->getCalendarsForPrincipal($this->principal($ownerUid)) as $calendar) {
 				if ($this->isWritable($calendar) && $this->supportsCalendarComponent($calendar, $component)
-					&& !$this->excludedCalendarName((string)($calendar->getDisplayName() ?? ''))) return true;
+					&& !$this->excludedCalendarName((string)($calendar->getDisplayName() ?? ''))) {
+					return true;
+				}
 			}
 		} catch (\Throwable) {
 			return false;
@@ -366,7 +397,9 @@ class GroupwareService {
 		// 0.75.2: Kopien im Kalender bzw. in der Aufgabenliste weiterer Zuständiger sind keine eigenen Einträge.
 		if ($existing === null) {
 			$original = $this->records->findCopyOriginal($type, $parsed['uid'], $ownerUid);
-			if ($original !== null) return $this->importCopyChange($type, $parsed, $original, $ownerUid);
+			if ($original !== null) {
+				return $this->importCopyChange($type, $parsed, $original, $ownerUid);
+			}
 		}
 		$case = $this->resolveCase($parsed['caseId'], $parsed['caseNumber']);
 		$caseId = $case !== null ? (int)$case['id'] : (int)($existing['caseId'] ?? 0);
@@ -393,7 +426,9 @@ class GroupwareService {
 		$parsed['data']['casePersonName'] = $casePersonName;
 		// 0.75.2: Nur die in Nextcloud sichtbaren Felder übernehmen. Bisher ersetzte eine Änderung in Nextcloud
 		// (z. B. Abhaken) die gesamten App-Daten: Ablaufschritt, Rollen-Zuständige, Verknüpfungen und Kopien gingen verloren.
-		if ($existing !== null) $parsed['data'] = $this->mergeLocalMeta($type, is_array($existing['data'] ?? null) ? $existing['data'] : [], $parsed['data']);
+		if ($existing !== null) {
+			$parsed['data'] = $this->mergeLocalMeta($type, is_array($existing['data'] ?? null) ? $existing['data'] : [], $parsed['data']);
+		}
 		$parsed['data']['nextcloud'] = [
 			'uid' => $parsed['uid'],
 			'ownerUid' => $ownerUid,
@@ -473,6 +508,7 @@ class GroupwareService {
 	private function writeNewComponent(string $name, string $ics): array {
 		$lastError = null;
 		$requiredComponent = str_contains($ics, 'BEGIN:VTODO') ? 'VTODO' : 'VEVENT';
+		$this->ensureCalendar($this->currentUserId(), $requiredComponent);
 		foreach ($this->calendarManager->getCalendarsForPrincipal($this->principal()) as $calendar) {
 			if (!$this->isWritable($calendar) || !$this->supportsCalendarComponent($calendar, $requiredComponent)) {
 				continue;
@@ -486,6 +522,42 @@ class GroupwareService {
 			}
 		}
 		throw $lastError ?? new \RuntimeException('Kein beschreibbarer Nextcloud-Kalender gefunden.');
+	}
+
+	/**
+	 * 0.89.10: Konten, die sich noch nie angemeldet haben, besitzen keinen persönlichen Kalender und keine
+	 * Aufgabenliste; Aufgaben und Termine blieben dann nur in der App. Fehlt ein beschreibbarer Kalender
+	 * für die benötigte Komponente, legt die App einmalig den Kalender „Persönlich“ (Termine) bzw. die
+	 * Aufgabenliste „Aufgaben“ an – so wie Nextcloud bei der ersten Anmeldung bzw. die App Aufgaben beim ersten Öffnen.
+	 */
+	private function ensureCalendar(string $uid, string $requiredComponent): void {
+		if ($uid === '') {
+			return;
+		}
+		foreach ($this->calendarManager->getCalendarsForPrincipal($this->principal($uid)) as $calendar) {
+			if ($this->isWritable($calendar) && $this->supportsCalendarComponent($calendar, $requiredComponent)) {
+				return;
+			}
+		}
+		$class = '\\OCA\\DAV\\CalDAV\\CalDavBackend';
+		$componentSet = '\\Sabre\\CalDAV\\Xml\\Property\\SupportedCalendarComponentSet';
+		if (!class_exists($class) || !class_exists($componentSet)) {
+			return;
+		}
+		try {
+			$backend = Server::get($class);
+			$principal = $this->principal($uid);
+			[$uri, $name] = $requiredComponent === 'VTODO' ? ['tasks', 'Aufgaben'] : ['personal', 'Persönlich'];
+			if ($backend->getCalendarByUri($principal, $uri) !== null) {
+				return;
+			}
+			$backend->createCalendar($principal, $uri, [
+				'{DAV:}displayname' => $name,
+				'{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new $componentSet([$requiredComponent]),
+			]);
+		} catch (\Throwable) {
+			// Ohne Kalender bleibt es bei der bisherigen Meldung; die Systemprüfung nennt die Abhilfe.
+		}
 	}
 
 	private function createDavObject(ICalendar $calendar, string $uri, string $ics): void {
@@ -564,15 +636,31 @@ class GroupwareService {
 				. 'X-BESTATTER-BUFFER-BEFORE-MINUTES:' . max(0, (int)($meta['bufferBeforeMinutes'] ?? 0)) . "\r\n"
 				. 'X-BESTATTER-BUFFER-AFTER-MINUTES:' . max(0, (int)($meta['bufferAfterMinutes'] ?? 0)) . "\r\n"
 				. 'X-BESTATTER-RESOURCE-KEYS:' . $this->escape(implode(',', (array)($meta['resourceKeys'] ?? []))) . "\r\n";
-			foreach ($meta['assignees'] ?? [] as $assignee) if (($assignee['email'] ?? '') !== '') $ics .= 'ATTENDEE;CN=' . $this->escape((string)$assignee['displayName']) . ':mailto:' . $this->escape((string)$assignee['email']) . "\r\n";
+			foreach ($meta['assignees'] ?? [] as $assignee) {
+				if (($assignee['email'] ?? '') !== '') {
+					$ics .= 'ATTENDEE;CN=' . $this->escape((string)$assignee['displayName']) . ':mailto:' . $this->escape((string)$assignee['email']) . "\r\n";
+				}
+			}
 			$ics .= 'X-BESTATTER-ASSIGNEE-UIDS:' . $this->escape(implode(',', (array)($meta['assigneeUids'] ?? []))) . "\r\n";
 			$ics .= 'X-BESTATTER-SCHEDULE-KIND:' . $this->escape((string)($meta['scheduleKind'] ?? 'INTERNAL_ACTIVITY')) . "\r\n";
-			if (($meta['schedulePresetKey'] ?? '') !== '') $ics .= 'X-BESTATTER-SCHEDULE-PRESET-KEY:' . $this->escape((string)$meta['schedulePresetKey']) . "\r\n";
-			if (($meta['appointmentCategory'] ?? '') !== '') $ics .= 'X-BESTATTER-APPOINTMENT-CATEGORY:' . $this->escape((string)$meta['appointmentCategory']) . "\r\n";
-			if (($meta['externalParticipants'] ?? '') !== '') $ics .= 'X-BESTATTER-EXTERNAL-PARTICIPANTS:' . $this->escape((string)$meta['externalParticipants']) . "\r\n";
-			if (($meta['externalContactIds'] ?? []) !== []) $ics .= 'X-BESTATTER-EXTERNAL-CONTACT-IDS:' . $this->escape(implode(',', array_map('strval', (array)$meta['externalContactIds']))) . "\r\n";
-			if (($meta['externalParticipantsAdditional'] ?? '') !== '') $ics .= 'X-BESTATTER-EXTERNAL-PARTICIPANTS-ADDITIONAL:' . $this->escape((string)$meta['externalParticipantsAdditional']) . "\r\n";
-			if (($meta['location'] ?? '') !== '') $ics .= 'LOCATION:' . $this->escape((string)$meta['location']) . "\r\n";
+			if (($meta['schedulePresetKey'] ?? '') !== '') {
+				$ics .= 'X-BESTATTER-SCHEDULE-PRESET-KEY:' . $this->escape((string)$meta['schedulePresetKey']) . "\r\n";
+			}
+			if (($meta['appointmentCategory'] ?? '') !== '') {
+				$ics .= 'X-BESTATTER-APPOINTMENT-CATEGORY:' . $this->escape((string)$meta['appointmentCategory']) . "\r\n";
+			}
+			if (($meta['externalParticipants'] ?? '') !== '') {
+				$ics .= 'X-BESTATTER-EXTERNAL-PARTICIPANTS:' . $this->escape((string)$meta['externalParticipants']) . "\r\n";
+			}
+			if (($meta['externalContactIds'] ?? []) !== []) {
+				$ics .= 'X-BESTATTER-EXTERNAL-CONTACT-IDS:' . $this->escape(implode(',', array_map('strval', (array)$meta['externalContactIds']))) . "\r\n";
+			}
+			if (($meta['externalParticipantsAdditional'] ?? '') !== '') {
+				$ics .= 'X-BESTATTER-EXTERNAL-PARTICIPANTS-ADDITIONAL:' . $this->escape((string)$meta['externalParticipantsAdditional']) . "\r\n";
+			}
+			if (($meta['location'] ?? '') !== '') {
+				$ics .= 'LOCATION:' . $this->escape((string)$meta['location']) . "\r\n";
+			}
 		}
 
 		$userDescription = trim((string)($meta['description'] ?? ''));
@@ -588,7 +676,9 @@ class GroupwareService {
 		}
 		if ($type === 'schedule' && ($meta['scheduleKind'] ?? 'INTERNAL_ACTIVITY') === 'EXTERNAL_APPOINTMENT') {
 			$descriptionParts[] = 'Terminart: ' . (string)($meta['appointmentCategory'] ?? 'Externer Fixtermin');
-			if (($meta['externalParticipants'] ?? '') !== '') $descriptionParts[] = 'Externe Beteiligte: ' . (string)$meta['externalParticipants'];
+			if (($meta['externalParticipants'] ?? '') !== '') {
+				$descriptionParts[] = 'Externe Beteiligte: ' . (string)$meta['externalParticipants'];
+			}
 		}
 		if ($userDescription !== '') {
 			$descriptionParts[] = '';
@@ -599,8 +689,10 @@ class GroupwareService {
 			$ics .= 'DESCRIPTION:' . $this->escape($description) . "\r\n";
 		}
 		$categories = ['Bestatter'];
-		if ($type === 'schedule') $categories[] = ($meta['scheduleKind'] ?? 'INTERNAL_ACTIVITY') === 'EXTERNAL_APPOINTMENT' ? 'Externer Termin' : 'Interne Tätigkeit';
-		$ics .= 'CATEGORIES:' . implode(',', array_map(fn(string $category): string => $this->escape($category), $categories)) . "\r\n"
+		if ($type === 'schedule') {
+			$categories[] = ($meta['scheduleKind'] ?? 'INTERNAL_ACTIVITY') === 'EXTERNAL_APPOINTMENT' ? 'Externer Termin' : 'Interne Tätigkeit';
+		}
+		$ics .= 'CATEGORIES:' . implode(',', array_map(fn (string $category): string => $this->escape($category), $categories)) . "\r\n"
 			. "X-BESTATTER-CASE-ID:$caseId\r\n"
 			. 'X-BESTATTER-CASE-NUMBER:' . $this->escape($caseNumber) . "\r\n"
 			. 'X-BESTATTER-CASE-PERSON:' . $this->escape((string)($meta['casePersonName'] ?? '')) . "\r\n"
@@ -649,8 +741,8 @@ class GroupwareService {
 		$bestatterPriority = strtoupper($this->unescape($this->property($ics, 'X-BESTATTER-PRIORITY')));
 		$description = $this->unescape($this->property($ics, 'DESCRIPTION'));
 		$descriptionLines = preg_split('/\r?\n/u', $description) ?: [];
-		$descriptionLines = array_values(array_filter($descriptionLines, static fn(string $line): bool =>
-			!str_starts_with($line, 'Fall: ')
+		$descriptionLines = array_values(array_filter($descriptionLines, static fn (string $line): bool
+			=> !str_starts_with($line, 'Fall: ')
 			&& !str_starts_with($line, 'Zuständig: ')
 			&& !str_starts_with($line, 'In Bestatter bearbeiten: ')
 		));
@@ -716,17 +808,36 @@ class GroupwareService {
 
 	private function enrichScheduleMeta(array $meta): array {
 		$kind = strtoupper((string)($meta['scheduleKind'] ?? 'INTERNAL_ACTIVITY'));
-		if (!in_array($kind, ['INTERNAL_ACTIVITY', 'EXTERNAL_APPOINTMENT'], true)) throw new \InvalidArgumentException('Unbekannte Terminart.');
+		if (!in_array($kind, ['INTERNAL_ACTIVITY', 'EXTERNAL_APPOINTMENT'], true)) {
+			throw new \InvalidArgumentException('Unbekannte Terminart.');
+		}
 		$meta['scheduleKind'] = $kind;
 		if ($kind === 'EXTERNAL_APPOINTMENT') {
-			if (trim((string)($meta['appointmentCategory'] ?? '')) === '') throw new \InvalidArgumentException('Für einen externen Fixtermin ist eine Terminart erforderlich.');
-			if (trim((string)($meta['location'] ?? '')) === '') throw new \InvalidArgumentException('Für einen externen Fixtermin ist ein Ort erforderlich.');
+			if (trim((string)($meta['appointmentCategory'] ?? '')) === '') {
+				throw new \InvalidArgumentException('Für einen externen Fixtermin ist eine Terminart erforderlich.');
+			}
+			if (trim((string)($meta['location'] ?? '')) === '') {
+				throw new \InvalidArgumentException('Für einen externen Fixtermin ist ein Ort erforderlich.');
+			}
 		}
 		$uids = array_values(array_unique(array_filter(array_map('strval', (array)($meta['assigneeUids'] ?? [$this->currentUserId()])))));
 		$assignees = [];
-		foreach ($uids as $uid) { $member = $this->team->member($uid); if ($member === null && $uid === $this->currentUserId()) $member = $this->team->assignee($uid); if ($member === null) throw new \InvalidArgumentException('Eine ausgewählte zuständige Person gehört nicht zur Gruppe Bestatter.'); $assignees[] = $member; }
-		if ($assignees === []) { $member = $this->team->assignee($this->currentUserId()); $uids = [$member['uid']]; $assignees = [$member]; }
-		$meta['assigneeUids'] = $uids; $meta['assignees'] = $assignees; return $meta;
+		foreach ($uids as $uid) {
+			$member = $this->team->member($uid);
+			if ($member === null && $uid === $this->currentUserId()) {
+				$member = $this->team->assignee($uid);
+			} if ($member === null) {
+				throw new \InvalidArgumentException('Eine ausgewählte zuständige Person gehört nicht zur Gruppe Bestatter.');
+			} $assignees[] = $member;
+		}
+		if ($assignees === []) {
+			$member = $this->team->assignee($this->currentUserId());
+			$uids = [$member['uid']];
+			$assignees = [$member];
+		}
+		$meta['assigneeUids'] = $uids;
+		$meta['assignees'] = $assignees;
+		return $meta;
 	}
 
 	/**
@@ -739,13 +850,20 @@ class GroupwareService {
 		$selected = array_fill_keys($targets, true);
 		foreach ($previousCopies as $copy) {
 			$ownerUid = (string)($copy['ownerUid'] ?? '');
-			if ($ownerUid === '' || isset($selected[$ownerUid]) || !($copy['stored'] ?? false)) continue;
-			try { $this->deleteDavObject((int)($copy['calendarKey'] ?? 0), (string)($copy['uri'] ?? '')); }
-			catch (\Throwable) { /* Ein entfernter oder bereits gelöschter Kalender blockiert die Pflege nicht. */ }
+			if ($ownerUid === '' || isset($selected[$ownerUid]) || !($copy['stored'] ?? false)) {
+				continue;
+			}
+			try {
+				$this->deleteDavObject((int)($copy['calendarKey'] ?? 0), (string)($copy['uri'] ?? ''));
+			} catch (\Throwable) { /* Ein entfernter oder bereits gelöschter Kalender blockiert die Pflege nicht. */
+			}
 		}
 		foreach ($targets as $ownerUid) {
-			try { $result[] = $this->writeNewComponentForOwner($uid . '.ics', $ics, $ownerUid); }
-			catch (\Throwable $error) { $result[] = ['ownerUid' => $ownerUid, 'stored' => false, 'syncError' => $error->getMessage()]; }
+			try {
+				$result[] = $this->writeNewComponentForOwner($uid . '.ics', $ics, $ownerUid);
+			} catch (\Throwable $error) {
+				$result[] = ['ownerUid' => $ownerUid, 'stored' => false, 'syncError' => $error->getMessage()];
+			}
 		}
 		return $result;
 	}
@@ -754,11 +872,17 @@ class GroupwareService {
 	private function copyTargets(string $type, array $meta): array {
 		$owner = (string)($meta['nextcloud']['ownerUid'] ?? '');
 		if ($owner === '') {
-			try { $owner = $this->currentUserId(); } catch (\Throwable) { $owner = ''; }
+			try {
+				$owner = $this->currentUserId();
+			} catch (\Throwable) {
+				$owner = '';
+			}
 		}
 		$uids = array_map('strval', (array)($meta['assigneeUids'] ?? []));
-		if ($type === 'task') array_unshift($uids, (string)($meta['assigneeUid'] ?? ''));
-		return array_values(array_filter(array_unique($uids), static fn(string $uid): bool => $uid !== '' && $uid !== $owner));
+		if ($type === 'task') {
+			array_unshift($uids, (string)($meta['assigneeUid'] ?? ''));
+		}
+		return array_values(array_filter(array_unique($uids), static fn (string $uid): bool => $uid !== '' && $uid !== $owner));
 	}
 
 	/** Nach einer Änderung im Original (in Nextcloud) die Kopien angleichen, ohne den Datensatz unnötig neu zu schreiben. */
@@ -766,8 +890,10 @@ class GroupwareService {
 		$meta = is_array($record['data'] ?? null) ? $record['data'] : [];
 		$previous = (array)($meta['nextcloudCopies'] ?? []);
 		$copies = $this->writeCopies((string)$record['type'], (string)($meta['nextcloud']['uid'] ?? ''), $ics, $meta, $previous);
-		$strip = static fn(array $list): array => array_map(static fn($copy): array => array_diff_key((array)$copy, ['etag' => true, 'lastModified' => true]), $list);
-		if ($strip($copies) === $strip($previous)) return;
+		$strip = static fn (array $list): array => array_map(static fn ($copy): array => array_diff_key((array)$copy, ['etag' => true, 'lastModified' => true]), $list);
+		if ($strip($copies) === $strip($previous)) {
+			return;
+		}
 		$meta['nextcloudCopies'] = $copies;
 		$this->records->update((int)$record['id'], (string)$record['title'], (string)($record['date'] ?? ''), (string)($record['status'] ?? 'OFFEN'), json_encode($meta, JSON_THROW_ON_ERROR), (int)($record['caseId'] ?? 0), $ownerUid);
 	}
@@ -778,18 +904,26 @@ class GroupwareService {
 	 * Original und alle Kopien an. Andere Felder einer Kopie werden nicht übernommen.
 	 */
 	private function importCopyChange(string $type, array $parsed, array $original, string $copyOwnerUid): string {
-		if ($type !== 'task') return 'unchanged';
+		if ($type !== 'task') {
+			return 'unchanged';
+		}
 		$status = (string)$parsed['status'];
-		if (!in_array($status, ['OFFEN', 'IN_BEARBEITUNG', 'ERLEDIGT'], true) || $status === (string)($original['status'] ?? '')) return 'unchanged';
+		if (!in_array($status, ['OFFEN', 'IN_BEARBEITUNG', 'ERLEDIGT'], true) || $status === (string)($original['status'] ?? '')) {
+			return 'unchanged';
+		}
 		$original['status'] = $status;
 		// Ohne Sitzung (z. B. occ oder Hintergrundprozess) im Namen der Person, die die Kopie geändert hat.
 		$previous = $this->userSession->getUser();
 		$actor = $previous === null ? $this->users->get($copyOwnerUid) : null;
-		if ($actor !== null) $this->userSession->setVolatileActiveUser($actor);
+		if ($actor !== null) {
+			$this->userSession->setVolatileActiveUser($actor);
+		}
 		try {
 			$this->update($original, (string)($original['ownerUid'] ?? ''));
 		} finally {
-			if ($actor !== null) $this->userSession->setVolatileActiveUser($previous);
+			if ($actor !== null) {
+				$this->userSession->setVolatileActiveUser($previous);
+			}
 		}
 		return 'updated';
 	}
@@ -803,18 +937,34 @@ class GroupwareService {
 	}
 
 	private function deleteDavObject(int $calendarId, string $uri): void {
-		if ($calendarId <= 0 || $uri === '') return;
+		if ($calendarId <= 0 || $uri === '') {
+			return;
+		}
 		$class = '\\OCA\\DAV\\CalDAV\\CalDavBackend';
-		if (!class_exists($class)) throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		if (!class_exists($class)) {
+			throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		}
 		Server::get($class)->deleteCalendarObject($calendarId, $uri, 0, true);
 	}
 
 	private function writeNewComponentForOwner(string $name, string $ics, string $ownerUid): array {
-		$lastError = null; $requiredComponent = str_contains($ics, 'BEGIN:VTODO') ? 'VTODO' : 'VEVENT';
+		$lastError = null;
+		$requiredComponent = str_contains($ics, 'BEGIN:VTODO') ? 'VTODO' : 'VEVENT';
+		$this->ensureCalendar($ownerUid, $requiredComponent);
 		foreach ($this->calendarManager->getCalendarsForPrincipal($this->principal($ownerUid)) as $calendar) {
-			if (!$this->isWritable($calendar) || !$this->supportsCalendarComponent($calendar, $requiredComponent)) continue;
-			try { $matches=$calendar->search('',[],['uid'=>$this->property($ics,'UID')],1); if($matches===[])$this->createDavObject($calendar,$name,$ics);else$this->updateDavObject($calendar,(string)($matches[0]['uri']??$name),$ics); return $this->targetMetadata($calendar,$this->property($ics,'UID'),$name)+['ownerUid'=>$ownerUid,'stored'=>true]; }
-			catch (\Throwable $error) { $lastError=$error; }
+			if (!$this->isWritable($calendar) || !$this->supportsCalendarComponent($calendar, $requiredComponent)) {
+				continue;
+			}
+			try {
+				$matches = $calendar->search('', [], ['uid' => $this->property($ics, 'UID')], 1);
+				if ($matches === []) {
+					$this->createDavObject($calendar, $name, $ics);
+				} else {
+					$this->updateDavObject($calendar, (string)($matches[0]['uri'] ?? $name), $ics);
+				} return $this->targetMetadata($calendar, $this->property($ics, 'UID'), $name) + ['ownerUid' => $ownerUid,'stored' => true];
+			} catch (\Throwable $error) {
+				$lastError = $error;
+			}
 		}
 		throw $lastError ?? new \RuntimeException($requiredComponent === 'VTODO'
 			? 'Keine Nextcloud-Aufgabenliste für ' . $ownerUid . ' gefunden (die Person öffnet einmal die App Aufgaben).'
@@ -827,7 +977,9 @@ class GroupwareService {
 			'caseId' => $caseId,
 			'taskUid' => $uid,
 		];
-		if ($recordId > 0) $params['taskId'] = $recordId;
+		if ($recordId > 0) {
+			$params['taskId'] = $recordId;
+		}
 		return $base . (str_contains($base, '?') ? '&' : '?') . http_build_query($params);
 	}
 
@@ -853,7 +1005,9 @@ class GroupwareService {
 	}
 
 	private function casePersonName(int $caseId, array $record = []): string {
-		if ($caseId <= 0) return trim((string)($record['data']['casePersonName'] ?? ''));
+		if ($caseId <= 0) {
+			return trim((string)($record['data']['casePersonName'] ?? ''));
+		}
 		try {
 			$case = $this->cases->getCase($caseId);
 			return trim((string)($case['firstName'] ?? '') . ' ' . (string)($case['lastName'] ?? ''));
@@ -863,10 +1017,14 @@ class GroupwareService {
 	}
 
 	private function visibleTitle(string $title, string $caseNumber, string $casePersonName, string $type): string {
-		if ($caseNumber === '') return trim($title);
+		if ($caseNumber === '') {
+			return trim($title);
+		}
 		$person = trim($casePersonName);
 		$recordTitle = $this->stripCasePrefix($title);
-		if ($type === 'task') return '[' . $caseNumber . '] ' . $recordTitle . ($person !== '' ? ' – ' . $person : '');
+		if ($type === 'task') {
+			return '[' . $caseNumber . '] ' . $recordTitle . ($person !== '' ? ' – ' . $person : '');
+		}
 		return '[' . $caseNumber . '] ' . ($person !== '' ? $person . ' · ' : '') . $recordTitle;
 	}
 
@@ -930,7 +1088,7 @@ class GroupwareService {
 	}
 
 	private function escape(string $value): string {
-		return str_replace(["\\", ";", ",", "\r\n", "\n"], ["\\\\", "\\;", "\\,", "\\n", "\\n"], $value);
+		return str_replace(['\\', ';', ',', "\r\n", "\n"], ['\\\\', '\\;', '\\,', '\\n', '\\n'], $value);
 	}
 
 	private function unescape(string $value): string {

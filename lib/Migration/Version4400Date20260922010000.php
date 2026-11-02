@@ -24,7 +24,10 @@ use OCP\Migration\SimpleMigrationStep;
  * frischen Installation (keine Fälle vorhanden) ist dieser Schritt ein reines No-Op.
  */
 class Version4400Date20260922010000 extends SimpleMigrationStep {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		return null;

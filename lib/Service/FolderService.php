@@ -14,13 +14,17 @@ class FolderService {
 		private IUserSession $userSession,
 		private InstallationConfigService $installationConfig,
 		private CaseStorageService $storage,
-	) {}
+	) {
+	}
 
+	/** 0.89.7: Oberordner je Vorgangsart (Fälle, Aufträge, Vorsorgen), darunter <Jahr>/<Nummer>. */
 	public function caseRoot(string $caseNumber): Folder {
-		$folder = $this->installationConfig->ensurePath($this->userFolder(), $this->installationConfig->casesPath());
-		foreach ([$this->caseYear($caseNumber), $caseNumber] as $name) {
+		$folder = $this->installationConfig->ensurePath($this->userFolder(), $this->installationConfig->casesPathForKind(CaseKinds::kindOfNumber($caseNumber)));
+		foreach ([$this->caseYear($caseNumber), trim($caseNumber)] as $name) {
 			$node = $folder->nodeExists($name) ? $folder->get($name) : $folder->newFolder($name);
-			if (!$node instanceof Folder) throw new \RuntimeException('Der Fallordner konnte nicht geöffnet werden („' . $name . '“ ist eine Datei, kein Ordner).');
+			if (!$node instanceof Folder) {
+				throw new \RuntimeException('Der Fallordner konnte nicht geöffnet werden („' . $name . '“ ist eine Datei, kein Ordner).');
+			}
 			$folder = $node;
 		}
 		return $folder;
@@ -32,26 +36,48 @@ class FolderService {
 	 */
 	public function caseSubfolder(string $caseNumber, string $subfolder): Folder {
 		$resolved = $this->installationConfig->resolveSubfolder($subfolder);
-		if ($resolved === null) throw new \InvalidArgumentException('Der gewählte Ablageordner ist nicht zulässig.');
+		if ($resolved === null) {
+			throw new \InvalidArgumentException('Der gewählte Ablageordner ist nicht zulässig.');
+		}
 		$subfolder = $resolved;
 		$folder = $this->caseRoot($caseNumber);
-		if (!$folder->nodeExists($subfolder) && $this->installationConfig->folderPlanLocked()) throw new \RuntimeException('Der Ordnerplan der Fallakte wird gerade umgestellt. Bitte in einigen Minuten erneut versuchen.');
+		if (!$folder->nodeExists($subfolder) && $this->installationConfig->folderPlanLocked()) {
+			throw new \RuntimeException('Der Ordnerplan der Fallakte wird gerade umgestellt. Bitte in einigen Minuten erneut versuchen.');
+		}
 		$node = $folder->nodeExists($subfolder) ? $folder->get($subfolder) : $folder->newFolder($subfolder);
-		if (!$node instanceof Folder) throw new \RuntimeException('Der Ablageordner konnte nicht geöffnet werden.');
+		if (!$node instanceof Folder) {
+			throw new \RuntimeException('Der Ablageordner konnte nicht geöffnet werden.');
+		}
 		return $node;
 	}
 
-	public function createCaseFolder(string $caseNumber): array {
+	/**
+	 * 0.89.7: Unterordner je Vorgangsart („Anlegen bei“ im Ordnerplan) bzw. der Auftragsart ($folderKeys); fehlende Ordner
+	 * entstehen später bei Bedarf über caseSubfolder().
+	 * @param list<string> $folderKeys
+	 */
+	public function createCaseFolder(string $caseNumber, array $folderKeys = []): array {
 		$folder = $this->caseRoot($caseNumber);
-		if (!$this->installationConfig->folderPlanLocked()) foreach ($this->installationConfig->caseSubfolders() as $name) if (!$folder->nodeExists($name)) $folder->newFolder($name);
-		return ['status' => 'OK', 'path' => $this->caseRelativePath($caseNumber), 'folders' => $this->installationConfig->caseSubfolders()];
+		$names = $this->installationConfig->caseSubfoldersFor(CaseKinds::kindOfNumber($caseNumber), $folderKeys);
+		if (!$this->installationConfig->folderPlanLocked()) {
+			foreach ($names as $name) {
+				if (!$folder->nodeExists($name)) {
+					$folder->newFolder($name);
+				}
+			}
+		}
+		return ['status' => 'OK', 'path' => $this->caseRelativePath($caseNumber), 'folders' => $names];
 	}
 
-	public function allowedSubfolders(): array { return $this->installationConfig->caseSubfolders(); }
-	public function resolveSubfolder(string $reference): ?string { return $this->installationConfig->resolveSubfolder($reference); }
+	public function allowedSubfolders(): array {
+		return $this->installationConfig->caseSubfolders();
+	}
+	public function resolveSubfolder(string $reference): ?string {
+		return $this->installationConfig->resolveSubfolder($reference);
+	}
 
 	public function caseRelativePath(string $caseNumber): string {
-		return $this->installationConfig->casesPath() . '/' . $this->caseYear($caseNumber) . '/' . $caseNumber;
+		return $this->installationConfig->caseFolderPath($caseNumber);
 	}
 
 	public function templatesFolder(): Folder {
@@ -67,8 +93,12 @@ class FolderService {
 		return $this->installationConfig->ensurePath($this->storage->personalFolder(), $this->installationConfig->privateCaptureInboxPath());
 	}
 
-	public function configuredPaths(): array { return $this->installationConfig->settings()['paths']; }
-	public function defaultUploadFolder(): string { return $this->installationConfig->defaultUploadFolder(); }
+	public function configuredPaths(): array {
+		return $this->installationConfig->settings()['paths'];
+	}
+	public function defaultUploadFolder(): string {
+		return $this->installationConfig->defaultUploadFolder();
+	}
 
 	/** 0.70.0 (OP-040): zentrale Ablage oder – im Modus USER – der Ordner der angemeldeten Person. */
 	private function userFolder(): Folder {
@@ -76,13 +106,15 @@ class FolderService {
 	}
 
 	/** Basisordner der Fallablage (für Pfadprüfungen und relative Pfade). */
-	public function baseFolder(): Folder { return $this->storage->baseFolder(); }
+	public function baseFolder(): Folder {
+		return $this->storage->baseFolder();
+	}
 	/** Im Modus USER der Ordner der angegebenen Person (z. B. Ausführende eines Ablaufschritts), sonst die zentrale Ablage. */
-	public function baseFolderFor(?string $uid): Folder { return $this->storage->baseFolder($uid); }
+	public function baseFolderFor(?string $uid): Folder {
+		return $this->storage->baseFolder($uid);
+	}
 
 	private function caseYear(string $caseNumber): string {
-		$year = substr(trim($caseNumber), 0, 4);
-		if (!preg_match('/^20\d{2}$/', $year)) throw new \InvalidArgumentException('Die Fallnummer enthält kein gültiges Jahr.');
-		return $year;
+		return CaseKinds::yearOfNumber($caseNumber) ?? throw new \InvalidArgumentException('Die Fallnummer enthält kein gültiges Jahr.');
 	}
 }

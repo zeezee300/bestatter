@@ -259,6 +259,7 @@
 	font-size: 13px;
 }
 #bestatter-app .bp-save-state[data-state="saved"] { color: #067647; border-color: #75c9a6; }
+#bestatter-app .bp-save-state[data-state="pending"] { color: var(--color-text-maxcontrast, #5b6b73); border-style: dashed; }
 #bestatter-app .bp-save-state[data-state="warning"],
 #bestatter-app .bp-family-guidance {
 	color: var(--color-warning-text, #713f12);
@@ -353,6 +354,7 @@
 	text-align: left;
 }
 #bestatter-app .bp-record-content small { color: var(--bp-muted); }
+#bestatter-app .bp-record-content small.bp-warning-text { color: var(--color-warning-text, #8a4b08); } /* 0.89.9: Hinweise an Rechnungsdateien */
 #bestatter-app .bp-record-badges { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 #bestatter-app .bp-record-badges .bp-status,
 #bestatter-app .bp-priority { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 4px 10px; border: 1px solid transparent; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
@@ -710,6 +712,15 @@
 #bestatter-app .bp-history-dot { width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--color-primary-element, #0a5961); box-shadow: 0 0 0 4px var(--color-primary-element-light, #d9eff0); }
 #bestatter-app .bp-history-changes { display: grid; gap: 2px; margin-top: 6px; padding: 8px 10px; border-radius: 6px; background: var(--bp-surface-muted, rgba(10,89,97,0.05)); }
 #bestatter-app .bp-history-changes small { margin-top: 0; }
+/* 0.89.4: technische Einträge nur bei Bedarf, zusammengefasste Einträge aufklappbar */
+#bestatter-app .bp-history-changes small.bp-muted { font-size: smaller; }
+#bestatter-app .bp-history-entry-technical { opacity: .72; }
+#bestatter-app .bp-history-entry-technical .bp-history-dot { background: var(--bp-muted); box-shadow: 0 0 0 4px var(--bp-line); }
+#bestatter-app .bp-history-changes small.bp-history-technical { font-family: var(--font-face-monospace, monospace); font-size: .82em; overflow-wrap: anywhere; }
+#bestatter-app .bp-history-group summary { cursor: pointer; list-style: none; }
+#bestatter-app .bp-history-group summary::-webkit-details-marker { display: none; }
+#bestatter-app .bp-history-group summary b::after { content: ' ▸'; color: var(--bp-muted); font-weight: normal; }
+#bestatter-app .bp-history-group details[open] summary b::after { content: ' ▾'; }
 #bestatter-app .bp-service-toolbar > label:not(.bp-inline-check) { display: grid; align-content: start; gap: 5px; color: var(--bp-muted); font-size: 12px; font-weight: 600; }
 #bestatter-app .bp-service-toolbar > button,
 #bestatter-app .bp-selected-filter { align-self: end; min-height: 42px; }
@@ -1377,7 +1388,7 @@ body > .bp-article-suggestions .bp-article-suggestion small { grid-column: 1 / -
 @media(max-width:760px){.bp-side-order-child td{padding:0 0 10px!important}.bp-side-order-child button{grid-template-columns:1fr auto}.bp-side-order-child button>small{grid-column:1/-1}.bp-side-order-context{align-items:flex-start;flex-direction:column}.bp-side-order-data{grid-template-columns:1fr}.bp-side-order-overview table,.bp-side-order-overview tbody{display:block}.bp-side-order-overview thead{display:none}.bp-side-order-overview tr{display:grid;margin-bottom:8px;padding:12px;border:1px solid var(--bp-border,#d9e1e5);border-radius:10px}.bp-side-order-overview td{display:grid;grid-template-columns:110px 1fr;gap:8px;padding:4px}.bp-side-order-overview td::before{content:attr(data-label);color:var(--bp-muted,#64748b);font-size:11px;text-transform:uppercase}}
 
 /* Separate, read-only help panel; never shares state with the case assistant. */
-#bestatter-app .bp-help-panel{position:fixed;z-index:1100;top:0;right:0;bottom:0;width:min(430px,100vw);display:none;grid-template-rows:auto auto minmax(0,1fr) auto;gap:14px;padding:18px;background:var(--color-main-background,#fff);border-left:1px solid var(--color-border,#ddd);box-shadow:-10px 0 28px #0002}
+#bestatter-app .bp-help-panel{position:fixed;z-index:1100;top:var(--header-height,50px);right:0;bottom:0;width:min(430px,100vw);display:none;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;gap:12px;padding:18px;background:var(--color-main-background,#fff);border-left:1px solid var(--color-border,#ddd);box-shadow:-10px 0 28px #0002}
 #bestatter-app .bp-help-panel.open{display:grid}
 #bestatter-app .bp-help-panel header{display:flex;align-items:start;justify-content:space-between;gap:12px}
 #bestatter-app .bp-help-panel h2{margin:0}
@@ -2059,6 +2070,7 @@ body[data-themes*="dark"] #bestatter-app .bp-label-c-mauve { --bp-label-bg: #722
 #bestatter-app .bp-case-save-indicator[data-state="saving"] { color: var(--bp-ink); }
 #bestatter-app .bp-case-save-indicator[data-state="saved"] { color: #067647; border-color: #75c9a6; }
 #bestatter-app .bp-case-save-indicator[data-state="warning"] { color: #713f12; border-color: #d99b20; background: #fff7d6; border-radius: 10px; }
+#bestatter-app .bp-case-save-indicator[data-state="pending"] { color: var(--color-text-maxcontrast, #5b6b73); border-style: dashed; }
 #bestatter-app .bp-case-save-indicator[data-state="error"] { color: var(--color-main-text, #1f1f1f); border-color: var(--color-error-text, #c62828); background: #fff0ef; border-radius: 10px; font-weight: 650; }
 #bestatter-app .bp-case-save-indicator[data-state="error"] .bp-case-save-text::before { content: "⚠ "; color: var(--color-error-text, #c62828); }
 #bestatter-app .bp-case-save-indicator .bp-link-button[hidden] { display: none; }
@@ -2183,3 +2195,182 @@ body[data-themes*="dark"] #bestatter-app .bp-label-c-mauve { --bp-label-bg: #722
 	#bestatter-app .bp-template-actions { justify-content: flex-start; }
 	#bestatter-app .bp-template-editor-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 0.88.3 – Ankreuzfelder für Leistungsumfang und Vollmacht im Auftrag */
+#bestatter-app .bp-order-choice-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; margin-top: 16px; }
+#bestatter-app .bp-order-choices { display: grid; align-content: start; gap: 8px; margin: 0; padding: 12px 14px; border: 1px solid var(--bp-line); border-radius: 10px; background: var(--bp-surface, #fff); min-width: 0; }
+#bestatter-app .bp-order-choices > legend { padding: 0 6px; font-weight: 650; }
+#bestatter-app .bp-order-choices > p { margin: 0 0 4px; font-size: 13px; }
+#bestatter-app .bp-order-choice { display: grid; gap: 2px; padding: 6px 8px; border-radius: 8px; }
+#bestatter-app .bp-order-choice.is-manual { background: #fff7d6; }
+#bestatter-app .bp-order-choice .bp-inline-check { align-items: flex-start; gap: 8px; font-weight: 500; }
+#bestatter-app .bp-order-choice .bp-inline-check input { margin-top: 3px; min-width: 18px; min-height: 18px; }
+#bestatter-app .bp-order-choice small { margin-left: 28px; color: var(--bp-muted); font-size: 12px; }
+#bestatter-app .bp-order-choice small .bp-link-button { font-size: 12px; }
+
+/* 0.89.0 – Unterschrift des Bestattungsauftrags vor Ort am Tablet (Kundenansicht über der ganzen Seite) */
+html.bp-signing, html.bp-signing body { overflow: hidden; }
+/* Nextcloud-Kopfzeile (Suche, Apps, Konto) ist während der Unterschrift nicht erreichbar */
+html.bp-signing #header { visibility: hidden; }
+#bestatter-app .bp-sign-view { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font-size: 16px; }
+#bestatter-app .bp-sign-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px clamp(14px, 3vw, 28px); border-bottom: 1px solid var(--bp-line, var(--color-border, #d5dde0)); }
+#bestatter-app .bp-sign-head h2 { margin: 0; font-size: 22px; }
+#bestatter-app .bp-sign-head .bp-eyebrow { margin: 0 0 2px; }
+#bestatter-app .bp-sign-body { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr); gap: clamp(14px, 2.4vw, 28px); padding: clamp(14px, 2.4vw, 26px); align-items: start; }
+#bestatter-app .bp-sign-document { display: grid; gap: 12px; min-width: 0; }
+#bestatter-app .bp-sign-pdf { height: min(62vh, 760px); border: 1px solid var(--bp-line, #d5dde0); border-radius: 10px; overflow: hidden; background: #f3f5f6; display: grid; place-items: center; }
+#bestatter-app .bp-sign-pdf iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+#bestatter-app .bp-sign-document > [data-sign-open-pdf] { justify-self: start; }
+#bestatter-app .bp-sign-summary { border: 1px solid var(--bp-line, #d5dde0); border-radius: 10px; padding: 12px 16px; }
+#bestatter-app .bp-sign-summary h3 { margin: 0 0 8px; font-size: 17px; }
+#bestatter-app .bp-sign-summary h4 { margin: 12px 0 4px; font-size: 15px; }
+#bestatter-app .bp-sign-services, #bestatter-app .bp-sign-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+#bestatter-app .bp-sign-services li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px dotted var(--bp-line, #d5dde0); }
+#bestatter-app .bp-sign-services li small { color: var(--color-text-maxcontrast, #5b6b73); }
+#bestatter-app .bp-sign-total { display: flex; justify-content: space-between; margin: 8px 0 0; font-size: 17px; }
+#bestatter-app .bp-sign-form { display: grid; gap: 14px; min-width: 0; }
+#bestatter-app .bp-sign-declarations { margin: 0; padding: 12px 14px; border: 1px solid var(--bp-line, #d5dde0); border-radius: 10px; display: grid; gap: 10px; }
+#bestatter-app .bp-sign-declarations legend { padding: 0 6px; font-weight: 700; }
+#bestatter-app .bp-sign-declarations p { margin: 0; }
+#bestatter-app .bp-sign-check { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: start; line-height: 1.4; cursor: pointer; }
+#bestatter-app .bp-sign-check input { width: 26px; height: 26px; margin: 0; accent-color: var(--color-primary-element, #087f78); }
+#bestatter-app .bp-sign-read { padding: 10px 12px; border-radius: 10px; background: var(--color-background-hover, #f1f5f6); font-weight: 600; }
+#bestatter-app .bp-sign-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#bestatter-app .bp-sign-fields label { display: grid; gap: 4px; }
+#bestatter-app .bp-sign-fields input, #bestatter-app .bp-sign-view input[type="email"] { min-height: 44px; font-size: 16px; width: 100%; }
+#bestatter-app .bp-sign-pad-wrap { position: relative; display: grid; gap: 6px; }
+#bestatter-app .bp-sign-pad-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+#bestatter-app .bp-sign-pad { width: 100%; height: clamp(170px, 26vh, 260px); touch-action: none; border: 2px dashed var(--color-primary-element, #087f78); border-radius: 12px; background: #fff; cursor: crosshair; }
+#bestatter-app .bp-sign-line { position: absolute; left: 6%; right: 6%; bottom: 46px; border-bottom: 1px solid #9aa9b0; pointer-events: none; }
+#bestatter-app .bp-sign-mail { display: flex; align-items: center; gap: 8px; }
+#bestatter-app .bp-sign-mail input { width: 22px; height: 22px; }
+#bestatter-app .bp-sign-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+#bestatter-app .bp-sign-actions .bp-primary { min-height: 52px; padding: 0 26px; font-size: 18px; }
+#bestatter-app .bp-sign-legal { margin: 0; font-size: 13px; }
+#bestatter-app .bp-sign-done { grid-column: 1 / -1; justify-self: center; max-width: 620px; text-align: center; display: grid; gap: 10px; padding: 40px 10px; }
+#bestatter-app .bp-sign-done h3 { margin: 0; font-size: 26px; }
+#bestatter-app .bp-sign-done .bp-sign-actions { justify-content: center; }
+#bestatter-app .bp-signature-box[data-signature-state="TABLET"] b::before { content: "✓ "; color: var(--color-success, #2d7b41); }
+@media (max-width: 900px) {
+	#bestatter-app .bp-sign-body { grid-template-columns: minmax(0, 1fr); }
+	#bestatter-app .bp-sign-pdf { height: 48vh; }
+}
+@media (max-width: 520px) {
+	#bestatter-app .bp-sign-fields { grid-template-columns: 1fr; }
+	#bestatter-app .bp-sign-head h2 { font-size: 18px; }
+}
+
+/* 0.89.3 – Ankreuzfelder im Auftrag: Customizing, Hinweise auf Widersprüche, Sperre nach dem Festschreiben */
+#bestatter-app .bp-order-choice-problem { display: block; margin-top: 2px; color: #713f12; }
+#bestatter-app .bp-order-choice.has-problem { border-left: 3px solid #d99b20; padding-left: 8px; }
+#bestatter-app .bp-order-choices-locked { margin: 0 0 6px; }
+#bestatter-app .bp-order-choices-customer .bp-order-choice span { display: block; }
+#bestatter-app .bp-choice-list { display: grid; gap: 10px; }
+#bestatter-app .bp-choice-field { border: 1px solid var(--bp-line, #d5dde0); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; background: var(--color-main-background, #fff); }
+#bestatter-app .bp-choice-field.is-inactive { opacity: .7; }
+#bestatter-app .bp-choice-field-head { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(140px, 220px) auto auto; gap: 10px; align-items: end; }
+#bestatter-app .bp-choice-field-head label:not(.bp-inline-check), #bestatter-app .bp-choice-grid label { display: grid; gap: 3px; min-width: 0; }
+#bestatter-app .bp-choice-field-head input:not([type="checkbox"]), #bestatter-app .bp-choice-grid select { width: 100%; }
+#bestatter-app .bp-choice-move { display: inline-flex; gap: 4px; }
+#bestatter-app .bp-choice-placeholder { margin: 0; overflow-wrap: anywhere; }
+#bestatter-app .bp-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end; }
+#bestatter-app .bp-choice-customer { margin: 0; align-self: center; }
+#bestatter-app .bp-choice-rule { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+#bestatter-app .bp-choice-groups { flex-basis: 100%; }
+#bestatter-app .bp-choice-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 12px; padding: 6px 0; }
+@media (max-width: 768px) {
+	#bestatter-app .bp-choice-field-head { grid-template-columns: auto minmax(0, 1fr); }
+	#bestatter-app .bp-choice-field-head .bp-choice-key, #bestatter-app .bp-choice-move { grid-column: 2; }
+}
+
+/* 0.89.3 – E-Mail-Vorlagen (Customizing) */
+#bestatter-app .bp-mail-templates { display: grid; gap: 12px; }
+#bestatter-app .bp-mail-template { border: 1px solid var(--bp-line, #d5dde0); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; background: var(--color-main-background, #fff); margin-top: 12px; }
+#bestatter-app .bp-mail-template h4 { margin: 0; }
+#bestatter-app .bp-mail-template label { display: grid; gap: 3px; }
+#bestatter-app .bp-mail-template textarea, #bestatter-app .bp-mail-template input { width: 100%; font-family: inherit; }
+#bestatter-app .bp-mail-placeholders > div { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; }
+#bestatter-app .bp-mail-chip { min-height: 32px; padding: 2px 8px; border: 1px solid var(--bp-line, #d5dde0); border-radius: 14px; background: #f3f6f7; font-family: ui-monospace, monospace; font-size: 12px; cursor: pointer; }
+#bestatter-app .bp-mail-preview, #bestatter-app .bp-mail-signature pre { margin: 0; padding: 10px 12px; border-radius: 8px; background: #f6f8f9; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 14px; }
+#bestatter-app .bp-mail-signatures { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+/* Customizing hat inzwischen elf Reiter: umbrechen statt seitlich scrollen, damit der gewählte Reiter sichtbar bleibt */
+#bestatter-app .bp-view-customizing .bp-subtabs { flex-wrap: wrap; overflow-x: visible; }
+
+/* 0.89.5: Preisart je Position, fest/geschätzt, Customizing → Fremdkosten, Hinweis in der Unterschriftsansicht */
+#bestatter-app .bp-price-basis-select { display: block; width: 100%; margin-top: 4px; font-size: .85em; }
+#bestatter-app .bp-basis-totals { border-top: 1px dashed var(--bp-line); padding-top: 6px; }
+#bestatter-app .bp-typical-costs article + article { margin-top: 18px; }
+#bestatter-app .bp-typical-threshold label { max-width: 260px; }
+#bestatter-app .bp-typical-table { width: 100%; border-collapse: collapse; }
+#bestatter-app .bp-typical-table th, #bestatter-app .bp-typical-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bp-line); vertical-align: top; }
+#bestatter-app .bp-typical-table select { width: 100%; min-width: 150px; }
+#bestatter-app .bp-typical-table small { display: block; margin-top: 3px; }
+#bestatter-app .bp-sign-terms { margin: 8px 0 0; font-size: .9em; color: var(--bp-muted, #555); }
+
+/* 0.89.5: Verweisprüfung und leerer Leistungskatalog */
+#bestatter-app .bp-reference-notice { display: block; }
+#bestatter-app .bp-reference-notice > b { margin-right: .35rem; }
+#bestatter-app .bp-reference-notice ul { margin: .4rem 0 0 1.2rem; padding: 0; list-style: disc; }
+#bestatter-app .bp-reference-notice li { margin: .1rem 0; }
+#bestatter-app .bp-reference-notice button { margin-left: .5rem; }
+
+/* 0.89.6: Bedienhilfe – Hilfe zu dieser Seite, gefundene Stellen, Rückmeldung, Hinweislinks */
+#bestatter-app .bp-help-page{max-height:38vh;overflow:auto;display:grid;gap:6px;align-content:start}
+#bestatter-app .bp-help-page h3{margin:4px 0 0;font-size:14px}
+#bestatter-app .bp-help-page p{margin:2px 0}
+#bestatter-app .bp-help-topic{border:1px solid var(--color-border,#ddd);border-radius:8px;padding:6px 10px;background:var(--color-main-background,#fff)}
+#bestatter-app .bp-help-topic summary{cursor:pointer;font-weight:600}
+#bestatter-app .bp-help-topic p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;font-size:13px}
+#bestatter-app .bp-help-topic a{font-size:12px}
+#bestatter-app .bp-help-entry .bp-help-topic{margin-top:6px}
+#bestatter-app .bp-help-feedback{margin:8px 0 0;font-size:13px}
+#bestatter-app .bp-help-feedback .bp-link-button{margin-left:6px}
+#bestatter-app .bp-more-link{white-space:nowrap}
+#bestatter-app .bp-warning .bp-link-button,#bestatter-app .bp-compliance-note .bp-link-button{margin-left:6px}
+#bestatter-app .bp-help-feedback-admin td small{display:block}
+
+
+/* 0.89.7 – Vorgangsarten: „Gilt für“ im Ablaufeditor */
+#bestatter-app .bp-process-kinds{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;border:1px solid var(--color-border);border-radius:var(--border-radius-large,10px);padding:8px 12px;margin:0}
+#bestatter-app .bp-process-kinds legend{padding:0 4px;font-weight:600}
+#bestatter-app .bp-process-kinds .bp-checkbox{display:inline-flex;align-items:center;gap:6px;min-height:44px}
+#bestatter-app .bp-process-kinds small{flex-basis:100%}
+/* 0.89.7 – Dialog „Neuen Auftrag anlegen“ / „Neue Vorsorge anlegen“ */
+#bestatter-app .bp-new-kind-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:600px){#bestatter-app .bp-new-kind-grid{grid-template-columns:1fr}}
+#bestatter-app .bp-new-kind-deceased{border:1px solid var(--color-border);border-radius:var(--border-radius-large,10px);padding:6px 12px;margin:0}
+#bestatter-app .bp-new-kind-deceased legend{padding:0 4px;font-weight:600}
+/* 0.89.7 – Vorsorge, Finanzierung, Einlösen, Auftragsarten, Ordnerplan „Anlegen bei“ */
+#bestatter-app .bp-precare-summary{margin-top:12px}
+#bestatter-app .bp-precare-review.is-due{border-color:var(--color-warning,#c28900)}
+#bestatter-app .bp-precare-review.is-overdue{border-color:var(--color-error,#d1293d)}
+#bestatter-app .bp-precare-note ul,#bestatter-app .bp-precare-candidates ul{margin:.4rem 0 0 1.2rem;padding:0;list-style:disc}
+#bestatter-app .bp-precare-note li,#bestatter-app .bp-precare-candidates li{margin:.25rem 0}
+#bestatter-app .bp-precare-note li button,#bestatter-app .bp-precare-candidates li button{margin-left:.5rem}
+#bestatter-app .bp-redeem-dialog{width:min(960px,96vw);max-height:90vh;overflow:auto}
+#bestatter-app .bp-redeem-dialog details{margin:10px 0;border:1px solid var(--color-border);border-radius:var(--border-radius-large,10px);padding:6px 12px}
+#bestatter-app .bp-redeem-dialog summary{cursor:pointer;font-weight:600;min-height:32px}
+#bestatter-app .bp-redeem-dialog .bp-inline-check{display:flex;margin:4px 0}
+#bestatter-app .bp-order-type{border:1px solid var(--color-border);border-radius:var(--border-radius-large,10px);padding:10px 12px;margin:0 0 10px}
+#bestatter-app .bp-order-type details{margin:6px 0}
+#bestatter-app .bp-check-grid{display:flex;flex-wrap:wrap;gap:4px 16px}
+#bestatter-app .bp-plan-kinds{white-space:nowrap}
+#bestatter-app .bp-plan-kinds .bp-inline-check{margin-right:8px}
+
+/* 0.90.0 – Buchhaltungsexport (DATEV) */
+#bestatter-app .bp-view-accounting .bp-report-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 12px; }
+#bestatter-app .bp-view-accounting .bp-report-grid article > strong { font-size: 1.4rem; }
+#bestatter-app .bp-accounting-messages .bp-severity-error td:nth-child(2) { color: var(--bp-danger); font-weight: 600; }
+#bestatter-app .bp-accounting-messages .bp-severity-warning td:nth-child(2) { color: var(--color-warning-text, #713f12); font-weight: 600; }
+#bestatter-app .bp-view-accounting td.bp-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#bestatter-app .bp-accounting-rules input { min-width: 0; }
+#bestatter-app .bp-accounting-rules td { vertical-align: middle; }
+#bestatter-app .bp-accounting-rules .bp-icon-button { width: 32px; height: 32px; font-size: 20px; }
+#bestatter-app .bp-accounting-details > td { background: var(--bp-soft); }
+#bestatter-app .bp-view-accounting .bp-wide { grid-column: 1 / -1; }
+#bestatter-app .bp-accounting-rules input:not([type="checkbox"]), #bestatter-app .bp-accounting-rules select { min-height: 34px; padding: 4px 8px; border: 1px solid var(--bp-line); border-radius: 8px; background: var(--bp-surface); }
+#bestatter-app #accounting-settings h3 { margin: 22px 0 10px; }
+#bestatter-app #accounting-settings h3:first-child { margin-top: 0; }
+#bestatter-app .bp-view-accounting > .bp-warning, #bestatter-app .bp-view-accounting > .bp-compliance-note { margin-bottom: 14px; }
+#bestatter-app .bp-accounting-preview h4 { margin: 18px 0 8px; }
+#bestatter-app .bp-accounting-preview details { margin: 12px 0; }

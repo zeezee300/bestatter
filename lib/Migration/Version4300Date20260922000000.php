@@ -28,7 +28,9 @@ class Version4300Date20260922000000 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if ($schema->hasTable('bestatter_dereg_mail_outbox')) return $schema;
+		if ($schema->hasTable('bestatter_dereg_mail_outbox')) {
+			return $schema;
+		}
 		$table = $schema->createTable('bestatter_dereg_mail_outbox');
 		$table->addColumn('id', 'integer', ['autoincrement' => true, 'unsigned' => true]);
 		$table->addColumn('case_id', 'integer', ['unsigned' => true]);

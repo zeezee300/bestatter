@@ -82,7 +82,7 @@ Von Hand: den Ordner `custom_apps/bestatter` vollständig durch den neuen Paketi
 
 ## Ersteinrichtung
 
-Nach der Aktivierung führt ein eigener Einrichtungsassistent (Navigation → Einstellungen → Administration → Ersteinrichtung) durch Benutzergruppen, Niederlassungen und weitere Pflichteinstellungen und zeigt jederzeit, welche Punkte für den produktiven Einsatz noch offen sind.
+Nach der Aktivierung führt ein eigener Einrichtungsassistent (Navigation → Einstellungen → Administration → Ersteinrichtung) durch Benutzergruppen, Niederlassungen und weitere Pflichteinstellungen und zeigt jederzeit, welche Punkte für den produktiven Einsatz noch offen sind. Leistungskatalog, Ablaufvorlagen, Marker-Vorschläge und Auftragsformulare gehören nicht zum App-Paket: Eine neue Installation startet leer und erhält diese Inhalte über ein Einrichtungspaket (Administration → Einrichtungspaket).
 
 ## CLI-Kommandos (`occ`)
 
@@ -95,7 +95,7 @@ Nach der Aktivierung führt ein eigener Einrichtungsassistent (Navigation → Ei
 | `occ bestatter:retention` | Wendet die Aufbewahrungsrichtlinie an (nur bei eingeschalteter Richtlinie, mit Hinweisen auf laufende Aufbewahrungsfristen). |
 | `occ bestatter:purge [--remove-app]` | Entfernt alle Daten der App; mit `--remove-app` die App vollständig aus Nextcloud. |
 | `occ bestatter:groupware-repair` | Bereinigt Altlasten der Nextcloud-Anbindung (doppelte Termine aus Kopien, Kontaktadressen, verlorene App-Daten). |
-| `occ bestatter:setup-package` | Einrichtungspaket (Katalog, Preise, Vorlagen, Formulare, Marker, Abläufe, Logos) exportieren oder mit Vorschau und Sicherung einspielen. |
+| `occ bestatter:setup-package` | Einrichtungspaket (Katalog, Preise, Vorlagen, Formulare, Marker, Abläufe, Ankreuzfelder, typische Fremdkosten, Variantenregeln, Zuschlagsstaffeln, Logos) exportieren oder mit Vorschau, Sicherung und Verweisprüfung einspielen. |
 | `occ bestatter:update-check [--expect-version=x.y.z]` | Prüft nach einem Update Version, Systemprüfung und Audit-Kette (nur lesend; `--record` vermerkt den Update-Lauf). |
 | `occ bestatter:labels [--activate=all\|KEY,…]` | Marker auflisten bzw. mitgelieferte Marker aktivieren (z. B. auf Testinstallationen). |
 | `occ bestatter:storage-migrate --account=…` | Zieht persönliche Ablagen in die zentrale Fallablage um. |

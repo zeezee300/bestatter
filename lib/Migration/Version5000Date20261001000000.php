@@ -25,20 +25,44 @@ class Version5000Date20261001000000 extends SimpleMigrationStep {
 		$changed = false;
 		if ($schema->hasTable('bestatter_invoices')) {
 			$t = $schema->getTable('bestatter_invoices');
-			if (!$t->hasColumn('document_kind')) { $t->addColumn('document_kind', Types::STRING, ['length' => 16, 'notnull' => true, 'default' => 'INVOICE']); $changed = true; }
-			if (!$t->hasColumn('reference_invoice_id')) { $t->addColumn('reference_invoice_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]); $changed = true; }
-			if (!$t->hasColumn('cancelled_by_id')) { $t->addColumn('cancelled_by_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]); $changed = true; }
-			if (!$t->hasColumn('correction_reason')) { $t->addColumn('correction_reason', Types::TEXT, ['notnull' => false]); $changed = true; }
-			if (!$t->hasColumn('release_quantities')) { $t->addColumn('release_quantities', Types::BOOLEAN, ['notnull' => false, 'default' => false]); $changed = true; }
-			if (!$t->hasIndex('bestatter_invoice_reference')) { $t->addIndex(['reference_invoice_id'], 'bestatter_invoice_reference'); $changed = true; }
+			if (!$t->hasColumn('document_kind')) {
+				$t->addColumn('document_kind', Types::STRING, ['length' => 16, 'notnull' => true, 'default' => 'INVOICE']);
+				$changed = true;
+			}
+			if (!$t->hasColumn('reference_invoice_id')) {
+				$t->addColumn('reference_invoice_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]);
+				$changed = true;
+			}
+			if (!$t->hasColumn('cancelled_by_id')) {
+				$t->addColumn('cancelled_by_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]);
+				$changed = true;
+			}
+			if (!$t->hasColumn('correction_reason')) {
+				$t->addColumn('correction_reason', Types::TEXT, ['notnull' => false]);
+				$changed = true;
+			}
+			if (!$t->hasColumn('release_quantities')) {
+				$t->addColumn('release_quantities', Types::BOOLEAN, ['notnull' => false, 'default' => false]);
+				$changed = true;
+			}
+			if (!$t->hasIndex('bestatter_invoice_reference')) {
+				$t->addIndex(['reference_invoice_id'], 'bestatter_invoice_reference');
+				$changed = true;
+			}
 		}
 		if ($schema->hasTable('bestatter_invoice_items')) {
 			$t = $schema->getTable('bestatter_invoice_items');
-			if (!$t->hasColumn('reference_item_id')) { $t->addColumn('reference_item_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]); $changed = true; }
+			if (!$t->hasColumn('reference_item_id')) {
+				$t->addColumn('reference_item_id', Types::INTEGER, ['notnull' => false, 'unsigned' => true]);
+				$changed = true;
+			}
 		}
 		if ($schema->hasTable('bestatter_invoice_settings')) {
 			$t = $schema->getTable('bestatter_invoice_settings');
-			if (!$t->hasColumn('correction_prefix')) { $t->addColumn('correction_prefix', Types::STRING, ['length' => 20, 'notnull' => false, 'default' => 'GS']); $changed = true; }
+			if (!$t->hasColumn('correction_prefix')) {
+				$t->addColumn('correction_prefix', Types::STRING, ['length' => 20, 'notnull' => false, 'default' => 'GS']);
+				$changed = true;
+			}
 		}
 		return $changed ? $schema : null;
 	}

@@ -30,11 +30,21 @@ class Version3000Date20260907000000 extends SimpleMigrationStep {
 		}
 		if ($schema->hasTable('bestatter_branches')) {
 			$table = $schema->getTable('bestatter_branches');
-			if (!$table->hasColumn('country_code')) $table->addColumn('country_code', 'string', ['length' => 2, 'default' => 'DE']);
-			if (!$table->hasColumn('invoice_profile')) $table->addColumn('invoice_profile', 'string', ['length' => 20, 'default' => 'ZUGFERD']);
-			if (!$table->hasColumn('payment_qr_standard')) $table->addColumn('payment_qr_standard', 'string', ['length' => 20, 'default' => 'EPC069-12']);
-			if (!$table->hasColumn('federal_state')) $table->addColumn('federal_state', 'string', ['length' => 40, 'notnull' => false]);
-			if (!$table->hasIndex('bestatter_branch_country')) $table->addIndex(['country_code', 'active'], 'bestatter_branch_country');
+			if (!$table->hasColumn('country_code')) {
+				$table->addColumn('country_code', 'string', ['length' => 2, 'default' => 'DE']);
+			}
+			if (!$table->hasColumn('invoice_profile')) {
+				$table->addColumn('invoice_profile', 'string', ['length' => 20, 'default' => 'ZUGFERD']);
+			}
+			if (!$table->hasColumn('payment_qr_standard')) {
+				$table->addColumn('payment_qr_standard', 'string', ['length' => 20, 'default' => 'EPC069-12']);
+			}
+			if (!$table->hasColumn('federal_state')) {
+				$table->addColumn('federal_state', 'string', ['length' => 40, 'notnull' => false]);
+			}
+			if (!$table->hasIndex('bestatter_branch_country')) {
+				$table->addIndex(['country_code', 'active'], 'bestatter_branch_country');
+			}
 		}
 		return $schema;
 	}

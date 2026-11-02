@@ -11,7 +11,9 @@ use OCP\EventDispatcher\IEventListener;
 /** @implements IEventListener<AddMissingIndicesEvent> */
 class AddMissingIndicesListener implements IEventListener {
 	public function handle(Event $event): void {
-		if (!$event instanceof AddMissingIndicesEvent) return;
+		if (!$event instanceof AddMissingIndicesEvent) {
+			return;
+		}
 		$event->addMissingIndex('bestatter_cases', 'bestatter_case_created', ['created_at', 'id']);
 		$event->addMissingIndex('bestatter_cases', 'bestatter_case_status', ['status', 'created_at']);
 		$event->addMissingIndex('bestatter_cases', 'bestatter_case_branch', ['branch', 'created_at']);

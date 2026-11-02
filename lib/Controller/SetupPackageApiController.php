@@ -17,7 +17,13 @@ use OCP\IRequest;
 
 /** 0.75.3 – Einrichtungspaket (Export, Vorschau, Einspielen) und Logo je Niederlassung. Pflege nur für Bestatter-Administratoren. */
 class SetupPackageApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private SetupPackageService $packages, private BranchLogoService $logos, private TeamService $team) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private SetupPackageService $packages,
+		private BranchLogoService $logos,
+		private TeamService $team,
+	) {
 		parent::__construct($appName, $request);
 	}
 
@@ -50,7 +56,9 @@ class SetupPackageApiController extends ApiController {
 	#[NoCSRFRequired]
 	public function branchLogo(string $key): DataDisplayResponse {
 		$png = $this->logos->logo($key);
-		if ($png === null) return new DataDisplayResponse('', Http::STATUS_NOT_FOUND);
+		if ($png === null) {
+			return new DataDisplayResponse('', Http::STATUS_NOT_FOUND);
+		}
 		return new DataDisplayResponse($png, Http::STATUS_OK, ['Content-Type' => 'image/png', 'Cache-Control' => 'private, no-cache']);
 	}
 
@@ -74,8 +82,12 @@ class SetupPackageApiController extends ApiController {
 
 	private function uploaded(string $field, int $maxBytes): string {
 		$upload = $this->apiRequest->getUploadedFile($field);
-		if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new \InvalidArgumentException('Bitte eine Datei auswählen.');
-		if ((int)($upload['size'] ?? 0) > $maxBytes) throw new \InvalidArgumentException('Die Datei ist zu groß.');
+		if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+			throw new \InvalidArgumentException('Bitte eine Datei auswählen.');
+		}
+		if ((int)($upload['size'] ?? 0) > $maxBytes) {
+			throw new \InvalidArgumentException('Die Datei ist zu groß.');
+		}
 		return (string)file_get_contents((string)$upload['tmp_name']);
 	}
 }

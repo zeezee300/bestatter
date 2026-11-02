@@ -7,6 +7,7 @@ namespace OCA\Bestatter\Service;
 use OCA\Bestatter\AppInfo\Application;
 use OCP\App\IAppManager;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\Files\Conversion\IConversionManager;
 use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\IGroupManager;
@@ -33,39 +34,68 @@ class StabilizationService {
 		private BackupService $backup,
 		private PaperlessSetupCheckService $paperlessSetup,
 		private GroupLookupService $groupLookup,
-	) {}
+		private ?CatalogReferenceService $catalogReferences = null,
+		private ?IConversionManager $conversionManager = null,
+		private ?EuroOfficeConversionService $euroOffice = null,
+	) {
+	}
+
+	/**
+	 * 0.89.10: Ohne PDF-Konvertierung (Nextcloud Office/Collabora bzw. EuroOffice) entstehen festgeschriebene
+	 * Kostenvoranschläge ohne PDF, und Rechnungen, Gutschriften und unterschriebene Aufträge lassen sich nicht erzeugen.
+	 */
+	private function pdfConversionCheck(): array {
+		$providers = [];
+		try {
+			if ($this->conversionManager !== null && $this->conversionManager->hasProviders()) {
+				$providers[] = 'Nextcloud-Dateikonvertierung (z. B. Nextcloud Office)';
+			}
+		} catch (\Throwable) {
+		}
+		if ($this->euroOffice !== null && $this->euroOffice->isAvailable()) {
+			$providers[] = 'EuroOffice';
+		}
+		$action = ['view' => 'administration', 'tab' => 'system', 'label' => 'Systemprüfung öffnen'];
+		if ($providers === []) {
+			return $this->check('pdf_conversion', 'PDF-Erzeugung', 'ERROR', 'Keine PDF-Konvertierung verfügbar: Rechnungen, Gutschriften und finale Dokumente können nicht erzeugt werden, KVA und Auftrag entstehen ohne PDF.', 'Nextcloud Office (Collabora) oder EuroOffice installieren und einrichten; danach fehlende PDFs über Dokumente → Vorlage erneut erzeugen.', [], $action);
+		}
+		return $this->check('pdf_conversion', 'PDF-Erzeugung', 'OK', 'PDF-Konvertierung verfügbar über ' . implode(' und ', $providers) . '.', '', [], $action);
+	}
 
 	public function report(): array {
 		$team = $this->team->overview();
 		$branches = $this->configuration->branches();
 		$templates = $this->configuration->documents();
 		$templateFiles = array_column($this->configuration->documentTemplateOptions()['files'] ?? [], 'fileName');
-		$activeBranches = array_values(array_filter($branches, static fn(array $branch): bool => (bool)($branch['active'] ?? false)));
-		$activeTemplates = array_values(array_filter($templates, static fn(array $template): bool => (bool)($template['active'] ?? false)));
+		$activeBranches = array_values(array_filter($branches, static fn (array $branch): bool => (bool)($branch['active'] ?? false)));
+		$activeTemplates = array_values(array_filter($templates, static fn (array $template): bool => (bool)($template['active'] ?? false)));
 		$missingTemplateFiles = array_values(array_map(
-			static fn(array $template): string => (string)($template['name'] ?? $template['key'] ?? 'Unbekannte Vorlage'),
-			array_filter($activeTemplates, static fn(array $template): bool => !self::templateSourceAvailable((string)($template['fileName'] ?? ''), $templateFiles)),
+			static fn (array $template): string => (string)($template['name'] ?? $template['key'] ?? 'Unbekannte Vorlage'),
+			array_filter($activeTemplates, static fn (array $template): bool => !self::templateSourceAvailable((string)($template['fileName'] ?? ''), $templateFiles)),
 		));
 		$incompleteBranches = array_values(array_map(
-			static fn(array $branch): string => (string)($branch['name'] ?? $branch['key'] ?? 'Unbekannte Niederlassung'),
-			array_filter($activeBranches, static fn(array $branch): bool => self::missingBranchFields($branch) !== []),
+			static fn (array $branch): string => (string)($branch['name'] ?? $branch['key'] ?? 'Unbekannte Niederlassung'),
+			array_filter($activeBranches, static fn (array $branch): bool => self::missingBranchFields($branch) !== []),
 		));
 		$branchDetails = array_values(array_map(static function (array $branch): string {
 			$missing = self::missingBranchFields($branch);
 			return (string)($branch['name'] ?? $branch['key'] ?? 'Niederlassung') . ': fehlt ' . implode(', ', $missing);
-		}, array_filter($activeBranches, static fn(array $branch): bool => self::missingBranchFields($branch) !== [])));
-		$templateDetails = array_values(array_map(static fn(array $template): string => (string)($template['name'] ?? $template['key'] ?? 'Vorlage') . ' → ' . (string)($template['fileName'] ?? 'keine Datei'), array_filter($activeTemplates, static fn(array $template): bool => !self::templateSourceAvailable((string)($template['fileName'] ?? ''), $templateFiles))));
+		}, array_filter($activeBranches, static fn (array $branch): bool => self::missingBranchFields($branch) !== [])));
+		$templateDetails = array_values(array_map(static fn (array $template): string => (string)($template['name'] ?? $template['key'] ?? 'Vorlage') . ' → ' . (string)($template['fileName'] ?? 'keine Datei'), array_filter($activeTemplates, static fn (array $template): bool => !self::templateSourceAvailable((string)($template['fileName'] ?? ''), $templateFiles))));
 
 		$dependencies = DependencyCheck::report();
 		$checks = [
 			// 0.87.0: Paket statt Quellcode-Ordner (vendor/)
 			$this->check('php_dependencies', 'PHP-Abhängigkeiten', $dependencies['status'], $dependencies['message'], $dependencies['hint'], $dependencies['missing']),
 			$this->installationCheck(),
+			$this->databaseCheck(),
 			$this->roleGroupsCheck(),
 			$this->storageCheck(count($team['members'] ?? [])),
 			$this->check('access', 'Rollen und Zugriff', count($team['members'] ?? []) > 0 ? 'OK' : 'ERROR', count($team['members'] ?? []) . ' Mitglied(er) der Gruppe ' . $this->installationConfig->memberGroup() . '; angemeldeter Benutzer ist ' . (($team['isBestatterAdmin'] ?? false) ? 'Administrator.' : 'Mitglied.')),
-			$this->check('branches', 'Niederlassungen', $activeBranches === [] ? 'ERROR' : ($incompleteBranches === [] ? 'OK' : 'WARN'), $activeBranches === [] ? 'Keine aktive Niederlassung vorhanden.' : (count($activeBranches) . ' aktive Niederlassung(en)' . ($incompleteBranches === [] ? ' sind für Rechnungen vollständig gepflegt.' : '; unvollständig: ' . implode(', ', $incompleteBranches) . '.')), $incompleteBranches === [] ? '' : 'Platzhalter-Niederlassungen deaktivieren oder die für Rechnungen erforderlichen Adress- und Bankdaten ergänzen.', $branchDetails, ['view' => 'administration', 'tab' => 'branches', 'label' => 'Niederlassungen öffnen']),
+			$this->check('branches', 'Niederlassungen', $activeBranches === [] ? 'ERROR' : ($incompleteBranches === [] ? 'OK' : 'WARN'), $activeBranches === [] ? 'Keine aktive Niederlassung vorhanden.' : (count($activeBranches) . ' aktive Niederlassung(en)' . ($incompleteBranches === [] ? ' sind für Rechnungen vollständig gepflegt.' : '; unvollständig: ' . implode(', ', $incompleteBranches) . '.')), $activeBranches === [] ? 'Unter Administration → Niederlassungen eine Niederlassung mit Anschrift, Steuernummer und Bankverbindung anlegen; ohne sie lassen sich weder Aufträge noch Rechnungen erstellen.' : ($incompleteBranches === [] ? '' : 'Platzhalter-Niederlassungen deaktivieren oder die für Rechnungen erforderlichen Adress- und Bankdaten ergänzen.'), $branchDetails, ['view' => 'administration', 'tab' => 'branches', 'label' => 'Niederlassungen öffnen']),
 			$this->check('templates', 'Dokumentvorlagen', $activeTemplates === [] || $missingTemplateFiles !== [] ? 'ERROR' : 'OK', count($activeTemplates) . ' aktive Vorlage(n)' . ($missingTemplateFiles === [] ? ' mit verwendbarer Quelldatei.' : '; keine verwendbare Quelldatei bei: ' . implode(', ', $missingTemplateFiles) . '.'), $missingTemplateFiles === [] ? 'Berücksichtigt werden alle aktiven DOCX-Vorlagen in ' . $this->installationConfig->templatesPath() . ' sowie mitgelieferte Paketvorlagen.' : 'Die genannten Dateien im konfigurierten Vorlagenordner bereitstellen oder die betroffenen Vorlagen deaktivieren.', $templateDetails, ['view' => 'customizing', 'tab' => 'documents', 'label' => 'Dokumentvorlagen öffnen']),
+			$this->pdfConversionCheck(),
+			$this->catalogReferenceCheck(),
 			$this->syncCheck(),
 			$this->groupwareRepairCheck(),
 			$this->remoteDeletionCheck(),
@@ -87,8 +117,8 @@ class StabilizationService {
 			$this->nextcloudCompatibilityCheck(),
 		];
 
-		$errors = count(array_filter($checks, static fn(array $check): bool => $check['status'] === 'ERROR'));
-		$warnings = count(array_filter($checks, static fn(array $check): bool => $check['status'] === 'WARN'));
+		$errors = count(array_filter($checks, static fn (array $check): bool => $check['status'] === 'ERROR'));
+		$warnings = count(array_filter($checks, static fn (array $check): bool => $check['status'] === 'WARN'));
 		return [
 			'version' => Application::VERSION,
 			'generatedAt' => date('c'),
@@ -101,9 +131,9 @@ class StabilizationService {
 	private function installationCheck(): array {
 		$settings = $this->installationConfig->settings();
 		$memberExists = $this->teamGroupExists($settings['memberGroup']);
-		$adminExists = array_filter($settings['adminGroups'], fn(string $name): bool => $this->teamGroupExists($name));
+		$adminExists = array_filter($settings['adminGroups'], fn (string $name): bool => $this->teamGroupExists($name));
 		$status = !$memberExists ? 'ERROR' : ($adminExists === [] ? 'WARN' : 'OK');
-		$missingAdmin = array_values(array_filter(array_map(fn(string $name): string => $this->groupLookup->missingText($name), $settings['adminGroups'])));
+		$missingAdmin = array_values(array_filter(array_map(fn (string $name): string => $this->groupLookup->missingText($name), $settings['adminGroups'])));
 		return $this->check('installation', 'Installationsparameter', $status,
 			$status === 'OK' ? 'Rollen- und Ablageparameter sind zentral konfiguriert.' . ($missingAdmin === [] ? '' : ' Administrationsgruppen: ' . implode('; ', $missingAdmin) . '.') : (!$memberExists ? 'Die konfigurierte Mitgliedergruppe existiert nicht: ' . $this->groupLookup->missingText($settings['memberGroup']) . '.' : 'Keine konfigurierte Administrationsgruppe wurde gefunden; nur Nextcloud-Systemadministratoren besitzen Administrationsrechte. ' . implode('; ', $missingAdmin) . '.'),
 			'Änderungen an Ablagepfaden verschieben vorhandene Dateien nicht automatisch.', [
@@ -111,7 +141,7 @@ class StabilizationService {
 				'Administrationsgruppen: ' . implode(', ', $settings['adminGroups']),
 				'Fallakten: ' . $settings['paths']['cases'],
 				'Vorlagen: ' . $settings['paths']['templates'],
-			], ['view'=>'administration', 'tab'=>'system', 'label'=>'Installationsparameter öffnen']);
+			], ['view' => 'administration', 'tab' => 'system', 'label' => 'Installationsparameter öffnen']);
 	}
 
 	/** 0.83.2 – Rollengruppen der Abläufe: eingetragene Gruppen müssen als Gruppen-ID existieren. */
@@ -120,9 +150,15 @@ class StabilizationService {
 		$missing = [];
 		foreach ($this->installationConfig->roleGroups() as $role => $group) {
 			$label = ProcessRules::ROLES[$role] ?? $role;
-			if ($group === '') { $details[] = $label . ': nicht belegt (Aufgaben gehen an die Fallverantwortung)'; continue; }
+			if ($group === '') {
+				$details[] = $label . ': nicht belegt (Aufgaben gehen an die Fallverantwortung)';
+				continue;
+			}
 			$text = $this->groupLookup->missingText($group);
-			if ($text === '') { $details[] = $label . ': Gruppe „' . $group . '“'; continue; }
+			if ($text === '') {
+				$details[] = $label . ': Gruppe „' . $group . '“';
+				continue;
+			}
 			$missing[] = $label;
 			$details[] = $label . ': ' . $text;
 		}
@@ -143,6 +179,28 @@ class StabilizationService {
 	 * Höchstversion erreicht hat, damit Kompatibilitätstest und Versions-Bump geplant
 	 * werden können, bevor die nächste Nextcloud-Hauptversion tatsächlich ansteht.
 	 */
+	/**
+	 * 0.89.7: SQLite funktioniert (Sperren über DatabaseLocks), Nextcloud empfiehlt es aber nur für Test- und Kleinstinstanzen:
+	 * eine Datei, Schreibzugriffe nacheinander, keine Sicherung im laufenden Betrieb über die Datenbank.
+	 */
+	private function databaseCheck(): array {
+		$provider = $this->db->getDatabaseProvider();
+		$label = match ($provider) {
+			IDBConnection::PLATFORM_MYSQL => 'MariaDB/MySQL',
+			IDBConnection::PLATFORM_POSTGRES => 'PostgreSQL',
+			IDBConnection::PLATFORM_ORACLE => 'Oracle',
+			IDBConnection::PLATFORM_SQLITE => 'SQLite',
+			default => $provider,
+		};
+		if ($provider !== IDBConnection::PLATFORM_SQLITE) {
+			return $this->check('database', 'Datenbank', 'OK', 'Nextcloud verwendet ' . $label . '.');
+		}
+		return $this->check('database', 'Datenbank', 'WARN',
+			'Nextcloud verwendet SQLite. Die App funktioniert damit, Nextcloud empfiehlt SQLite aber nur für Test- und Kleinstinstanzen.',
+			'Für den Betrieb mit mehreren Mitarbeitenden MariaDB oder PostgreSQL verwenden. Der Umzug erfolgt mit „occ db:convert-type“ (siehe Nextcloud-Administrationshandbuch); vorher eine vollständige Sicherung anlegen.',
+			['Datenbanktyp: ' . $label]);
+	}
+
 	private function nextcloudCompatibilityCheck(): array {
 		$runningMajor = (int)explode('.', trim((string)$this->config->getSystemValue('version', '0.0.0.0')))[0];
 		$maxSupported = \OCA\Bestatter\AppInfo\Application::MAX_NEXTCLOUD_VERSION;
@@ -187,14 +245,18 @@ class StabilizationService {
 			$level === 'OK' ? 'Der Job führt ausschließlich nicht-destruktive Integritäts- und Betriebsprüfungen aus.' : 'Nextcloud auf Cron-Betrieb stellen und prüfen, ob der Cron-Container cron.php regelmäßig ausführt.',
 			// $summary-Werte sind int (Kennzahlen), string (z.B. auditIntegrity-Status) oder
 			// null (Kennzahl beim letzten Lauf nicht ermittelbar) - daher kein int-Type-Hint.
-			array_map(static fn(string $key, mixed $value): string => $key . ': ' . ($value === null ? 'nicht ermittelbar' : (string)$value), array_keys($summary), array_values($summary)),
-			['view'=>'administration', 'tab'=>'system', 'label'=>'Systemprüfung öffnen']);
+			array_map(static fn (string $key, mixed $value): string => $key . ': ' . ($value === null ? 'nicht ermittelbar' : (string)$value), array_keys($summary), array_values($summary)),
+			['view' => 'administration', 'tab' => 'system', 'label' => 'Systemprüfung öffnen']);
 	}
 
 	/** 0.78.0 – Automatische Datensicherung: Zeitplan, letztes Ergebnis und Alter der neuesten Sicherung. */
 	private function backupCheck(): array {
 		$action = ['view' => 'administration', 'tab' => 'backup', 'label' => 'Backup & Restore öffnen'];
-		try { $status = $this->backup->scheduleStatus(); } catch (\Throwable $error) { return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Konnte nicht geprüft werden: ' . $error->getMessage(), '', [], $action); }
+		try {
+			$status = $this->backup->scheduleStatus();
+		} catch (\Throwable $error) {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Konnte nicht geprüft werden: ' . $error->getMessage(), '', [], $action);
+		}
 		$newest = $status['newestBackupAt'] !== null ? (int)floor((time() - (strtotime((string)$status['newestBackupAt']) ?: time())) / 86400) : null;
 		$newestText = $newest === null ? 'Es gibt noch keine Sicherung.' : 'Neueste Sicherung vor ' . $newest . ' Tag(en).';
 		$hint = 'Unter Administration → „Backup & Restore“ → „Automatische Sicherung“ einen Zeitplan einrichten, zum Beispiel täglich nachts. Die App-Sicherung ergänzt die Sicherung der gesamten Nextcloud.';
@@ -204,11 +266,21 @@ class StabilizationService {
 		}
 		$last = is_array($status['lastResult']) ? $status['lastResult'] : [];
 		$details = ['Zeitplan: ' . $status['description'] . ' (' . $status['timezone'] . ')', 'Nächste Sicherung: ' . ($status['nextRun'] ?? '–'), 'Letzte erfolgreiche: ' . ($status['lastSuccessAt'] ?? 'noch keine')];
-		if ($status['cronMode'] !== 'cron') return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Zeitplan ' . $status['description'] . ', aber Nextcloud-Hintergrundjobs laufen nicht über Cron (' . $status['cronMode'] . ') – die Sicherung startet dann unzuverlässig.', 'Verwaltungseinstellungen → Grundeinstellungen → Hintergrundaufgaben auf „Cron“ stellen.', $details, $action);
-		if (($last['status'] ?? '') === 'ERROR') return $this->check('backup_schedule', 'Automatische Datensicherung', 'ERROR', 'Die letzte automatische Sicherung ist fehlgeschlagen: ' . (string)($last['message'] ?? ''), 'Ursache beheben und unter „Backup & Restore“ ein Sicherungspaket von Hand erstellen.', $details, $action);
-		if (($last['status'] ?? '') === 'RUNNING' && time() - (strtotime((string)($last['startedAt'] ?? '')) ?: time()) > 6 * 3600) return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Die automatische Sicherung vom ' . (string)$last['startedAt'] . ' wurde nicht abgeschlossen (Abbruch durch Zeit- oder Speicherlimit?).', 'Nextcloud-Protokoll prüfen; bei sehr großen Fallakten das PHP-Speicherlimit für Cron erhöhen.', $details, $action);
-		if ($status['overdue']) return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Die fällige automatische Sicherung (' . $status['description'] . ') ist nicht gelaufen.', 'Prüfen, ob der Nextcloud-Cron regelmäßig läuft (Systemprüfung „Regelmäßige Wartung“).', $details, $action);
-		if (($last['status'] ?? '') === 'WARN') return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', (string)($last['message'] ?? 'Die letzte automatische Sicherung ist unvollständig.'), 'Die betroffenen Dateien stehen in der Sicherungsliste unter „Unvollständig“.', $details, $action);
+		if ($status['cronMode'] !== 'cron') {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Zeitplan ' . $status['description'] . ', aber Nextcloud-Hintergrundjobs laufen nicht über Cron (' . $status['cronMode'] . ') – die Sicherung startet dann unzuverlässig.', 'Verwaltungseinstellungen → Grundeinstellungen → Hintergrundaufgaben auf „Cron“ stellen.', $details, $action);
+		}
+		if (($last['status'] ?? '') === 'ERROR') {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'ERROR', 'Die letzte automatische Sicherung ist fehlgeschlagen: ' . (string)($last['message'] ?? ''), 'Ursache beheben und unter „Backup & Restore“ ein Sicherungspaket von Hand erstellen.', $details, $action);
+		}
+		if (($last['status'] ?? '') === 'RUNNING' && time() - (strtotime((string)($last['startedAt'] ?? '')) ?: time()) > 6 * 3600) {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Die automatische Sicherung vom ' . (string)$last['startedAt'] . ' wurde nicht abgeschlossen (Abbruch durch Zeit- oder Speicherlimit?).', 'Nextcloud-Protokoll prüfen; bei sehr großen Fallakten das PHP-Speicherlimit für Cron erhöhen.', $details, $action);
+		}
+		if ($status['overdue']) {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', 'Die fällige automatische Sicherung (' . $status['description'] . ') ist nicht gelaufen.', 'Prüfen, ob der Nextcloud-Cron regelmäßig läuft (Systemprüfung „Regelmäßige Wartung“).', $details, $action);
+		}
+		if (($last['status'] ?? '') === 'WARN') {
+			return $this->check('backup_schedule', 'Automatische Datensicherung', 'WARN', (string)($last['message'] ?? 'Die letzte automatische Sicherung ist unvollständig.'), 'Die betroffenen Dateien stehen in der Sicherungsliste unter „Unvollständig“.', $details, $action);
+		}
 		return $this->check('backup_schedule', 'Automatische Datensicherung', 'OK', 'Zeitplan ' . $status['description'] . '. ' . $newestText, '', $details, $action);
 	}
 
@@ -230,22 +302,29 @@ class StabilizationService {
 	}
 
 	private function paperlessCheck(): array {
-		$settings=$this->paperless->settings();
-		if($settings['mode']==='OFF')return $this->check('paperless','Optionale Paperless-Anbindung','OK','Paperless ist deaktiviert; der vollständige manuelle Eingangsrechnungsprozess ist verfügbar.','Paperless ist eine optionale Komfortfunktion und keine Betriebsvoraussetzung.',[],['view'=>'administration','tab'=>'paperless','label'=>'Paperless konfigurieren']);
-		$query=$this->db->getQueryBuilder();$failed=(int)$query->select($query->func()->count('id','count'))->from('bestatter_integration_jobs')->where($query->expr()->eq('provider',$query->createNamedParameter('PAPERLESS')))->andWhere($query->expr()->eq('job_status',$query->createNamedParameter('FAILED')))->executeQuery()->fetchOne();
-		$query=$this->db->getQueryBuilder();$pending=(int)$query->select($query->func()->count('id','count'))->from('bestatter_external_documents')->where($query->expr()->eq('provider',$query->createNamedParameter('PAPERLESS')))->andWhere($query->expr()->in('record_type',$query->createNamedParameter(PaperlessService::INBOX_RECORD_TYPES,\OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))->andWhere($query->expr()->eq('sync_status',$query->createNamedParameter('INBOX')))->andWhere($query->expr()->isNull('case_id'))->executeQuery()->fetchOne();
-		$ncOcr=$this->assistant->nextcloudOcrAvailability()['available'];$status=!$settings['enabled']?'ERROR':(($failed>0||($settings['captureDocumentTypeId']<=0&&!$ncOcr))?'WARN':'OK');
-		return $this->check('paperless','Optionale Paperless-Anbindung',$status,$status==='ERROR'?'Paperless ist aktiviert, aber Basisadresse oder API-Token fehlen.':($failed.' endgültig fehlgeschlagene Übertragung(en), '.$pending.' unzugeordnete Dokumente im Belegeingang.'),'Bei Störungen bleiben Nextcloud-Original und manuelle Erfassung nutzbar. Für OCR-Erfassungsbögen über Paperless zusätzlich eine eigene Dokumenttyp-ID konfigurieren (ohne sie wird die Nextcloud-Texterkennung verwendet, sofern freigegeben).',['Betriebsart: '.$settings['mode'],'API-Token: '.($settings['tokenConfigured']?'gesetzt':'fehlt'),'Dokumenttyp Auftragserfassung: '.($settings['captureDocumentTypeId']>0?(string)$settings['captureDocumentTypeId']:'fehlt'),'Unzugeordnete Belege: '.$pending,'Fehlgeschlagene Aufträge: '.$failed,'Archivkopie von Hand erfasster Eingangsrechnungen: '.($settings['archiveIncomingInvoices']?'an':'aus'),'Erfassungsbogen-Kopie nach der Texterkennung: '.($settings['deleteCaptureAfterOcr']?'wird gelöscht':'bleibt in Paperless')],['view'=>'administration','tab'=>'paperless','label'=>'Paperless öffnen']);
+		$settings = $this->paperless->settings();
+		if ($settings['mode'] === 'OFF') {
+			return $this->check('paperless', 'Optionale Paperless-Anbindung', 'OK', 'Paperless ist deaktiviert; der vollständige manuelle Eingangsrechnungsprozess ist verfügbar.', 'Paperless ist eine optionale Komfortfunktion und keine Betriebsvoraussetzung.', [], ['view' => 'administration','tab' => 'paperless','label' => 'Paperless konfigurieren']);
+		}
+		$query = $this->db->getQueryBuilder();
+		$failed = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_integration_jobs')->where($query->expr()->eq('provider', $query->createNamedParameter('PAPERLESS')))->andWhere($query->expr()->eq('job_status', $query->createNamedParameter('FAILED')))->executeQuery()->fetchOne();
+		$query = $this->db->getQueryBuilder();
+		$pending = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_external_documents')->where($query->expr()->eq('provider', $query->createNamedParameter('PAPERLESS')))->andWhere($query->expr()->in('record_type', $query->createNamedParameter(PaperlessService::INBOX_RECORD_TYPES, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))->andWhere($query->expr()->eq('sync_status', $query->createNamedParameter('INBOX')))->andWhere($query->expr()->isNull('case_id'))->executeQuery()->fetchOne();
+		$ncOcr = $this->assistant->nextcloudOcrAvailability()['available'];
+		$status = !$settings['enabled']?'ERROR':(($failed > 0 || ($settings['captureDocumentTypeId'] <= 0 && !$ncOcr))?'WARN':'OK');
+		return $this->check('paperless', 'Optionale Paperless-Anbindung', $status, $status === 'ERROR'?'Paperless ist aktiviert, aber Basisadresse oder API-Token fehlen.':($failed . ' endgültig fehlgeschlagene Übertragung(en), ' . $pending . ' unzugeordnete Dokumente im Belegeingang.'), 'Bei Störungen bleiben Nextcloud-Original und manuelle Erfassung nutzbar. Für OCR-Erfassungsbögen über Paperless zusätzlich eine eigene Dokumenttyp-ID konfigurieren (ohne sie wird die Nextcloud-Texterkennung verwendet, sofern freigegeben).', ['Betriebsart: ' . $settings['mode'],'API-Token: ' . ($settings['tokenConfigured']?'gesetzt':'fehlt'),'Dokumenttyp Auftragserfassung: ' . ($settings['captureDocumentTypeId'] > 0?(string)$settings['captureDocumentTypeId']:'fehlt'),'Unzugeordnete Belege: ' . $pending,'Fehlgeschlagene Aufträge: ' . $failed,'Archivkopie von Hand erfasster Eingangsrechnungen: ' . ($settings['archiveIncomingInvoices']?'an':'aus'),'Erfassungsbogen-Kopie nach der Texterkennung: ' . ($settings['deleteCaptureAfterOcr']?'wird gelöscht':'bleibt in Paperless')], ['view' => 'administration','tab' => 'paperless','label' => 'Paperless öffnen']);
 	}
 
 	/** 0.81.0: Einrichtung des Belegeingangs in Paperless (Feld „Fallnummer“, Dokumenttypen, Webhook, letzte Meldung). */
 	private function paperlessSetupCheck(): array {
 		$result = $this->paperlessSetup->check();
 		$action = ['view' => 'customizing', 'tab' => 'document-kinds', 'label' => 'Dokumentarten öffnen'];
-		if (!$result['applicable']) return $this->check('paperless_setup', 'Paperless-Belegeingang (Einrichtung)', 'OK', $result['message'], '', [], ['view' => 'administration', 'tab' => 'paperless', 'label' => 'Paperless öffnen']);
+		if (!$result['applicable']) {
+			return $this->check('paperless_setup', 'Paperless-Belegeingang (Einrichtung)', 'OK', $result['message'], '', [], ['view' => 'administration', 'tab' => 'paperless', 'label' => 'Paperless öffnen']);
+		}
 		return $this->check('paperless_setup', 'Paperless-Belegeingang (Einrichtung)', $result['status'], $result['message'],
 			$result['status'] === 'OK' ? '' : 'Feld „Fallnummer“ und Dokumenttypen legen Sie in Paperless an, die Zuordnung der Dokumenttypen unter Customizing → „Dokumentarten“. Anleitung: Handbuch, Kapitel Technik → Paperless-ngx einrichten.',
-			array_map(static fn(array $item): string => $item['label'] . ': ' . $item['detail'], $result['items']), $action);
+			array_map(static fn (array $item): string => $item['label'] . ': ' . $item['detail'], $result['items']), $action);
 	}
 
 	private function schedulingCheck(): array {
@@ -264,7 +343,9 @@ class StabilizationService {
 		$settings = $this->configuration->invoiceSettings();
 		$status = $this->eInvoiceCompliance->status();
 		$enabled = (bool)$settings['zugferdEnabled'] || (bool)$settings['xrechnungEnabled'];
-		if (!$enabled) return $this->check('e_invoice', 'E-Rechnung', 'OK', 'ZUGFeRD und XRechnung sind deaktiviert.');
+		if (!$enabled) {
+			return $this->check('e_invoice', 'E-Rechnung', 'OK', 'ZUGFeRD und XRechnung sind deaktiviert.');
+		}
 		$last = $this->eInvoiceCompliance->lastOutput();
 		$required = (bool)$settings['normativeValidationRequired'];
 		$lastLabel = $last === null ? 'noch keine ZUGFeRD-Rechnung mit PDF erzeugt'
@@ -276,7 +357,9 @@ class StabilizationService {
 		$message = $status['available']
 			? 'ZUGFeRD-PDFs werden mit eingebetteter factur-x.xml erzeugt und mit Mustang normativ geprüft (EN 16931, PDF/A-3).'
 			: 'ZUGFeRD-PDFs werden mit eingebetteter factur-x.xml erzeugt; die XML wird intern geprüft (Pflichtangaben, Rechensummen, Steuergruppen). Eine normative Prüfung (EN 16931, PDF/A-3) ist nicht eingerichtet.';
-		if ($pdfaMissing) $message .= ' Die letzte Rechnung wurde ohne PDF/A-Kennzeichnung ausgegeben.';
+		if ($pdfaMissing) {
+			$message .= ' Die letzte Rechnung wurde ohne PDF/A-Kennzeichnung ausgegeben.';
+		}
 		$hint = $pdfaMissing
 			? 'Die PDF-Konvertierung liefert kein PDF/A. EuroOffice wird für Rechnungen automatisch um PDF/A gebeten; bei Nextcloud Office (Collabora) lässt sich das über Nextcloud nicht steuern. PDF/A-fähigen Konverter verwenden.'
 			: ($status['available'] ? 'Vor Produktivbetrieb zusätzlich die jeweils aktuelle KoSIT-Konfiguration mit Referenzrechnungen prüfen.' : 'Optional: Mustang CLI (Java) auf dem Nextcloud-Host bereitstellen und den absoluten JAR-Pfad als Systemwert bestatter_einvoice_mustang_jar eintragen; dann wird jede ZUGFeRD-Rechnung normativ geprüft und ein Prüfbericht abgelegt.');
@@ -291,7 +374,9 @@ class StabilizationService {
 
 	private function assistantCheck(): array {
 		$health = $this->assistant->health();
-		if (!$health['enabled']) return $this->check('assistant', 'Schnellerfassung und Assistenz', 'OK', 'Die Assistenzfunktionen sind administrativ deaktiviert.');
+		if (!$health['enabled']) {
+			return $this->check('assistant', 'Schnellerfassung und Assistenz', 'OK', 'Die Assistenzfunktionen sind administrativ deaktiviert.');
+		}
 		$status = $health['speechProvider'] && $health['speechProviderApproved'] ? 'OK' : 'WARN';
 		$message = $health['speechProvider'] && $health['speechProviderApproved']
 			? 'Speech-to-Text ist verfügbar; Audioaufbewahrung: ' . $health['audioRetention'] . '; Mikrofonrichtlinie: ' . $health['microphonePolicyRequired'] . '. Text-zu-Text: ' . ($health['textProvider'] ? 'verfügbar' : 'nicht eingerichtet (regelbasierter Fallback aktiv)') . '.'
@@ -314,7 +399,9 @@ class StabilizationService {
 	private function captureOcrCheck(): array {
 		$configuration = $this->assistant->configuration();
 		$action = ['view' => 'administration', 'tab' => 'assistant', 'label' => 'Assistenz-Einstellungen öffnen'];
-		if (!(bool)($configuration['guidedCaptureEnabled'] ?? true)) return $this->check('capture_ocr', 'Texterkennung für Erfassungsbögen', 'OK', 'Die Schnellerfassung ist deaktiviert; eine Texterkennung wird nicht benötigt.', '', [], $action);
+		if (!(bool)($configuration['guidedCaptureEnabled'] ?? true)) {
+			return $this->check('capture_ocr', 'Texterkennung für Erfassungsbögen', 'OK', 'Die Schnellerfassung ist deaktiviert; eine Texterkennung wird nicht benötigt.', '', [], $action);
+		}
 		$paperless = $this->paperless->settings();
 		$paperlessReady = $paperless['enabled'] && (int)$paperless['captureDocumentTypeId'] > 0;
 		$providerPresent = (bool)($configuration['providers']['ocr'] ?? false);
@@ -329,7 +416,9 @@ class StabilizationService {
 			->executeQuery()->fetchOne();
 		$engine = $paperlessReady ? 'PAPERLESS' : ($providerPresent && $approved ? 'NEXTCLOUD' : '');
 		$details = [
-			'Verwendet: ' . match ($engine) { 'PAPERLESS' => 'Paperless-ngx (hat Vorrang, archiviert den Bogen zugleich)', 'NEXTCLOUD' => 'Nextcloud-Texterkennung', default => 'keine – „Auftragserfassungsbogen einlesen“ ist ausgeblendet' },
+			'Verwendet: ' . match ($engine) {
+				'PAPERLESS' => 'Paperless-ngx (hat Vorrang, archiviert den Bogen zugleich)', 'NEXTCLOUD' => 'Nextcloud-Texterkennung', default => 'keine – „Auftragserfassungsbogen einlesen“ ist ausgeblendet'
+			},
 			'Paperless für Erfassungsbögen: ' . ($paperlessReady ? 'eingerichtet' : ($paperless['enabled'] ? 'verbunden, Dokumenttyp für Erfassungsbögen fehlt' : 'nicht verbunden')),
 			'Nextcloud-Texterkennung (Aufgabentyp core:image2text:ocr): ' . ($providerPresent ? 'vorhanden' : 'kein Anbieter installiert'),
 			'Freigabe für Falldaten: ' . ($approved ? 'erteilt' : 'nicht erteilt'),
@@ -342,9 +431,14 @@ class StabilizationService {
 			return $this->check('capture_ocr', 'Texterkennung für Erfassungsbögen', 'WARN', $message, $hint, $details, $action);
 		}
 		$problems = [];
-		if ($engine === 'NEXTCLOUD' && $backgroundMode === 'ajax') $problems[] = 'Die Nextcloud-Hintergrundjobs laufen im Modus „AJAX“ – die Texterkennung startet dann nur, während jemand Nextcloud im Browser geöffnet hat.';
-		elseif ($engine === 'NEXTCLOUD' && ($cronAge === null || $cronAge > 1800)) $problems[] = 'Die Nextcloud-Hintergrundjobs sind seit über 30 Minuten nicht gelaufen; eingereichte Bögen werden nicht erkannt.';
-		if ($stuck > 0) $problems[] = $stuck . ' Erfassungsbogen/-bögen warten seit über 30 Minuten auf die Texterkennung.';
+		if ($engine === 'NEXTCLOUD' && $backgroundMode === 'ajax') {
+			$problems[] = 'Die Nextcloud-Hintergrundjobs laufen im Modus „AJAX“ – die Texterkennung startet dann nur, während jemand Nextcloud im Browser geöffnet hat.';
+		} elseif ($engine === 'NEXTCLOUD' && ($cronAge === null || $cronAge > 1800)) {
+			$problems[] = 'Die Nextcloud-Hintergrundjobs sind seit über 30 Minuten nicht gelaufen; eingereichte Bögen werden nicht erkannt.';
+		}
+		if ($stuck > 0) {
+			$problems[] = $stuck . ' Erfassungsbogen/-bögen warten seit über 30 Minuten auf die Texterkennung.';
+		}
 		$message = ($engine === 'PAPERLESS' ? 'Erfassungsbögen werden über Paperless-ngx erkannt.' : 'Erfassungsbögen (PDF, JPG, PNG) werden mit der Nextcloud-Texterkennung erkannt.') . ($problems !== [] ? ' ' . implode(' ', $problems) : '');
 		$hint = $problems === [] ? ($engine === 'NEXTCLOUD' ? 'Für eine Erkennung innerhalb von Sekunden empfiehlt Nextcloud einen eigenen Worker: occ background-job:worker \'OC\\TaskProcessing\\SynchronousBackgroundJob\'.' : '')
 			: ($engine === 'NEXTCLOUD' ? 'Hintergrundjobs auf „Cron“ stellen (Verwaltung → Grundeinstellungen) und den Systemdienst bzw. Cronjob prüfen; optional einen TaskProcessing-Worker einrichten. Hängende Bögen in der Schnellerfassung mit „Texterkennung erneut versuchen“ neu anstoßen.' : 'Paperless-Verbindung und Warteschlange unter Administration → Paperless prüfen.');
@@ -353,7 +447,9 @@ class StabilizationService {
 
 	private function captureOcrLabel(): string {
 		$paperless = $this->paperless->settings();
-		if ($paperless['enabled'] && (int)$paperless['captureDocumentTypeId'] > 0) return 'Paperless-ngx';
+		if ($paperless['enabled'] && (int)$paperless['captureDocumentTypeId'] > 0) {
+			return 'Paperless-ngx';
+		}
 		$nextcloud = $this->assistant->nextcloudOcrAvailability();
 		return $nextcloud['available'] ? 'Nextcloud-Texterkennung' : 'nicht verfügbar (' . $nextcloud['reason'] . ') – der Weg wird in der Schnellerfassung ausgeblendet';
 	}
@@ -401,18 +497,36 @@ class StabilizationService {
 		return $this->check('audit_actor', 'Bearbeitungsnachweis', $count === 0 ? 'OK' : 'WARN', $count === 0 ? 'Alle Aktivitäten enthalten Ersteller und letzten Bearbeiter.' : $count . ' ältere Datensätze enthalten noch keinen vollständigen Bearbeitungsnachweis.');
 	}
 
+	/** 0.89.5: Verweise auf Warengruppen und Artikel ohne Ziel im Leistungskatalog (Hinweis, kein Fehler). */
+	private function catalogReferenceCheck(): array {
+		if ($this->catalogReferences === null) {
+			return $this->check('catalog_references', 'Leistungskatalog und Verweise', 'OK', 'Nicht geprüft.');
+		}
+		$result = $this->catalogReferences->check();
+		if ($result['catalogEmpty']) {
+			return $this->check('catalog_references', 'Leistungskatalog und Verweise', 'WARN', 'Der Leistungskatalog ist leer.', $result['message']);
+		}
+		return $this->check('catalog_references', 'Leistungskatalog und Verweise', $result['count'] > 0 ? 'WARN' : 'OK', $result['message'],
+			$result['count'] > 0 ? 'Diese Einstellungen wirken nicht, bis es die Warengruppe bzw. den Artikel gibt. Im Leistungskatalog anlegen oder unter Customizing (Ankreuzfelder, Fremdkosten, Variantenregeln, Zuschlagsstaffeln) anpassen.' : '',
+			CatalogReferenceService::flatten($result));
+	}
+
 	private function workflowCheck(): array {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('run_status', $query->func()->count('id', 'count'))
 			->from('bestatter_action_runs')->groupBy('run_status')->executeQuery()->fetchAllAssociative();
 		$counts = [];
-		foreach ($rows as $row) $counts[strtoupper((string)$row['run_status'])] = (int)$row['count'];
+		foreach ($rows as $row) {
+			$counts[strtoupper((string)$row['run_status'])] = (int)$row['count'];
+		}
 		$running = $counts['RUNNING'] ?? 0;
 		$failed = $counts['FAILED'] ?? 0;
 		$status = $running > 0 ? 'ERROR' : ($failed > 0 ? 'WARN' : 'OK');
 		$message = $running . ' laufende und ' . $failed . ' fehlgeschlagene Ablaufaktion(en).';
-		if ($running === 0 && $failed === 0) $message = 'Keine hängenden oder fehlgeschlagenen Ablaufaktionen.';
-		return $this->check('action_runs', 'Ablaufaktionen', $status, $message, $failed > 0 ? 'Fehlgeschlagene Läufe bleiben als Prüf- und Wiederholungsnachweis erhalten. Erst eine erfolgreiche Wiederholung erledigt den betreffenden Lauf.' : '', array_map(static fn(string $runStatus, int $count): string => $runStatus . ': ' . $count, array_keys($counts), array_values($counts)), ['view' => 'customizing', 'tab' => 'processes', 'label' => 'Abläufe öffnen']);
+		if ($running === 0 && $failed === 0) {
+			$message = 'Keine hängenden oder fehlgeschlagenen Ablaufaktionen.';
+		}
+		return $this->check('action_runs', 'Ablaufaktionen', $status, $message, $failed > 0 ? 'Fehlgeschlagene Läufe bleiben als Prüf- und Wiederholungsnachweis erhalten. Erst eine erfolgreiche Wiederholung erledigt den betreffenden Lauf.' : '', array_map(static fn (string $runStatus, int $count): string => $runStatus . ': ' . $count, array_keys($counts), array_values($counts)), ['view' => 'customizing', 'tab' => 'processes', 'label' => 'Abläufe öffnen']);
 	}
 
 	/**
@@ -429,19 +543,31 @@ class StabilizationService {
 		$records = 0;
 		foreach ($rows as $row) {
 			$payload = json_decode((string)$row['payload'], true);
-			if (!is_array($payload)) continue;
+			if (!is_array($payload)) {
+				continue;
+			}
 			$failures = [];
 			$nextcloud = is_array($payload['nextcloud'] ?? null) ? $payload['nextcloud'] : [];
-			if ((string)($nextcloud['syncError'] ?? '') !== '' && ($nextcloud['remoteDeletedAt'] ?? '') === '') $failures[(string)($nextcloud['ownerUid'] ?? '') ?: (string)$row['owner_uid']] = (string)$nextcloud['syncError'];
-			foreach ((array)($payload['nextcloudCopies'] ?? []) as $copy) if (is_array($copy) && !($copy['stored'] ?? false) && (string)($copy['ownerUid'] ?? '') !== '') $failures[(string)$copy['ownerUid']] = (string)($copy['syncError'] ?? 'Kopie nicht gespeichert');
-			if ($failures === []) continue;
+			if ((string)($nextcloud['syncError'] ?? '') !== '' && ($nextcloud['remoteDeletedAt'] ?? '') === '') {
+				$failures[(string)($nextcloud['ownerUid'] ?? '') ?: (string)$row['owner_uid']] = (string)$nextcloud['syncError'];
+			}
+			foreach ((array)($payload['nextcloudCopies'] ?? []) as $copy) {
+				if (is_array($copy) && !($copy['stored'] ?? false) && (string)($copy['ownerUid'] ?? '') !== '') {
+					$failures[(string)$copy['ownerUid']] = (string)($copy['syncError'] ?? 'Kopie nicht gespeichert');
+				}
+			}
+			if ($failures === []) {
+				continue;
+			}
 			$records++;
 			foreach ($failures as $uid => $message) {
 				$people[$uid]['count'] = ($people[$uid]['count'] ?? 0) + 1;
 				$people[$uid]['messages'][$message] = ($people[$uid]['messages'][$message] ?? 0) + 1;
 			}
 		}
-		if ($records === 0) return $this->check('sync_errors', 'Nextcloud-Synchronisation', 'OK', 'Alle Aufgaben und Termine sind in Nextcloud gespeichert.');
+		if ($records === 0) {
+			return $this->check('sync_errors', 'Nextcloud-Synchronisation', 'OK', 'Alle Aufgaben und Termine sind in Nextcloud gespeichert.');
+		}
 		ksort($people);
 		$details = [];
 		foreach ($people as $uid => $info) {
@@ -453,17 +579,23 @@ class StabilizationService {
 
 	/** 0.75.2: Altlasten aus der Nextcloud-Anbindung, bereinigt per occ bestatter:groupware-repair. */
 	private function groupwareRepairCheck(): array {
-		try { $preview = $this->groupwareRepair->preview(); } catch (\Throwable $error) { return $this->check('groupware_repair', 'Altlasten der Nextcloud-Anbindung', 'WARN', 'Konnte nicht geprüft werden: ' . $error->getMessage()); }
+		try {
+			$preview = $this->groupwareRepair->preview();
+		} catch (\Throwable $error) {
+			return $this->check('groupware_repair', 'Altlasten der Nextcloud-Anbindung', 'WARN', 'Konnte nicht geprüft werden: ' . $error->getMessage());
+		}
 		$mirrors = count($preview['mirrors']);
-		$followUps = array_sum(array_map(static fn(array $mirror): int => count($mirror['followUps']), $preview['mirrors']));
+		$followUps = array_sum(array_map(static fn (array $mirror): int => count($mirror['followUps']), $preview['mirrors']));
 		$contacts = count($preview['contacts']);
 		$lost = count($preview['lostData']);
-		$books = array_count_values(array_map(static fn(array $contact): string => (string)$contact['addressBook'], $preview['contacts']));
-		if ($mirrors === 0 && $contacts === 0 && $lost === 0) return $this->check('groupware_repair', 'Altlasten der Nextcloud-Anbindung', 'OK', 'Keine doppelten Einträge aus Terminkopien, keine fehlerhaften Kontaktadressen, keine verlorenen App-Daten.');
+		$books = array_count_values(array_map(static fn (array $contact): string => (string)$contact['addressBook'], $preview['contacts']));
+		if ($mirrors === 0 && $contacts === 0 && $lost === 0) {
+			return $this->check('groupware_repair', 'Altlasten der Nextcloud-Anbindung', 'OK', 'Keine doppelten Einträge aus Terminkopien, keine fehlerhaften Kontaktadressen, keine verlorenen App-Daten.');
+		}
 		return $this->check('groupware_repair', 'Altlasten der Nextcloud-Anbindung', 'WARN', $mirrors . ' doppelte(r) Eintrag/Einträge aus Terminkopien mit ' . $followUps . ' Folgeaufgabe(n), ' . $contacts . ' Kontakt(e) mit fehlerhafter Adresse, ' . $lost . ' Eintrag/Einträge mit verlorenen App-Daten.', 'Altlast aus Versionen bis 0.75.1. Der Nextcloud-Administrator zeigt die Liste mit occ bestatter:groupware-repair an und bereinigt mit --execute --confirmation=BESTATTER-GROUPWARE-BEREINIGEN.', array_merge(
-			array_map(static fn(array $mirror): string => ($mirror['type'] === 'task' ? 'Aufgabe' : 'Termin') . ' #' . $mirror['id'] . ' (Kopie bei ' . $mirror['ownerUid'] . ', Original #' . $mirror['originalId'] . ', ' . count($mirror['followUps']) . ' Folgeaufgaben)', array_slice($preview['mirrors'], 0, 20)),
-			array_map(static fn(string $book, int $count): string => 'Adressbuch ' . $book . ': ' . $count . ' Kontakt(e)', array_keys($books), array_values($books)),
-			array_map(static fn(array $item): string => ($item['type'] === 'task' ? 'Aufgabe' : 'Termin') . ' #' . $item['id'] . ': ' . implode(', ', $item['keys']), array_slice($preview['lostData'], 0, 20)),
+			array_map(static fn (array $mirror): string => ($mirror['type'] === 'task' ? 'Aufgabe' : 'Termin') . ' #' . $mirror['id'] . ' (Kopie bei ' . $mirror['ownerUid'] . ', Original #' . $mirror['originalId'] . ', ' . count($mirror['followUps']) . ' Folgeaufgaben)', array_slice($preview['mirrors'], 0, 20)),
+			array_map(static fn (string $book, int $count): string => 'Adressbuch ' . $book . ': ' . $count . ' Kontakt(e)', array_keys($books), array_values($books)),
+			array_map(static fn (array $item): string => ($item['type'] === 'task' ? 'Aufgabe' : 'Termin') . ' #' . $item['id'] . ': ' . implode(', ', $item['keys']), array_slice($preview['lostData'], 0, 20)),
 		));
 	}
 
@@ -471,7 +603,9 @@ class StabilizationService {
 		$query = $this->db->getQueryBuilder();
 		$total = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_records')
 			->where("payload LIKE '%\"remoteDeletedAt\"%'")->executeQuery()->fetchOne();
-		if ($total === 0) return $this->check('remote_deleted', 'Extern gelöschte Einträge', 'OK', 'Keine extern gelöschten Aufgaben oder Termine vorgemerkt.');
+		if ($total === 0) {
+			return $this->check('remote_deleted', 'Extern gelöschte Einträge', 'OK', 'Keine extern gelöschten Aufgaben oder Termine vorgemerkt.');
+		}
 		$query = $this->db->getQueryBuilder();
 		$legacy = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_records')
 			->where("payload LIKE '%\"remoteDeletedAt\"%'")
@@ -492,12 +626,24 @@ class StabilizationService {
 
 	/** 0.70.0 (OP-040): Mehrbenutzerbetrieb braucht die gemeinsame Fallablage. */
 	private function storageCheck(int $members): array {
-		try { $status = $this->storage->status(); } catch (\Throwable $error) { return $this->check('storage', 'Fallablage', 'ERROR', 'Die Fallablage konnte nicht geprüft werden: ' . $error->getMessage()); }
+		try {
+			$status = $this->storage->status();
+		} catch (\Throwable $error) {
+			return $this->check('storage', 'Fallablage', 'ERROR', 'Die Fallablage konnte nicht geprüft werden: ' . $error->getMessage());
+		}
 		if ($status['central']) {
 			$problems = array_values(array_filter([$status['accountValid'] ? '' : 'Ablagekonto nicht verfügbar', ($status['missingShares'] ?? []) !== [] ? 'Freigabe fehlt für ' . implode(', ', $status['missingShares']) : '']));
 			return $this->check('storage', 'Fallablage', $problems === [] ? 'OK' : 'ERROR', $problems === [] ? 'Zentrale Fallablage im Konto „' . $status['account'] . '“ (' . ($status['location'] === 'TEAMFOLDER' ? 'Teamordner' : 'mit Gruppenfreigabe') . ').' : implode('; ', $problems) . '.', 'Unter Administration → Abnahme und Stabilität → Fallablage prüfen.', [], ['view' => 'administration', 'tab' => 'system', 'anchor' => 'bp-storage-admin', 'label' => 'Fallablage öffnen']);
 		}
-		return $this->check('storage', 'Fallablage', $members > 1 ? 'WARN' : 'OK', 'Benutzerbezogene Ablage: Jede Person arbeitet in ihrem eigenen Nextcloud-Ordner' . ($members > 1 ? ' – bei ' . $members . ' Mitgliedern sehen andere Personen die Dateien eines Falls nicht.' : '.'), 'Zentrale Fallablage einrichten (Administration → Abnahme und Stabilität → Fallablage).', [], ['view' => 'administration', 'tab' => 'system', 'anchor' => 'bp-storage-admin', 'label' => 'Fallablage öffnen']);
+		$link = ['view' => 'administration', 'tab' => 'system', 'anchor' => 'bp-storage-admin', 'label' => 'Fallablage öffnen'];
+		$teamfolder = $status['existingTeamfolder'] ?? null;
+		if ($teamfolder !== null && ($status['teamfolderShared'] ?? false)) {
+			return $this->check('storage', 'Fallablage', 'OK', 'Gemeinsame Fallablage im Teamordner „' . $teamfolder['name'] . '“: alle ' . count($teamfolder['members']) . ' Mitglieder sehen dieselben Fallakten.', '', [], $link);
+		}
+		if ($teamfolder !== null) {
+			return $this->check('storage', 'Fallablage', 'WARN', 'Teamordner „' . $teamfolder['name'] . '“ fehlt bei: ' . implode(', ', $status['teamfolderMissing'] ?? []) . ' – diese Personen legen Fallakten in ihrem eigenen Ordner ab.', 'Personen in die Gruppe „' . $this->installationConfig->memberGroup() . '“ aufnehmen bzw. dem Teamordner zuordnen.', [], $link);
+		}
+		return $this->check('storage', 'Fallablage', $members > 1 ? 'WARN' : 'OK', 'Benutzerbezogene Ablage: Jede Person arbeitet in ihrem eigenen Nextcloud-Ordner' . ($members > 1 ? ' – bei ' . $members . ' Mitgliedern sehen andere Personen die Dateien eines Falls nicht.' : '.'), 'Teamordner „' . $this->installationConfig->storageRoot() . '“ für die Gruppe „' . $this->installationConfig->memberGroup() . '“ anlegen (Nextcloud-Einrichtungspaket bzw. App „Team folders“); ein Ablagekonto ist nicht nötig.', [], $link);
 	}
 
 	private function check(string $key, string $label, string $status, string $message, string $hint = '', array $details = [], ?array $action = null): array {
@@ -506,16 +652,26 @@ class StabilizationService {
 
 	private static function templateSourceAvailable(string $expectedName, array $availableNames): bool {
 		$expectedName = basename(trim($expectedName));
-		if ($expectedName === '') return false;
-		if (in_array($expectedName, $availableNames, true)) return true;
-		if (is_file(__DIR__ . '/../../resources/templates/' . $expectedName)) return true;
+		if ($expectedName === '') {
+			return false;
+		}
+		if (in_array($expectedName, $availableNames, true)) {
+			return true;
+		}
+		if (is_file(__DIR__ . '/../../resources/templates/' . $expectedName)) {
+			return true;
+		}
 		$expected = self::normalizedTemplateName($expectedName);
 		$expectsCondolence = str_contains($expected, 'kondolenz');
 		$expectsDeck = str_contains($expected, 'deck');
 		foreach ($availableNames as $availableName) {
 			$available = self::normalizedTemplateName((string)$availableName);
-			if ($available === $expected) return true;
-			if ($expectsCondolence && str_contains($available, 'kondolenz') && (str_contains($available, 'deck') === $expectsDeck)) return true;
+			if ($available === $expected) {
+				return true;
+			}
+			if ($expectsCondolence && str_contains($available, 'kondolenz') && (str_contains($available, 'deck') === $expectsDeck)) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -527,6 +683,6 @@ class StabilizationService {
 
 	private static function missingBranchFields(array $branch): array {
 		$labels = ['name' => 'Name', 'street' => 'Straße', 'postalCode' => 'PLZ', 'city' => 'Ort', 'accountHolder' => 'Kontoinhaber', 'bankName' => 'Bank', 'iban' => 'IBAN', 'bic' => 'BIC'];
-		return array_values(array_filter($labels, static fn(string $label, string $field): bool => trim((string)($branch[$field] ?? '')) === '', ARRAY_FILTER_USE_BOTH));
+		return array_values(array_filter($labels, static fn (string $label, string $field): bool => trim((string)($branch[$field] ?? '')) === '', ARRAY_FILTER_USE_BOTH));
 	}
 }

@@ -27,26 +27,32 @@ class GroupwareRepairService {
 		private AuditService $audit,
 		private AppCalendarObjects $calendar,
 		private RecordService $records,
-	) {}
+	) {
+	}
 
 	/** @return array{mirrors:list<array<string,mixed>>,contacts:list<array<string,mixed>>,lostData:list<array<string,mixed>>} */
 	public function preview(): array {
-		return ['mirrors' => $this->mirrors(), 'contacts' => $this->brokenContacts(), 'lostData' => array_map(static fn(array $item): array => array_diff_key($item, ['restore' => true]), $this->lostData())];
+		return ['mirrors' => $this->mirrors(), 'contacts' => $this->brokenContacts(), 'lostData' => array_map(static fn (array $item): array => array_diff_key($item, ['restore' => true]), $this->lostData())];
 	}
 
 	/** @return array{mirrorsDeleted:int,followUpsDeleted:int,processRunsDeleted:int,calendar:array<string,mixed>,contactsRepaired:int,contactErrors:list<string>,dataRestored:int} */
 	public function execute(): array {
 		$result = ['mirrorsDeleted' => 0, 'followUpsDeleted' => 0, 'processRunsDeleted' => 0, 'calendar' => ['planned' => 0, 'deleted' => 0, 'missing' => 0, 'errors' => []], 'contactsRepaired' => 0, 'contactErrors' => [], 'dataRestored' => 0];
 		foreach ($this->mirrors() as $mirror) {
-			$followUpIds = array_map(static fn(array $task): int => (int)$task['id'], $mirror['followUps']);
+			$followUpIds = array_map(static fn (array $task): int => (int)$task['id'], $mirror['followUps']);
 			if ($followUpIds !== []) {
 				$calendar = $this->calendar->delete($this->calendar->targetsForRecordIds($followUpIds));
-				foreach (['planned', 'deleted', 'missing'] as $key) $result['calendar'][$key] += $calendar[$key];
+				foreach (['planned', 'deleted', 'missing'] as $key) {
+					$result['calendar'][$key] += $calendar[$key];
+				}
 				$result['calendar']['errors'] = array_merge($result['calendar']['errors'], $calendar['errors']);
 			}
 			$this->db->beginTransaction();
 			try {
-				foreach ($followUpIds as $id) { $this->deleteRecord($id, 'Doppelte Folgeaufgabe aus Terminkopie entfernt (Bereinigung 0.75.2)'); $result['followUpsDeleted']++; }
+				foreach ($followUpIds as $id) {
+					$this->deleteRecord($id, 'Doppelte Folgeaufgabe aus Terminkopie entfernt (Bereinigung 0.75.2)');
+					$result['followUpsDeleted']++;
+				}
 				$delete = $this->db->getQueryBuilder();
 				$result['processRunsDeleted'] += $delete->delete('bestatter_process_runs')
 					->where($delete->expr()->eq('context_key', $delete->createNamedParameter('schedule:' . $mirror['id'])))->executeStatement();
@@ -75,7 +81,9 @@ class GroupwareRepairService {
 			$this->records->update((int)$record['id'], (string)$record['title'], (string)($record['date'] ?? ''), (string)($record['status'] ?? 'OFFEN'), json_encode($data, JSON_THROW_ON_ERROR), (int)($record['caseId'] ?? 0), (string)$item['ownerUid']);
 			$result['dataRestored']++;
 		}
-		if ($result['mirrorsDeleted'] > 0 || $result['contactsRepaired'] > 0 || $result['dataRestored'] > 0) $this->audit->logSystem('groupware', 'REPAIRED', array_diff_key($result, ['contactErrors' => true]));
+		if ($result['mirrorsDeleted'] > 0 || $result['contactsRepaired'] > 0 || $result['dataRestored'] > 0) {
+			$this->audit->logSystem('groupware', 'REPAIRED', array_diff_key($result, ['contactErrors' => true]));
+		}
 		return $result;
 	}
 
@@ -89,15 +97,23 @@ class GroupwareRepairService {
 			->orderBy('id', 'ASC')
 			->executeQuery()->fetchAllAssociative();
 		$groups = [];
-		foreach ($rows as $row) $groups[$row['record_type'] . '|' . $row['nextcloud_uid']][] = $row;
+		foreach ($rows as $row) {
+			$groups[$row['record_type'] . '|' . $row['nextcloud_uid']][] = $row;
+		}
 		$mirrors = [];
 		foreach ($groups as $group) {
-			if (count($group) < 2) continue;
+			if (count($group) < 2) {
+				continue;
+			}
 			$original = $group[0];
 			$data = json_decode((string)$original['payload'], true);
-			if (!is_array($data)) continue;
+			if (!is_array($data)) {
+				continue;
+			}
 			foreach (array_slice($group, 1) as $row) {
-				if ((string)$row['owner_uid'] === (string)$original['owner_uid'] || !RecordService::isCopyOwner($data, (string)$row['owner_uid'])) continue;
+				if ((string)$row['owner_uid'] === (string)$original['owner_uid'] || !RecordService::isCopyOwner($data, (string)$row['owner_uid'])) {
+					continue;
+				}
 				$mirrors[] = [
 					'id' => (int)$row['id'], 'type' => (string)$row['record_type'], 'title' => (string)$row['title'], 'status' => (string)$row['status'],
 					'caseId' => (int)($row['case_id'] ?? 0), 'ownerUid' => (string)$row['owner_uid'],
@@ -122,11 +138,15 @@ class GroupwareRepairService {
 		$result = [];
 		foreach ($rows as $row) {
 			$data = json_decode((string)$row['payload'], true);
-			if (!is_array($data)) continue;
+			if (!is_array($data)) {
+				continue;
+			}
 			$linked = (int)($data['sourceScheduleId'] ?? 0) === $scheduleId
 				|| (int)($data['link']['sourceScheduleId'] ?? 0) === $scheduleId
 				|| (string)($data['processContext'] ?? '') === 'schedule:' . $scheduleId;
-			if ($linked) $result[] = ['id' => (int)$row['id'], 'title' => (string)$row['title'], 'status' => (string)$row['status'], 'ownerUid' => (string)$row['owner_uid']];
+			if ($linked) {
+				$result[] = ['id' => (int)$row['id'], 'title' => (string)$row['title'], 'status' => (string)$row['status'], 'ownerUid' => (string)$row['owner_uid']];
+			}
 		}
 		return $result;
 	}
@@ -152,7 +172,7 @@ class GroupwareRepairService {
 				'processStepId' => (int)($row['step_id'] ?? 0), 'processStepKey' => (string)($row['step_key'] ?? ''), 'processTemplateKey' => (string)($row['template_key'] ?? ''),
 				'processPhase' => (int)($row['phase'] ?? 0), 'processRequired' => (bool)($row['required'] ?? false), 'processRunId' => (int)$row['run_id'],
 				'processContext' => (string)($row['context_key'] ?? ''), 'assigneeRole' => (string)($row['role'] ?? ''),
-			], static fn(mixed $value): bool => $value !== '' && $value !== 0 && $value !== false);
+			], static fn (mixed $value): bool => $value !== '' && $value !== 0 && $value !== false);
 			$candidates[] = ['id' => (int)$row['id'], 'type' => 'task', 'ownerUid' => (string)$row['owner_uid'], 'payload' => (string)$row['payload'], 'marker' => 'processStepId', 'fallback' => $fallback];
 		}
 		$query = $this->db->getQueryBuilder();
@@ -162,20 +182,30 @@ class GroupwareRepairService {
 			->executeQuery()->fetchAllAssociative();
 		foreach ($rows as $row) {
 			$data = json_decode((string)$row['payload'], true);
-			if (!is_array($data)) continue;
+			if (!is_array($data)) {
+				continue;
+			}
 			$others = array_diff(array_map('strval', (array)($data['assigneeUids'] ?? [])), [(string)$row['owner_uid']]);
-			if ($others !== []) $candidates[] = ['id' => (int)$row['id'], 'type' => 'schedule', 'ownerUid' => (string)$row['owner_uid'], 'payload' => (string)$row['payload'], 'marker' => 'nextcloudCopies', 'fallback' => []];
+			if ($others !== []) {
+				$candidates[] = ['id' => (int)$row['id'], 'type' => 'schedule', 'ownerUid' => (string)$row['owner_uid'], 'payload' => (string)$row['payload'], 'marker' => 'nextcloudCopies', 'fallback' => []];
+			}
 		}
 		$result = [];
 		foreach ($candidates as $candidate) {
 			$current = json_decode($candidate['payload'], true);
-			if (!is_array($current)) continue;
+			if (!is_array($current)) {
+				continue;
+			}
 			$snapshot = $this->auditSnapshot($candidate['type'], $candidate['id'], $candidate['marker']);
 			$source = $snapshot !== null ? 'Audit-Log' : 'Ablaufschritt';
 			// Leere Rollen-Zuständige stammen aus dem Import (Nextcloud kennt das Feld bei Aufgaben nicht) – wie fehlend behandeln.
-			if ($candidate['type'] === 'task' && ($current['assigneeUids'] ?? null) === [] && (array)($snapshot['assigneeUids'] ?? []) !== []) unset($current['assigneeUids']);
+			if ($candidate['type'] === 'task' && ($current['assigneeUids'] ?? null) === [] && (array)($snapshot['assigneeUids'] ?? []) !== []) {
+				unset($current['assigneeUids']);
+			}
 			$restore = array_diff_key(array_replace($candidate['fallback'], $snapshot ?? []), $current, ['nextcloud' => true, 'updatedAt' => true, 'updatedBy' => true]);
-			if ($restore === []) continue;
+			if ($restore === []) {
+				continue;
+			}
 			$result[] = ['id' => $candidate['id'], 'type' => $candidate['type'], 'ownerUid' => $candidate['ownerUid'], 'keys' => array_keys($restore), 'source' => $source, 'restore' => $restore];
 		}
 		return $result;
@@ -192,7 +222,9 @@ class GroupwareRepairService {
 			->executeQuery()->fetchAllAssociative();
 		foreach ($rows as $row) {
 			$after = json_decode((string)$row['after_data'], true);
-			if (is_array($after) && is_array($after['data'] ?? null)) return $after['data'];
+			if (is_array($after) && is_array($after['data'] ?? null)) {
+				return $after['data'];
+			}
 		}
 		return null;
 	}
@@ -200,7 +232,9 @@ class GroupwareRepairService {
 	private function deleteRecord(int $id, string $reason): void {
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('*')->from('bestatter_records')->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeQuery()->fetchAssociative();
-		if ($row === false) return;
+		if ($row === false) {
+			return;
+		}
 		foreach (['bestatter_record_assignees' => 'record_id', 'bestatter_schedule_history' => 'record_id', 'bestatter_action_runs' => 'source_record_id', 'bestatter_records' => 'id'] as $table => $column) {
 			$delete = $this->db->getQueryBuilder();
 			$delete->delete($table)->where($delete->expr()->eq($column, $delete->createNamedParameter($id)))->executeStatement();
@@ -224,9 +258,13 @@ class GroupwareRepairService {
 		foreach ($rows as $row) {
 			$data = is_resource($row['carddata']) ? (string)stream_get_contents($row['carddata']) : (string)$row['carddata'];
 			$repaired = self::repairVcard($data);
-			if ($repaired === null) continue;
+			if ($repaired === null) {
+				continue;
+			}
 			$entry = ['addressBookId' => (int)$row['addressbookid'], 'addressBook' => (string)$row['displayname'], 'uri' => (string)$row['uri'], 'name' => self::vcardName($data)];
-			if ($withData) $entry['repaired'] = $repaired;
+			if ($withData) {
+				$entry['repaired'] = $repaired;
+			}
 			$result[] = $entry;
 		}
 		return $result;
@@ -238,10 +276,14 @@ class GroupwareRepairService {
 		$lines = preg_split("/\r?\n/", $unfolded) ?: [];
 		$changed = false;
 		foreach ($lines as $index => $line) {
-			if (!preg_match('/^((?:[A-Za-z0-9-]+\.)?ADR(?:;[^:]*)?):(.*)$/i', $line, $match)) continue;
+			if (!preg_match('/^((?:[A-Za-z0-9-]+\.)?ADR(?:;[^:]*)?):(.*)$/i', $line, $match)) {
+				continue;
+			}
 			$value = $match[2];
 			$components = preg_split('/(?<!\\\\);/', $value) ?: [];
-			if (count($components) !== 1 || !str_contains($value, '\;')) continue;
+			if (count($components) !== 1 || !str_contains($value, '\;')) {
+				continue;
+			}
 			$lines[$index] = $match[1] . ':' . str_replace('\;', ';', $value);
 			$changed = true;
 		}
@@ -254,7 +296,9 @@ class GroupwareRepairService {
 
 	private function cardBackend(): object {
 		$class = '\\OCA\\DAV\\CardDAV\\CardDavBackend';
-		if (!class_exists($class)) throw new \RuntimeException('Das Nextcloud-CardDAV-Backend ist nicht verfügbar.');
+		if (!class_exists($class)) {
+			throw new \RuntimeException('Das Nextcloud-CardDAV-Backend ist nicht verfügbar.');
+		}
 		return Server::get($class);
 	}
 }

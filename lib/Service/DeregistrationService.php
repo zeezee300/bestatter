@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
@@ -35,9 +36,12 @@ class DeregistrationService {
 		private ConfigurationService $configuration,
 		private ContactService $contacts,
 		private GroupwareService $groupware,
-	) {}
+	) {
+	}
 
-	public function list(int $caseId): array { return $this->records->list('deregistration', $caseId); }
+	public function list(int $caseId): array {
+		return $this->records->list('deregistration', $caseId);
+	}
 
 	public function preview(int $caseId, array $input): array {
 		$case = $this->cases->getCase($caseId);
@@ -47,28 +51,44 @@ class DeregistrationService {
 		$channel = strtoupper(trim((string)($input['deliveryChannel'] ?? '')));
 		$payload = $this->payload($case, $template, $contact, $input, $channels);
 		$missing = $this->missing($case, $template, $contact, $channel, $payload);
-		$documents = $this->attachmentDocuments($case); $attachments = $this->resolveAttachments($documents, $input['attachments'] ?? []);
-		$hasDeathCertificate = count(array_filter($attachments, fn(array $item): bool => $this->isDeathCertificate($item))) > 0;
-		$availableDeathCertificate = count(array_filter($documents, fn(array $item): bool => $this->isDeathCertificate($item))) > 0;
+		$documents = $this->attachmentDocuments($case);
+		$attachments = $this->resolveAttachments($documents, $input['attachments'] ?? []);
+		$hasDeathCertificate = count(array_filter($attachments, fn (array $item): bool => $this->isDeathCertificate($item))) > 0;
+		$availableDeathCertificate = count(array_filter($documents, fn (array $item): bool => $this->isDeathCertificate($item))) > 0;
 		$branch = $this->branch((string)($case['branch'] ?? $case['masterData']['branch'] ?? ''));
 		$documentTemplate = null;
-		foreach ($this->configuration->documents() as $candidate) if (($candidate['key'] ?? '') === ($template['documentTemplateKey'] ?? '')) { $documentTemplate = $candidate; break; }
+		foreach ($this->configuration->documents() as $candidate) {
+			if (($candidate['key'] ?? '') === ($template['documentTemplateKey'] ?? '')) {
+				$documentTemplate = $candidate;
+				break;
+			}
+		}
 		return ['template' => $template, 'recipient' => $contact, 'availableChannels' => $channels, 'subject' => $payload['subject'], 'body' => $payload['body'], 'missingFields' => $missing, 'ready' => $missing === [], 'documentTemplateKey' => $template['documentTemplateKey'], 'attachments' => $attachments, 'availableAttachments' => $documents, 'attachmentWarning' => !$hasDeathCertificate ? ($availableDeathCertificate ? 'Die vorhandene Sterbeurkunde ist noch nicht als Anlage ausgewählt.' : 'Im Fall ist noch keine Sterbeurkunde vorhanden.') : '', 'previewMode' => in_array($channel, ['POST', 'BRIEF'], true) ? 'LETTER' : 'MESSAGE', 'letter' => ['templateName' => (string)($documentTemplate['name'] ?? $template['documentTemplateKey'] ?? 'Briefvorlage'), 'sender' => trim((string)($branch['name'] ?? '') . "\n" . (string)($branch['street'] ?? '') . "\n" . trim((string)($branch['postalCode'] ?? '') . ' ' . (string)($branch['city'] ?? ''))), 'recipient' => trim((string)($contact['title'] ?? '') . "\n" . (string)($contact['data']['street'] ?? $contact['data']['address'] ?? '') . "\n" . trim((string)($contact['data']['postalCode'] ?? '') . ' ' . (string)($contact['data']['city'] ?? ''))), 'date' => date('d.m.Y')]];
 	}
 
 	public function save(int $caseId, array $input, int $id = 0): array {
 		$preview = $this->preview($caseId, $input);
 		$status = strtoupper((string)($input['status'] ?? 'ENTWURF'));
-		if (!in_array($status, $preview['template']['allowedStatuses'], true)) throw new \InvalidArgumentException('Status ist für diese Abmeldung nicht zulässig.');
-		if ($status !== 'ENTWURF' && $preview['missingFields'] !== []) throw new \InvalidArgumentException('Bitte ergänzen: ' . implode(', ', $preview['missingFields']));
+		if (!in_array($status, $preview['template']['allowedStatuses'], true)) {
+			throw new \InvalidArgumentException('Status ist für diese Abmeldung nicht zulässig.');
+		}
+		if ($status !== 'ENTWURF' && $preview['missingFields'] !== []) {
+			throw new \InvalidArgumentException('Bitte ergänzen: ' . implode(', ', $preview['missingFields']));
+		}
 		$case = $this->cases->getCase($caseId);
 		$payload = $this->payload($case, $preview['template'], $preview['recipient'], $input, $preview['availableChannels']);
-		$payload['attachments'] = $preview['attachments']; $payload['attachmentWarning'] = $preview['attachmentWarning'];
-		$payload['missingFields'] = $preview['missingFields']; $payload['updatedAt'] = date('c');
+		$payload['attachments'] = $preview['attachments'];
+		$payload['attachmentWarning'] = $preview['attachmentWarning'];
+		$payload['missingFields'] = $preview['missingFields'];
+		$payload['updatedAt'] = date('c');
 		if ($id > 0) {
 			$existing = $this->records->get($id);
-			if ($existing['type'] !== 'deregistration' || (int)$existing['caseId'] !== $caseId) throw new \InvalidArgumentException('Abmeldung wurde nicht gefunden.');
-			if (!in_array(strtoupper((string)$existing['status']), ['ENTWURF', 'VORBEREITET'], true)) throw new \InvalidArgumentException('Nach dem Versand kann die Abmeldung nicht mehr bearbeitet werden.');
+			if ($existing['type'] !== 'deregistration' || (int)$existing['caseId'] !== $caseId) {
+				throw new \InvalidArgumentException('Abmeldung wurde nicht gefunden.');
+			}
+			if (!in_array(strtoupper((string)$existing['status']), ['ENTWURF', 'VORBEREITET'], true)) {
+				throw new \InvalidArgumentException('Nach dem Versand kann die Abmeldung nicht mehr bearbeitet werden.');
+			}
 			return $this->records->update($id, $preview['template']['name'], (string)($existing['date'] ?? ''), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
 		}
 		return $this->records->create('deregistration', $preview['template']['name'], date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
@@ -76,22 +96,39 @@ class DeregistrationService {
 
 	public function transition(int $id, string $targetStatus, array $input = []): array {
 		$record = $this->records->get($id);
-		if ($record['type'] !== 'deregistration') throw new \InvalidArgumentException('Eintrag ist keine Abmeldung.');
-		$current = strtoupper((string)$record['status']); $target = strtoupper(trim($targetStatus));
-		if (!in_array($target, self::STATUS_FLOW[$current] ?? [], true)) throw new \InvalidArgumentException('Dieser Statuswechsel ist nicht zulässig.');
+		if ($record['type'] !== 'deregistration') {
+			throw new \InvalidArgumentException('Eintrag ist keine Abmeldung.');
+		}
+		$current = strtoupper((string)$record['status']);
+		$target = strtoupper(trim($targetStatus));
+		if (!in_array($target, self::STATUS_FLOW[$current] ?? [], true)) {
+			throw new \InvalidArgumentException('Dieser Statuswechsel ist nicht zulässig.');
+		}
 		$data = array_merge($record['data'], $input);
 		$preview = $this->preview((int)$record['caseId'], $data);
-		if (!in_array($target, $preview['template']['allowedStatuses'], true)) throw new \InvalidArgumentException('Zielstatus ist für diese Vorlage nicht zulässig.');
-		if ($preview['missingFields'] !== []) throw new \InvalidArgumentException('Bitte ergänzen: ' . implode(', ', $preview['missingFields']));
+		if (!in_array($target, $preview['template']['allowedStatuses'], true)) {
+			throw new \InvalidArgumentException('Zielstatus ist für diese Vorlage nicht zulässig.');
+		}
+		if ($preview['missingFields'] !== []) {
+			throw new \InvalidArgumentException('Bitte ergänzen: ' . implode(', ', $preview['missingFields']));
+		}
 		if ($target === 'VERSENDET') {
 			$data['sentAt'] = trim((string)($data['sentAt'] ?? '')) ?: date('c');
-			if (trim((string)($data['evidenceNote'] ?? '')) === '' && trim((string)($data['evidenceDocumentPath'] ?? '')) === '') throw new \InvalidArgumentException('Für den Versand ist ein Nachweis oder eine Notiz erforderlich.');
+			if (trim((string)($data['evidenceNote'] ?? '')) === '' && trim((string)($data['evidenceDocumentPath'] ?? '')) === '') {
+				throw new \InvalidArgumentException('Für den Versand ist ein Nachweis oder eine Notiz erforderlich.');
+			}
 		}
-		if ($target === 'BESTAETIGT') $data['confirmedAt'] = trim((string)($data['confirmedAt'] ?? '')) ?: date('c');
-		if ($target === 'ERLEDIGT') $data['completedAt'] = date('c');
+		if ($target === 'BESTAETIGT') {
+			$data['confirmedAt'] = trim((string)($data['confirmedAt'] ?? '')) ?: date('c');
+		}
+		if ($target === 'ERLEDIGT') {
+			$data['completedAt'] = date('c');
+		}
 		$updated = $this->records->update($id, $record['title'], (string)$record['date'], $target, json_encode($data, JSON_THROW_ON_ERROR), (int)$record['caseId']);
 		$this->records->create('activity', 'Abmeldung: ' . $record['title'], date('c'), $target, json_encode(['deregistrationId' => $id, 'from' => $current, 'to' => $target], JSON_THROW_ON_ERROR), (int)$record['caseId']);
-		if ($target === 'VERSENDET') $this->createFollowUp($updated);
+		if ($target === 'VERSENDET') {
+			$this->createFollowUp($updated);
+		}
 		return $updated;
 	}
 
@@ -102,8 +139,12 @@ class DeregistrationService {
 	 */
 	public function confirmReceipt(int $id, array $evidence): array {
 		$record = $this->records->get($id);
-		if ($record['type'] !== 'deregistration') throw new \InvalidArgumentException('Eintrag ist keine Abmeldung.');
-		if (strtoupper((string)$record['status']) !== 'VERSENDET') throw new \InvalidArgumentException('Nur versendete Abmeldungen lassen sich mit einer Rückmeldung bestätigen.');
+		if ($record['type'] !== 'deregistration') {
+			throw new \InvalidArgumentException('Eintrag ist keine Abmeldung.');
+		}
+		if (strtoupper((string)$record['status']) !== 'VERSENDET') {
+			throw new \InvalidArgumentException('Nur versendete Abmeldungen lassen sich mit einer Rückmeldung bestätigen.');
+		}
 		$data = array_merge($record['data'], array_intersect_key($evidence, array_flip(['confirmationRecordId', 'confirmationFileId', 'confirmationPath', 'confirmationSource'])));
 		$data['confirmedAt'] = date('c');
 		$updated = $this->records->update($id, $record['title'], (string)$record['date'], 'BESTAETIGT', json_encode($data, JSON_THROW_ON_ERROR), (int)$record['caseId']);
@@ -113,34 +154,55 @@ class DeregistrationService {
 
 	private function createFollowUp(array $record): void {
 		$days = (int)($record['data']['followUpDays'] ?? 0);
-		if ($days <= 0) return;
-		foreach ($this->records->list('task', (int)$record['caseId']) as $task) if ((int)($task['data']['deregistrationId'] ?? 0) === (int)$record['id']) return;
+		if ($days <= 0) {
+			return;
+		}
+		foreach ($this->records->list('task', (int)$record['caseId']) as $task) {
+			if ((int)($task['data']['deregistrationId'] ?? 0) === (int)$record['id']) {
+				return;
+			}
+		}
 		$due = (new \DateTimeImmutable('today'))->modify('+' . $days . ' days')->format('Y-m-d\T09:00');
 		$this->groupware->createTask('Rückmeldung prüfen: ' . $record['title'], $due, 'OFFEN', json_encode(['deregistrationId' => $record['id'], 'priority' => 'NORMAL'], JSON_THROW_ON_ERROR), (int)$record['caseId']);
 	}
 
 	private function template(string $key): array {
 		$key = strtoupper(trim($key));
-		foreach ($this->configuration->deregistrations() as $template) if ($template['key'] === $key && $template['active']) return $template;
+		foreach ($this->configuration->deregistrations() as $template) {
+			if ($template['key'] === $key && $template['active']) {
+				return $template;
+			}
+		}
 		throw new \InvalidArgumentException('Abmeldungsvorlage wurde nicht gefunden.');
 	}
 
 	private function availableChannels(array $template, ?array $contact): array {
-		if ($contact === null) return [];
-		$data = $contact['data'] ?? []; $available = [];
-		if (trim((string)($data['email'] ?? '')) !== '') $available[] = 'EMAIL';
-		if (trim((string)($data['address'] ?? $data['street'] ?? '')) !== '') $available[] = 'POST';
-		if (trim((string)($data['url'] ?? '')) !== '') $available[] = 'PORTAL';
-		if (trim((string)($data['phone'] ?? '')) !== '') $available[] = 'TELEFON';
+		if ($contact === null) {
+			return [];
+		}
+		$data = $contact['data'] ?? [];
+		$available = [];
+		if (trim((string)($data['email'] ?? '')) !== '') {
+			$available[] = 'EMAIL';
+		}
+		if (trim((string)($data['address'] ?? $data['street'] ?? '')) !== '') {
+			$available[] = 'POST';
+		}
+		if (trim((string)($data['url'] ?? '')) !== '') {
+			$available[] = 'PORTAL';
+		}
+		if (trim((string)($data['phone'] ?? '')) !== '') {
+			$available[] = 'TELEFON';
+		}
 		return array_values(array_intersect($template['deliveryChannels'], $available));
 	}
 
 	private function attachmentDocuments(array $case): array {
 		$relevant = array_filter(
 			$this->caseFiles->attachmentFiles($case),
-			static fn(array $item): bool => in_array((string)($item['documentType'] ?? ''), self::ATTACHMENT_RELEVANT_DOCUMENT_TYPES, true),
+			static fn (array $item): bool => in_array((string)($item['documentType'] ?? ''), self::ATTACHMENT_RELEVANT_DOCUMENT_TYPES, true),
 		);
-		return array_map(static fn(array $item): array => [
+		return array_map(static fn (array $item): array => [
 			'id' => (int)$item['fileId'],
 			'fileId' => (int)$item['fileId'],
 			'recordId' => (int)($item['recordId'] ?? 0),
@@ -159,10 +221,19 @@ class DeregistrationService {
 			$selectedIds[] = is_array($value) ? (int)($value['fileId'] ?? $value['id'] ?? $value['recordId'] ?? 0) : (int)$value;
 		}
 		$ids = array_fill_keys(array_filter($selectedIds), true);
-		return array_values(array_filter($documents, static fn(array $item): bool => isset($ids[(int)$item['fileId']]) || ((int)$item['recordId'] > 0 && isset($ids[(int)$item['recordId']]))));
+		return array_values(array_filter($documents, static fn (array $item): bool => isset($ids[(int)$item['fileId']]) || ((int)$item['recordId'] > 0 && isset($ids[(int)$item['recordId']]))));
 	}
-	private function isDeathCertificate(array $item): bool { $haystack=mb_strtolower((string)($item['title']??'').' '.(string)($item['documentType']??'').' '.(string)($item['path']??'')); return str_contains($haystack,'sterbeurkunde') || str_contains($haystack,'sterbeurk'); }
-	private function branch(string $key): array { foreach($this->configuration->branches() as $branch) if((string)$branch['key']===$key)return $branch; return []; }
+	private function isDeathCertificate(array $item): bool {
+		$haystack = mb_strtolower((string)($item['title'] ?? '') . ' ' . (string)($item['documentType'] ?? '') . ' ' . (string)($item['path'] ?? ''));
+		return str_contains($haystack, 'sterbeurkunde') || str_contains($haystack, 'sterbeurk');
+	}
+	private function branch(string $key): array {
+		foreach ($this->configuration->branches() as $branch) {
+			if ((string)$branch['key'] === $key) {
+				return $branch;
+			}
+		} return [];
+	}
 
 	/**
 	 * Befund (Abmeldungen-Test 2026-09-22, Kundenentscheidung 2026-09-22 "bitte serverseitig
@@ -182,6 +253,10 @@ class DeregistrationService {
 	private function payload(array $case, array $template, ?array $contact, array $input, array $channels): array {
 		$m = $case['masterData'] ?? [];
 		$values = ['{{case.number}}' => (string)$case['caseNumber'], '{{case.first_name}}' => (string)$case['firstName'], '{{case.last_name}}' => (string)$case['lastName'], '{{case.date_of_death}}' => (string)($m['date_of_death'] ?? $case['dateOfDeath'] ?? ''), '{{case.pension_number}}' => (string)($input['pensionNumber'] ?? $m['pension_insurance_number'] ?? ''), '{{advance.application}}' => (string)($input['advanceApplication'] ?? 'NEIN')];
+		// 0.89.7 (Schritt D): Sterbefallmeldung an Treuhand bzw. Sterbegeldversicherung – Geburtsdatum und Bankverbindung der Niederlassung für die Auszahlung.
+		$branch = $this->branch((string)($case['branch'] ?? $m['branch'] ?? ''));
+		$values['{{case.date_of_birth}}'] = (string)($m['date_of_birth'] ?? '');
+		$values['{{branch.bank_account}}'] = trim(implode(', ', array_filter([(string)($branch['accountHolder'] ?? ''), (string)($branch['bankName'] ?? ''), ($branch['iban'] ?? '') !== '' ? 'IBAN ' . (string)$branch['iban'] : '', ($branch['bic'] ?? '') !== '' ? 'BIC ' . (string)$branch['bic'] : ''])));
 		// Befund (Abmeldungen-Test 2026-09-22, Kundenwunsch "bitte Eingabefeld einbauen"): Vorlagen
 		// können optional EIN generisches, je Abmeldung (nicht je Fall!) erfasstes Referenzfeld
 		// deklarieren (resources/deregistration-templates.json, "referenceField"). Das erlaubt pro
@@ -192,7 +267,9 @@ class DeregistrationService {
 		// Abmeldung automatisch ihre eigene, unabhängige Referenznummer.
 		$referenceFieldKey = (string)($template['referenceField']['field'] ?? '');
 		$referenceNumber = trim((string)($input['referenceNumber'] ?? ''));
-		if ($referenceFieldKey !== '') $values['{{' . $referenceFieldKey . '}}'] = $referenceNumber;
+		if ($referenceFieldKey !== '') {
+			$values['{{' . $referenceFieldKey . '}}'] = $referenceNumber;
+		}
 		$subjectInput = trim((string)($input['subject'] ?? ''));
 		$subject = strtr($subjectInput !== '' ? $subjectInput : (string)$template['subjectTemplate'], $values);
 		$bodyInput = trim((string)($input['body'] ?? ''));
@@ -201,7 +278,8 @@ class DeregistrationService {
 	}
 
 	private function missing(array $case, array $template, ?array $contact, string $channel, array $payload): array {
-		$m = $case['masterData'] ?? []; $missing = [];
+		$m = $case['masterData'] ?? [];
+		$missing = [];
 		// Befund (Abmeldungen-Test 2026-09-22): das generische Referenzfeld (siehe payload()) wird
 		// unter dem festen Formularfeldnamen "referenceNumber" erfasst, nicht unter dem
 		// vorlagenspezifischen Platzhalter-Feldnamen selbst (z. B. "case.broadcast_contribution_number") -
@@ -218,9 +296,26 @@ class DeregistrationService {
 					? trim((string)($payload['referenceNumber'] ?? '')) !== ''
 					: trim((string)($payload[$field] ?? '')) !== '',
 			};
-			if (!$present) $missing[] = $field;
+			if (!$present) {
+				$missing[] = $this->fieldLabel($field, $template);
+			}
 		}
-		if ($contact !== null && $template['contactCategory'] !== '' && !str_contains(mb_strtolower((string)($contact['data']['categories'] ?? '')), mb_strtolower((string)$template['contactCategory']))) $missing[] = 'Kontaktgruppe ' . $template['contactCategory'];
+		if ($contact !== null && $template['contactCategory'] !== '' && !str_contains(mb_strtolower((string)($contact['data']['categories'] ?? '')), mb_strtolower((string)$template['contactCategory']))) {
+			$missing[] = 'Kontaktgruppe „' . $template['contactCategory'] . '“ beim Empfänger (im Adressbuch beim Kontakt unter „Gruppen“ ergänzen)';
+		}
 		return array_values(array_unique($missing));
+	}
+
+	/** 0.89.10: Bezeichnung statt technischem Feldschlüssel in „Bitte ergänzen: …“. */
+	private function fieldLabel(string $field, array $template): string {
+		$labels = [
+			'case.first_name' => 'Vorname der verstorbenen Person', 'case.last_name' => 'Nachname der verstorbenen Person',
+			'case.date_of_death' => 'Sterbedatum', 'case.pension_number' => 'Rentennummer',
+			'contact' => 'Empfänger (Kontakt)', 'delivery_channel' => 'Versandweg',
+		];
+		if ($field === (string)($template['referenceField']['field'] ?? '')) {
+			return (string)($template['referenceField']['label'] ?? 'Referenznummer');
+		}
+		return $labels[$field] ?? $field;
 	}
 }

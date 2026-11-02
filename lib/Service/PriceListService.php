@@ -16,61 +16,88 @@ use OCP\IUserSession;
 class PriceListService {
 	public const STANDARD = 'STANDARD';
 
-	public function __construct(private IDBConnection $db, private IUserSession $userSession, private ConfigurationService $configuration) {}
+	public function __construct(
+		private IDBConnection $db,
+		private IUserSession $userSession,
+		private ConfigurationService $configuration,
+	) {
+	}
 
 	public function standardListId(): int {
 		$query = $this->db->getQueryBuilder();
 		$id = $query->select('id')->from('bestatter_price_lists')->where($query->expr()->eq('list_key', $query->createNamedParameter(self::STANDARD)))->executeQuery()->fetchOne();
-		if ($id !== false) return (int)$id;
+		if ($id !== false) {
+			return (int)$id;
+		}
 		return $this->insertList(self::STANDARD, 'Standardpreisliste', null);
 	}
 
 	public function lists(): array {
 		$this->standardListId();
 		$branches = [];
-		foreach ($this->configuration->branches() as $branch) $branches[(string)$branch['key']] = (string)$branch['name'];
+		foreach ($this->configuration->branches() as $branch) {
+			$branches[(string)$branch['key']] = (string)$branch['name'];
+		}
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_price_lists')->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
 		$counts = [];
 		$count = $this->db->getQueryBuilder();
-		foreach ($count->select('price_list_id')->selectAlias($count->func()->count('*'), 'items')->from('bestatter_price_list_items')->groupBy('price_list_id')->executeQuery()->fetchAllAssociative() as $row) $counts[(int)$row['price_list_id']] = (int)$row['items'];
-		$lists = array_map(static fn(array $row): array => [
+		foreach ($count->select('price_list_id')->selectAlias($count->func()->count('*'), 'items')->from('bestatter_price_list_items')->groupBy('price_list_id')->executeQuery()->fetchAllAssociative() as $row) {
+			$counts[(int)$row['price_list_id']] = (int)$row['items'];
+		}
+		$lists = array_map(static fn (array $row): array => [
 			'id' => (int)$row['id'], 'key' => (string)$row['list_key'], 'name' => (string)$row['name'],
 			'branchKey' => $row['branch_key'] !== null ? (string)$row['branch_key'] : null,
 			'branchName' => $row['branch_key'] !== null ? ($branches[(string)$row['branch_key']] ?? (string)$row['branch_key']) : '',
 			'standard' => (string)$row['list_key'] === self::STANDARD, 'active' => $row['active'] === null ? true : (bool)$row['active'],
 			'itemCount' => $counts[(int)$row['id']] ?? 0,
 		], $rows);
-		usort($lists, static fn(array $left, array $right): int => [(int)!$left['standard'], $left['name']] <=> [(int)!$right['standard'], $right['name']]);
+		usort($lists, static fn (array $left, array $right): int => [(int)!$left['standard'], $left['name']] <=> [(int)!$right['standard'], $right['name']]);
 		return $lists;
 	}
 
 	public function createBranchList(string $branchKey, string $name = ''): array {
 		$branch = $this->configuration->branchByKey($branchKey);
-		if ($branch === null) throw new \InvalidArgumentException('Die Niederlassung wurde nicht gefunden.');
+		if ($branch === null) {
+			throw new \InvalidArgumentException('Die Niederlassung wurde nicht gefunden.');
+		}
 		$key = 'NL-' . strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$branch['key']) ?: (string)$branch['id']);
 		$query = $this->db->getQueryBuilder();
-		if ($query->select('id')->from('bestatter_price_lists')->where($query->expr()->eq('branch_key', $query->createNamedParameter((string)$branch['key'])))->executeQuery()->fetchOne() !== false) throw new \InvalidArgumentException('Für diese Niederlassung besteht bereits eine Preisliste.');
+		if ($query->select('id')->from('bestatter_price_lists')->where($query->expr()->eq('branch_key', $query->createNamedParameter((string)$branch['key'])))->executeQuery()->fetchOne() !== false) {
+			throw new \InvalidArgumentException('Für diese Niederlassung besteht bereits eine Preisliste.');
+		}
 		$id = $this->insertList(mb_substr($key, 0, 40), trim($name) !== '' ? mb_substr(trim($name), 0, 150) : 'Preisliste ' . (string)$branch['name'], (string)$branch['key']);
-		foreach ($this->lists() as $list) if ($list['id'] === $id) return $list;
+		foreach ($this->lists() as $list) {
+			if ($list['id'] === $id) {
+				return $list;
+			}
+		}
 		throw new \RuntimeException('Die Preisliste konnte nicht gelesen werden.');
 	}
 
 	public function updateList(int $id, array $data): array {
 		$list = $this->list($id);
 		$name = trim((string)($data['name'] ?? $list['name']));
-		if ($name === '' || mb_strlen($name) > 150) throw new \InvalidArgumentException('Bitte eine Bezeichnung der Preisliste angeben.');
+		if ($name === '' || mb_strlen($name) > 150) {
+			throw new \InvalidArgumentException('Bitte eine Bezeichnung der Preisliste angeben.');
+		}
 		$active = $list['list_key'] === self::STANDARD ? true : (filter_var($data['active'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true);
 		$update = $this->db->getQueryBuilder();
 		$update->update('bestatter_price_lists')->set('name', $update->createNamedParameter($name))->set('active', $update->createNamedParameter($active, IQueryBuilder::PARAM_BOOL))
 			->set('updated_at', $update->createNamedParameter(date('c')))->where($update->expr()->eq('id', $update->createNamedParameter($id)))->executeStatement();
-		foreach ($this->lists() as $entry) if ($entry['id'] === $id) return $entry;
+		foreach ($this->lists() as $entry) {
+			if ($entry['id'] === $id) {
+				return $entry;
+			}
+		}
 		throw new \RuntimeException('Die Preisliste konnte nicht gelesen werden.');
 	}
 
 	public function deleteList(int $id): void {
 		$list = $this->list($id);
-		if ((string)$list['list_key'] === self::STANDARD) throw new \InvalidArgumentException('Die Standardpreisliste kann nicht gelöscht werden.');
+		if ((string)$list['list_key'] === self::STANDARD) {
+			throw new \InvalidArgumentException('Die Standardpreisliste kann nicht gelöscht werden.');
+		}
 		$delete = $this->db->getQueryBuilder();
 		$delete->delete('bestatter_price_list_items')->where($delete->expr()->eq('price_list_id', $delete->createNamedParameter($id)))->executeStatement();
 		$delete = $this->db->getQueryBuilder();
@@ -85,7 +112,7 @@ class PriceListService {
 			->where($query->expr()->eq('p.price_list_id', $query->createNamedParameter($listId)))
 			->orderBy('a.article_number', 'ASC')->addOrderBy('p.valid_from', 'DESC')->executeQuery()->fetchAllAssociative();
 		$today = date('Y-m-d');
-		return array_map(static fn(array $row): array => [
+		return array_map(static fn (array $row): array => [
 			'id' => (int)$row['id'], 'articleId' => (int)$row['article_id'], 'articleNumber' => (string)$row['article_number'], 'shortName' => (string)$row['short_name'],
 			'priceCents' => (int)$row['price_cents'], 'validFrom' => (string)$row['valid_from'], 'validTo' => $row['valid_to'] !== null ? (string)$row['valid_to'] : null,
 			'current' => (string)$row['valid_from'] <= $today && ($row['valid_to'] === null || (string)$row['valid_to'] >= $today),
@@ -99,10 +126,14 @@ class PriceListService {
 	 */
 	public function setPrice(int $listId, int $articleId, int $priceCents, string $validFrom = '', ?string $validTo = null): void {
 		$this->list($listId);
-		if ($priceCents < 0) throw new \InvalidArgumentException('Der Preis darf nicht negativ sein.');
+		if ($priceCents < 0) {
+			throw new \InvalidArgumentException('Der Preis darf nicht negativ sein.');
+		}
 		$validFrom = $this->date($validFrom !== '' ? $validFrom : date('Y-m-d'), 'Gültig ab');
 		$validTo = $validTo !== null && trim($validTo) !== '' ? $this->date($validTo, 'Gültig bis') : null;
-		if ($validTo !== null && $validTo < $validFrom) throw new \InvalidArgumentException('„Gültig bis“ liegt vor „Gültig ab“.');
+		if ($validTo !== null && $validTo < $validFrom) {
+			throw new \InvalidArgumentException('„Gültig bis“ liegt vor „Gültig ab“.');
+		}
 		// Beenden des bisherigen und Anlegen des neuen Satzes gehören zusammen: entweder beides oder nichts.
 		$this->db->beginTransaction();
 		try {
@@ -129,13 +160,19 @@ class PriceListService {
 	private function writePrice(int $listId, int $articleId, int $priceCents, string $validFrom, ?string $validTo): void {
 		$rows = $this->itemRows($listId, $articleId);
 		$now = date('c');
-		$format = static fn(string $date): string => (new \DateTimeImmutable($date))->format('d.m.Y');
-		$same = null; $previous = null; $next = null;
+		$format = static fn (string $date): string => (new \DateTimeImmutable($date))->format('d.m.Y');
+		$same = null;
+		$previous = null;
+		$next = null;
 		foreach ($rows as $row) {
 			$from = (string)$row['valid_from'];
-			if ($from === $validFrom) $same = $row;
-			elseif ($from < $validFrom) $previous = $row;
-			elseif ($next === null) $next = $row;
+			if ($from === $validFrom) {
+				$same = $row;
+			} elseif ($from < $validFrom) {
+				$previous = $row;
+			} elseif ($next === null) {
+				$next = $row;
+			}
 		}
 		if ($previous !== null) {
 			$previousTo = $previous['valid_to'] !== null ? (string)$previous['valid_to'] : null;
@@ -150,11 +187,16 @@ class PriceListService {
 		}
 		if ($next !== null) {
 			$lastDay = $this->previousDay((string)$next['valid_from']);
-			if ($validTo === null) $validTo = $lastDay;
-			elseif ($validTo > $lastDay) throw new \InvalidArgumentException('„Gültig bis“ ' . $format($validTo) . ' überschneidet sich mit dem geplanten Preis ab ' . $format((string)$next['valid_from']) . '. Bitte „Gültig bis“ leer lassen oder spätestens ' . $format($lastDay) . ' wählen.');
+			if ($validTo === null) {
+				$validTo = $lastDay;
+			} elseif ($validTo > $lastDay) {
+				throw new \InvalidArgumentException('„Gültig bis“ ' . $format($validTo) . ' überschneidet sich mit dem geplanten Preis ab ' . $format((string)$next['valid_from']) . '. Bitte „Gültig bis“ leer lassen oder spätestens ' . $format($lastDay) . ' wählen.');
+			}
 		}
 		if ($same !== null) {
-			if ($validTo === null && $same['valid_to'] !== null && !$this->followsDirectly($rows, $same)) $validTo = (string)$same['valid_to'];
+			if ($validTo === null && $same['valid_to'] !== null && !$this->followsDirectly($rows, $same)) {
+				$validTo = (string)$same['valid_to'];
+			}
 			$this->updateItem((int)$same['id'], ['price_cents' => $priceCents, 'valid_to' => $validTo, 'created_by' => $this->uid()], $now);
 			return;
 		}
@@ -169,8 +211,14 @@ class PriceListService {
 
 	/** Endet der Satz genau am Vortag des nächsten Satzes derselben Liste (automatisch gesetztes Ende)? */
 	private function followsDirectly(array $rows, array $item): bool {
-		if ($item['valid_to'] === null) return false;
-		foreach ($rows as $row) if ((string)$row['valid_from'] > (string)$item['valid_from']) return $this->previousDay((string)$row['valid_from']) === (string)$item['valid_to'];
+		if ($item['valid_to'] === null) {
+			return false;
+		}
+		foreach ($rows as $row) {
+			if ((string)$row['valid_from'] > (string)$item['valid_from']) {
+				return $this->previousDay((string)$row['valid_from']) === (string)$item['valid_to'];
+			}
+		}
 		return false;
 	}
 
@@ -195,17 +243,21 @@ class PriceListService {
 	private function updateItem(int $id, array $values, string $now): void {
 		$update = $this->db->getQueryBuilder();
 		$update->update('bestatter_price_list_items');
-		foreach ($values as $column => $value) $update->set($column, $update->createNamedParameter($value));
+		foreach ($values as $column => $value) {
+			$update->set($column, $update->createNamedParameter($value));
+		}
 		$update->set('updated_at', $update->createNamedParameter($now))->where($update->expr()->eq('id', $update->createNamedParameter($id)))->executeStatement();
 	}
 
 	/** Preise einer Preisliste als CSV (alle Konditionssätze inkl. geplanter und abgelaufener). */
 	public function exportCsv(int $listId): string {
-		$rows = array_map(static fn(array $item): array => [$item['articleNumber'], $item['shortName'], CsvTools::money($item['priceCents']), $item['validFrom'], $item['validTo'] ?? '', ''], $this->items($listId));
+		$rows = array_map(static fn (array $item): array => [$item['articleNumber'], $item['shortName'], CsvTools::money($item['priceCents']), $item['validFrom'], $item['validTo'] ?? '', ''], $this->items($listId));
 		return CsvTools::write(['Artikelnummer', 'Kurztext', 'Preis', 'Gültig ab', 'Gültig bis', 'Löschen'], $rows);
 	}
 
-	public function listName(int $listId): string { return (string)$this->list($listId)['name']; }
+	public function listName(int $listId): string {
+		return (string)$this->list($listId)['name'];
+	}
 
 	/**
 	 * Übernimmt Preise aus einer CSV-Datei. Zeilen ohne „Gültig ab“ gelten ab heute; unveränderte Sätze
@@ -216,33 +268,51 @@ class PriceListService {
 		$this->list($listId);
 		$map = ['artikelnummer' => 'articleNumber', 'articlenumber' => 'articleNumber', 'kurztext' => 'shortName', 'preis' => 'price', 'vk' => 'price', 'preis_netto' => 'price', 'price' => 'price',
 			'gueltig_ab' => 'validFrom', 'validfrom' => 'validFrom', 'gueltig_bis' => 'validTo', 'validto' => 'validTo', 'loeschen' => 'delete', 'delete' => 'delete'];
-		$rows = CsvTools::read($content, static fn(string $header): string => $map[CsvTools::headerKey($header)] ?? $header);
-		if ($rows !== [] && (!array_key_exists('articleNumber', $rows[0]['values']) || !array_key_exists('price', $rows[0]['values']))) throw new \InvalidArgumentException('Die CSV-Datei benötigt die Spalten „Artikelnummer“ und „Preis“.');
+		$rows = CsvTools::read($content, static fn (string $header): string => $map[CsvTools::headerKey($header)] ?? $header);
+		if ($rows !== [] && (!array_key_exists('articleNumber', $rows[0]['values']) || !array_key_exists('price', $rows[0]['values']))) {
+			throw new \InvalidArgumentException('Die CSV-Datei benötigt die Spalten „Artikelnummer“ und „Preis“.');
+		}
 		$articles = [];
 		$query = $this->db->getQueryBuilder();
-		foreach ($query->select('id', 'article_number')->from('bestatter_articles')->executeQuery()->fetchAllAssociative() as $article) $articles[(string)$article['article_number']] = (int)$article['id'];
+		foreach ($query->select('id', 'article_number')->from('bestatter_articles')->executeQuery()->fetchAllAssociative() as $article) {
+			$articles[(string)$article['article_number']] = (int)$article['id'];
+		}
 		$existing = [];
-		foreach ($this->items($listId) as $item) $existing[$item['articleId'] . '|' . $item['validFrom']] = $item;
+		foreach ($this->items($listId) as $item) {
+			$existing[$item['articleId'] . '|' . $item['validFrom']] = $item;
+		}
 		$today = date('Y-m-d');
-		$saved = 0; $unchanged = 0; $deleted = 0;
+		$saved = 0;
+		$unchanged = 0;
+		$deleted = 0;
 		$this->db->beginTransaction();
 		try {
 			foreach ($rows as $row) {
 				$values = $row['values'];
 				$number = trim($values['articleNumber'] ?? '');
 				try {
-					if (!isset($articles[$number])) throw new \InvalidArgumentException('Artikelnummer „' . $number . '“ ist nicht im Leistungskatalog.');
+					if (!isset($articles[$number])) {
+						throw new \InvalidArgumentException('Artikelnummer „' . $number . '“ ist nicht im Leistungskatalog.');
+					}
 					$articleId = $articles[$number];
 					$validFrom = CsvTools::date($values['validFrom'] ?? '', 'Gültig ab') ?: $today;
 					$validTo = CsvTools::date($values['validTo'] ?? '', 'Gültig bis');
 					$current = $existing[$articleId . '|' . $validFrom] ?? null;
 					if (CsvTools::flag($values['delete'] ?? '')) {
-						if ($current !== null) { $this->deleteItem((int)$current['id']); $deleted++; }
+						if ($current !== null) {
+							$this->deleteItem((int)$current['id']);
+							$deleted++;
+						}
 						continue;
 					}
-					if (trim($values['price'] ?? '') === '') throw new \InvalidArgumentException('Bitte einen Preis angeben.');
+					if (trim($values['price'] ?? '') === '') {
+						throw new \InvalidArgumentException('Bitte einen Preis angeben.');
+					}
 					$cents = CsvTools::cents($values['price']);
-					if ($current !== null && (int)$current['priceCents'] === $cents && (string)($current['validTo'] ?? '') === $validTo) { $unchanged++; continue; }
+					if ($current !== null && (int)$current['priceCents'] === $cents && (string)($current['validTo'] ?? '') === $validTo) {
+						$unchanged++;
+						continue;
+					}
 					$this->setPrice($listId, $articleId, $cents, $validFrom, $validTo !== '' ? $validTo : null);
 					$saved++;
 				} catch (\InvalidArgumentException $error) {
@@ -260,14 +330,20 @@ class PriceListService {
 	public function deleteItem(int $itemId): void {
 		$query = $this->db->getQueryBuilder();
 		$item = $query->select('*')->from('bestatter_price_list_items')->where($query->expr()->eq('id', $query->createNamedParameter($itemId)))->executeQuery()->fetchAssociative();
-		if (!$item) throw new \InvalidArgumentException('Der Preis wurde nicht gefunden.');
+		if (!$item) {
+			throw new \InvalidArgumentException('Der Preis wurde nicht gefunden.');
+		}
 		$this->db->beginTransaction();
 		try {
 			$rows = $this->itemRows((int)$item['price_list_id'], (int)$item['article_id']);
-			$previous = null; $next = null;
+			$previous = null;
+			$next = null;
 			foreach ($rows as $row) {
-				if ((string)$row['valid_from'] < (string)$item['valid_from']) $previous = $row;
-				elseif ((string)$row['valid_from'] > (string)$item['valid_from'] && $next === null) $next = $row;
+				if ((string)$row['valid_from'] < (string)$item['valid_from']) {
+					$previous = $row;
+				} elseif ((string)$row['valid_from'] > (string)$item['valid_from'] && $next === null) {
+					$next = $row;
+				}
 			}
 			$delete = $this->db->getQueryBuilder();
 			$delete->delete('bestatter_price_list_items')->where($delete->expr()->eq('id', $delete->createNamedParameter($itemId)))->executeStatement();
@@ -281,7 +357,6 @@ class PriceListService {
 			throw $error;
 		}
 	}
-
 
 	public function deleteArticlePrices(int $articleId): void {
 		$delete = $this->db->getQueryBuilder();
@@ -301,7 +376,9 @@ class PriceListService {
 		if (trim($branchKey) !== '') {
 			$query = $this->db->getQueryBuilder();
 			$row = $query->select('id', 'active')->from('bestatter_price_lists')->where($query->expr()->eq('branch_key', $query->createNamedParameter($branchKey)))->executeQuery()->fetchAssociative();
-			if ($row && ($row['active'] === null || (bool)$row['active'])) $branchList = (int)$row['id'];
+			if ($row && ($row['active'] === null || (bool)$row['active'])) {
+				$branchList = (int)$row['id'];
+			}
 		}
 		$result = [];
 		foreach (array_filter([$standard, $branchList]) as $listId) {
@@ -312,7 +389,9 @@ class PriceListService {
 				->andWhere($query->expr()->lte('i.valid_from', $query->createNamedParameter($date)))
 				->andWhere($query->expr()->orX($query->expr()->isNull('i.valid_to'), $query->expr()->gte('i.valid_to', $query->createNamedParameter($date))))
 				->orderBy('i.valid_from', 'ASC')->executeQuery()->fetchAllAssociative();
-			foreach ($rows as $row) $result[(int)$row['article_id']] = ['cents' => (int)$row['price_cents'], 'listKey' => (string)$row['list_key'], 'validFrom' => (string)$row['valid_from']];
+			foreach ($rows as $row) {
+				$result[(int)$row['article_id']] = ['cents' => (int)$row['price_cents'], 'listKey' => (string)$row['list_key'], 'validFrom' => (string)$row['valid_from']];
+			}
 		}
 		return $result;
 	}
@@ -324,7 +403,9 @@ class PriceListService {
 	private function list(int $id): array {
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('*')->from('bestatter_price_lists')->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeQuery()->fetchAssociative();
-		if (!$row) throw new \InvalidArgumentException('Die Preisliste wurde nicht gefunden.');
+		if (!$row) {
+			throw new \InvalidArgumentException('Die Preisliste wurde nicht gefunden.');
+		}
 		return $row;
 	}
 
@@ -338,7 +419,9 @@ class PriceListService {
 	private function date(string $value, string $label): string {
 		$value = trim($value);
 		$date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
-		if (!$date || $date->format('Y-m-d') !== $value) throw new \InvalidArgumentException($label . ' ist kein gültiges Datum.');
+		if (!$date || $date->format('Y-m-d') !== $value) {
+			throw new \InvalidArgumentException($label . ' ist kein gültiges Datum.');
+		}
 		return $value;
 	}
 
@@ -346,5 +429,7 @@ class PriceListService {
 		return (new \DateTimeImmutable($date))->modify('-1 day')->format('Y-m-d');
 	}
 
-	private function uid(): string { return $this->userSession->getUser()?->getUID() ?? 'system'; }
+	private function uid(): string {
+		return $this->userSession->getUser()?->getUID() ?? 'system';
+	}
 }

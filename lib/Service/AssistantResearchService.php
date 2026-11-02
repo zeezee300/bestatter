@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
+use OCA\Bestatter\AppInfo\Application;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
-use OCA\Bestatter\AppInfo\Application;
 
 /**
  * Privacy-conscious public organisation lookup for the assistant.
@@ -22,7 +22,8 @@ class AssistantResearchService {
 		private IClientService $clients,
 		private IConfig $config,
 		private ContactService $contacts,
-	) {}
+	) {
+	}
 
 	public function searchOrganizations(string $query): array {
 		if (!$this->enabled()) {
@@ -46,14 +47,22 @@ class AssistantResearchService {
 		} catch (\Throwable $error) {
 			throw new \RuntimeException('Die Organisationsrecherche ist derzeit nicht erreichbar.', 0, $error);
 		}
-		if (!is_array($rows)) return [];
+		if (!is_array($rows)) {
+			return [];
+		}
 		$result = [];
 		foreach ($rows as $row) {
-			if (!is_array($row)) continue;
+			if (!is_array($row)) {
+				continue;
+			}
 			$address = is_array($row['address'] ?? null) ? $row['address'] : [];
 			$name = trim((string)($row['name'] ?? $address['office'] ?? $address['amenity'] ?? ''));
-			if ($name === '') $name = trim(explode(',', (string)($row['display_name'] ?? ''), 2)[0]);
-			if ($name === '') continue;
+			if ($name === '') {
+				$name = trim(explode(',', (string)($row['display_name'] ?? ''), 2)[0]);
+			}
+			if ($name === '') {
+				continue;
+			}
 			$streetName = trim((string)($address['road'] ?? $address['pedestrian'] ?? $address['square'] ?? ''));
 			$houseNumber = trim((string)($address['house_number'] ?? ''));
 			$city = trim((string)($address['city'] ?? $address['town'] ?? $address['municipality'] ?? $address['village'] ?? ''));
@@ -87,9 +96,15 @@ class AssistantResearchService {
 	}
 
 	private function categories(string $query): string {
-		if (preg_match('/standesamt/iu', $query)) return 'Standesamt,Behörde';
-		if (preg_match('/friedhof/iu', $query)) return 'Friedhof';
-		if (preg_match('/krematorium/iu', $query)) return 'Krematorium';
+		if (preg_match('/standesamt/iu', $query)) {
+			return 'Standesamt,Behörde';
+		}
+		if (preg_match('/friedhof/iu', $query)) {
+			return 'Friedhof';
+		}
+		if (preg_match('/krematorium/iu', $query)) {
+			return 'Krematorium';
+		}
 		return 'Organisation';
 	}
 }

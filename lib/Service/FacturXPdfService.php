@@ -8,7 +8,6 @@ use OCA\Bestatter\Service\Pdf\PdfDict;
 use OCA\Bestatter\Service\Pdf\PdfDocument;
 use OCA\Bestatter\Service\Pdf\PdfException;
 use OCA\Bestatter\Service\Pdf\PdfName;
-use OCA\Bestatter\Service\Pdf\PdfRaw;
 use OCA\Bestatter\Service\Pdf\PdfRef;
 use OCA\Bestatter\Service\Pdf\PdfString;
 use OCA\Bestatter\Service\Pdf\PdfSyntax;
@@ -35,18 +34,24 @@ class FacturXPdfService {
 	 */
 	public function embed(string $pdf, string $xml, array $meta = []): array {
 		$doc = new PdfDocument($pdf);
-		if ($doc->isEncrypted()) throw new PdfException('Verschlüsselte PDF-Dateien können nicht als ZUGFeRD-Rechnung ausgegeben werden.');
+		if ($doc->isEncrypted()) {
+			throw new PdfException('Verschlüsselte PDF-Dateien können nicht als ZUGFeRD-Rechnung ausgegeben werden.');
+		}
 		$now = $meta['now'] ?? new \DateTimeImmutable('now');
 		$catalog = new PdfDict($doc->catalog()->entries);
 		$rootRef = $doc->trailer()->get('Root');
-		if (!$rootRef instanceof PdfRef) throw new PdfException('Das PDF hat keinen Katalog (/Root).');
+		if (!$rootRef instanceof PdfRef) {
+			throw new PdfException('Das PDF hat keinen Katalog (/Root).');
+		}
 		$source = $this->pdfaIdentification($this->metadataOf($doc, $catalog));
 		$claimPdfa = $source !== null;
 		$conformance = $source !== null ? strtoupper($source['conformance']) : null;
 
 		$next = $doc->size();
 		$objects = [];
-		$reserve = function () use (&$next): int { return $next++; };
+		$reserve = function () use (&$next): int {
+			return $next++;
+		};
 
 		// Attachment: embedded file stream + file specification (PDF/A-3, 6.8).
 		$compressed = (string)gzcompress($xml, 9);
@@ -75,12 +80,14 @@ class FacturXPdfService {
 		$names = $doc->resolve($catalog->get('Names'));
 		$names = $names instanceof PdfDict ? new PdfDict($names->entries) : new PdfDict();
 		foreach ($this->nameTreeLeaves($doc, $names->get('EmbeddedFiles')) as [$key, $value]) {
-			if (strcasecmp($key->text(), self::ATTACHMENT) !== 0) $pairs[] = [$key, $value];
+			if (strcasecmp($key->text(), self::ATTACHMENT) !== 0) {
+				$pairs[] = [$key, $value];
+			}
 		}
 		$pairs[] = [new PdfString(self::ATTACHMENT), $specRef];
-		usort($pairs, static fn(array $a, array $b): int => strcmp($a[0]->bytes, $b[0]->bytes));
+		usort($pairs, static fn (array $a, array $b): int => strcmp($a[0]->bytes, $b[0]->bytes));
 		$treeNum = $reserve();
-		$objects[$treeNum] = PdfSyntax::serialize(new PdfDict(['Names' => array_merge(...array_map(static fn(array $p): array => [$p[0], $p[1]], $pairs))]));
+		$objects[$treeNum] = PdfSyntax::serialize(new PdfDict(['Names' => array_merge(...array_map(static fn (array $p): array => [$p[0], $p[1]], $pairs))]));
 		$names->set('EmbeddedFiles', new PdfRef($treeNum));
 		$catalog->set('Names', $names);
 
@@ -90,7 +97,9 @@ class FacturXPdfService {
 		foreach (is_array($existingAf) ? $existingAf : [] as $entry) {
 			$spec = $doc->resolve($entry);
 			$name = $spec instanceof PdfDict ? ($doc->resolve($spec->get('UF')) ?? $doc->resolve($spec->get('F'))) : null;
-			if ($name instanceof PdfString && strcasecmp($name->text(), self::ATTACHMENT) === 0) continue;
+			if ($name instanceof PdfString && strcasecmp($name->text(), self::ATTACHMENT) === 0) {
+				continue;
+			}
 			$associated[] = $entry;
 		}
 		$associated[] = $specRef;
@@ -113,7 +122,11 @@ class FacturXPdfService {
 		];
 		$created = $this->parsePdfDate($text('CreationDate')) ?? $now;
 		$infoDict = new PdfDict();
-		foreach ($info as $key => $value) if ($value !== '') $infoDict->set($key, PdfString::fromText($value));
+		foreach ($info as $key => $value) {
+			if ($value !== '') {
+				$infoDict->set($key, PdfString::fromText($value));
+			}
+		}
 		$infoDict->set('CreationDate', new PdfString($this->pdfDate($created)));
 		$infoDict->set('ModDate', new PdfString($this->pdfDate($now)));
 		$infoNum = $reserve();
@@ -139,7 +152,9 @@ class FacturXPdfService {
 		}
 		$version = $doc->resolve($catalog->get('Version'));
 		$effective = max((float)$doc->headerVersion(), $version instanceof PdfName ? (float)$version->name : 0.0);
-		if ($effective < 1.7) $catalog->set('Version', new PdfName('1.7'));
+		if ($effective < 1.7) {
+			$catalog->set('Version', new PdfName('1.7'));
+		}
 		$objects[$rootRef->num] = PdfSyntax::serialize($catalog);
 		$generations = [$rootRef->num => $rootRef->gen];
 
@@ -169,16 +184,24 @@ class FacturXPdfService {
 		$inNameTree = false;
 		$names = $doc->resolve($catalog->get('Names'));
 		foreach ($this->nameTreeLeaves($doc, $names instanceof PdfDict ? $names->get('EmbeddedFiles') : null) as [$key, $value]) {
-			if (strcasecmp($key->text(), self::ATTACHMENT) === 0) { $spec = $doc->resolve($value); $inNameTree = true; }
+			if (strcasecmp($key->text(), self::ATTACHMENT) === 0) {
+				$spec = $doc->resolve($value);
+				$inNameTree = true;
+			}
 		}
 		$inAf = false;
 		$af = $doc->resolve($catalog->get('AF'));
 		foreach (is_array($af) ? $af : [] as $entry) {
 			$candidate = $doc->resolve($entry);
 			$name = $candidate instanceof PdfDict ? $doc->resolve($candidate->get('UF') ?? $candidate->get('F')) : null;
-			if ($name instanceof PdfString && strcasecmp($name->text(), self::ATTACHMENT) === 0) { $inAf = true; $spec ??= $candidate; }
+			if ($name instanceof PdfString && strcasecmp($name->text(), self::ATTACHMENT) === 0) {
+				$inAf = true;
+				$spec ??= $candidate;
+			}
 		}
-		$xml = null; $mime = ''; $relationship = '';
+		$xml = null;
+		$mime = '';
+		$relationship = '';
 		if ($spec instanceof PdfDict) {
 			$relationship = $spec->get('AFRelationship') instanceof PdfName ? $spec->get('AFRelationship')->name : '';
 			$ef = $doc->resolve($spec->get('EF'));
@@ -188,31 +211,53 @@ class FacturXPdfService {
 				$fileDict = $doc->resolve($fileRef);
 				$mime = $fileDict instanceof PdfDict && $fileDict->get('Subtype') instanceof PdfName ? $fileDict->get('Subtype')->name : '';
 				$params = $fileDict instanceof PdfDict ? $doc->resolve($fileDict->get('Params')) : null;
-				if (!$params instanceof PdfDict || !$params->has('ModDate')) $problems[] = 'Änderungsdatum der Dateianlage fehlt.';
+				if (!$params instanceof PdfDict || !$params->has('ModDate')) {
+					$problems[] = 'Änderungsdatum der Dateianlage fehlt.';
+				}
 			}
 		}
-		if ($xml === null) $problems[] = 'Die Dateianlage factur-x.xml fehlt.';
-		if (!$inAf) $problems[] = 'factur-x.xml ist nicht als zugehörige Datei (/AF) des Dokuments eingetragen.';
-		if (!$inNameTree) $problems[] = 'factur-x.xml fehlt im Verzeichnis der Dateianlagen.';
-		if ($xml !== null && !in_array($relationship, ['Alternative', 'Data', 'Source'], true)) $problems[] = 'AFRelationship der Dateianlage ist ungültig.';
-		if ($xml !== null && $mime !== 'text/xml') $problems[] = 'MIME-Typ der Dateianlage ist nicht text/xml.';
+		if ($xml === null) {
+			$problems[] = 'Die Dateianlage factur-x.xml fehlt.';
+		}
+		if (!$inAf) {
+			$problems[] = 'factur-x.xml ist nicht als zugehörige Datei (/AF) des Dokuments eingetragen.';
+		}
+		if (!$inNameTree) {
+			$problems[] = 'factur-x.xml fehlt im Verzeichnis der Dateianlagen.';
+		}
+		if ($xml !== null && !in_array($relationship, ['Alternative', 'Data', 'Source'], true)) {
+			$problems[] = 'AFRelationship der Dateianlage ist ungültig.';
+		}
+		if ($xml !== null && $mime !== 'text/xml') {
+			$problems[] = 'MIME-Typ der Dateianlage ist nicht text/xml.';
+		}
 		$metadata = $this->metadataOf($doc, $catalog);
 		$identification = $this->pdfaIdentification($metadata);
 		$fx = [];
 		foreach (['DocumentType', 'DocumentFileName', 'Version', 'ConformanceLevel'] as $property) {
-			if ($metadata !== null && preg_match('/<fx:' . $property . '>([^<]*)<\/fx:' . $property . '>|fx:' . $property . '="([^"]*)"/', $metadata, $m) === 1) $fx[$property] = html_entity_decode($m[1] !== '' ? $m[1] : ($m[2] ?? ''), ENT_XML1);
+			if ($metadata !== null && preg_match('/<fx:' . $property . '>([^<]*)<\/fx:' . $property . '>|fx:' . $property . '="([^"]*)"/', $metadata, $m) === 1) {
+				$fx[$property] = html_entity_decode($m[1] !== '' ? $m[1] : ($m[2] ?? ''), ENT_XML1);
+			}
 		}
-		if (($fx['DocumentFileName'] ?? '') !== self::ATTACHMENT) $problems[] = 'ZUGFeRD-Metadaten (fx:DocumentFileName) fehlen.';
+		if (($fx['DocumentFileName'] ?? '') !== self::ATTACHMENT) {
+			$problems[] = 'ZUGFeRD-Metadaten (fx:DocumentFileName) fehlen.';
+		}
 		$infoMatches = true;
 		$info = $doc->resolve($doc->trailer()->get('Info'));
 		if ($info instanceof PdfDict && $metadata !== null) {
 			$producer = $doc->resolve($info->get('Producer'));
-			if ($producer instanceof PdfString && !str_contains($metadata, htmlspecialchars($producer->text(), ENT_XML1))) $infoMatches = false;
+			if ($producer instanceof PdfString && !str_contains($metadata, htmlspecialchars($producer->text(), ENT_XML1))) {
+				$infoMatches = false;
+			}
 			$modified = $doc->resolve($info->get('ModDate'));
 			$parsed = $modified instanceof PdfString ? $this->parsePdfDate($modified->text()) : null;
-			if ($parsed !== null && !str_contains($metadata, '<xmp:ModifyDate>' . $parsed->format('Y-m-d\TH:i:sP') . '</xmp:ModifyDate>')) $infoMatches = false;
+			if ($parsed !== null && !str_contains($metadata, '<xmp:ModifyDate>' . $parsed->format('Y-m-d\TH:i:sP') . '</xmp:ModifyDate>')) {
+				$infoMatches = false;
+			}
 		}
-		if (!$infoMatches) $problems[] = 'Dokumentinformationen und XMP-Metadaten stimmen nicht überein.';
+		if (!$infoMatches) {
+			$problems[] = 'Dokumentinformationen und XMP-Metadaten stimmen nicht überein.';
+		}
 		return [
 			'xml' => $xml, 'mimeType' => $mime, 'afRelationship' => $relationship, 'inCatalogAf' => $inAf, 'inNameTree' => $inNameTree,
 			'pdfaPart' => $identification['part'] ?? null, 'pdfaConformance' => $identification['conformance'] ?? null,
@@ -233,7 +278,9 @@ class FacturXPdfService {
 	/** @param array<int,string> $objects @param array<int,int> $generations */
 	private function appendUpdate(PdfDocument $doc, string $pdf, array $objects, array $generations, int $next, PdfRef $root, PdfRef $info): string {
 		$out = $pdf;
-		if (!str_ends_with($out, "\n") && !str_ends_with($out, "\r")) $out .= "\n";
+		if (!str_ends_with($out, "\n") && !str_ends_with($out, "\r")) {
+			$out .= "\n";
+		}
 		$offsets = [];
 		ksort($objects);
 		foreach ($objects as $num => $body) {
@@ -253,8 +300,11 @@ class FacturXPdfService {
 			$rows = '';
 			$index = [];
 			foreach ($this->ranges(array_keys($offsets)) as [$start, $count]) {
-				$index[] = $start; $index[] = $count;
-				for ($num = $start; $num < $start + $count; $num++) $rows .= chr(1) . pack('N', $offsets[$num]) . pack('n', $generations[$num] ?? 0);
+				$index[] = $start;
+				$index[] = $count;
+				for ($num = $start; $num < $start + $count; $num++) {
+					$rows .= chr(1) . pack('N', $offsets[$num]) . pack('n', $generations[$num] ?? 0);
+				}
 			}
 			$dict = new PdfDict(['Type' => new PdfName('XRef')] + $trailer->entries + ['W' => [1, 4, 2], 'Index' => $index, 'Length' => strlen($rows)]);
 			$out .= $xrefNum . " 0 obj\n" . PdfSyntax::serialize($dict) . "\nstream\n" . $rows . "\nendstream\nendobj\n";
@@ -264,7 +314,9 @@ class FacturXPdfService {
 		$out .= "xref\n";
 		foreach ($this->ranges(array_keys($offsets)) as [$start, $count]) {
 			$out .= $start . ' ' . $count . "\n";
-			for ($num = $start; $num < $start + $count; $num++) $out .= sprintf("%010d %05d n\r\n", $offsets[$num], $generations[$num] ?? 0);
+			for ($num = $start; $num < $start + $count; $num++) {
+				$out .= sprintf("%010d %05d n\r\n", $offsets[$num], $generations[$num] ?? 0);
+			}
 		}
 		$out .= "trailer\n" . PdfSyntax::serialize($trailer) . "\nstartxref\n" . $xrefOffset . "\n%%EOF\n";
 		return $out;
@@ -276,8 +328,11 @@ class FacturXPdfService {
 		$ranges = [];
 		foreach ($numbers as $num) {
 			$last = count($ranges) - 1;
-			if ($last >= 0 && $ranges[$last][0] + $ranges[$last][1] === $num) $ranges[$last][1]++;
-			else $ranges[] = [$num, 1];
+			if ($last >= 0 && $ranges[$last][0] + $ranges[$last][1] === $num) {
+				$ranges[$last][1]++;
+			} else {
+				$ranges[] = [$num, 1];
+			}
 		}
 		return $ranges;
 	}
@@ -285,23 +340,31 @@ class FacturXPdfService {
 	/** @return list<array{0:PdfString,1:mixed}> */
 	private function nameTreeLeaves(PdfDocument $doc, mixed $node, int $depth = 0): array {
 		$node = $doc->resolve($node);
-		if (!$node instanceof PdfDict || $depth > 32) return [];
+		if (!$node instanceof PdfDict || $depth > 32) {
+			return [];
+		}
 		$leaves = [];
 		$names = $doc->resolve($node->get('Names'));
 		if (is_array($names)) {
 			for ($i = 0; $i + 1 < count($names); $i += 2) {
 				$key = $doc->resolve($names[$i]);
-				if ($key instanceof PdfString) $leaves[] = [$key, $names[$i + 1]];
+				if ($key instanceof PdfString) {
+					$leaves[] = [$key, $names[$i + 1]];
+				}
 			}
 		}
 		$kids = $doc->resolve($node->get('Kids'));
-		foreach (is_array($kids) ? $kids : [] as $kid) array_push($leaves, ...$this->nameTreeLeaves($doc, $kid, $depth + 1));
+		foreach (is_array($kids) ? $kids : [] as $kid) {
+			array_push($leaves, ...$this->nameTreeLeaves($doc, $kid, $depth + 1));
+		}
 		return $leaves;
 	}
 
 	private function metadataOf(PdfDocument $doc, PdfDict $catalog): ?string {
 		$ref = $catalog->get('Metadata');
-		if (!$ref instanceof PdfRef) return null;
+		if (!$ref instanceof PdfRef) {
+			return null;
+		}
 		try {
 			return $doc->streamOf($ref);
 		} catch (PdfException) {
@@ -311,8 +374,12 @@ class FacturXPdfService {
 
 	/** @return ?array{part:int,conformance:string} */
 	private function pdfaIdentification(?string $xmp): ?array {
-		if ($xmp === null) return null;
-		if (preg_match('/pdfaid:part\s*=\s*["\'](\d)["\']|<pdfaid:part>\s*(\d)\s*<\/pdfaid:part>/', $xmp, $part) !== 1) return null;
+		if ($xmp === null) {
+			return null;
+		}
+		if (preg_match('/pdfaid:part\s*=\s*["\'](\d)["\']|<pdfaid:part>\s*(\d)\s*<\/pdfaid:part>/', $xmp, $part) !== 1) {
+			return null;
+		}
 		$conformance = preg_match('/pdfaid:conformance\s*=\s*["\']([A-Za-z])["\']|<pdfaid:conformance>\s*([A-Za-z])\s*<\/pdfaid:conformance>/', $xmp, $c) === 1 ? ($c[1] !== '' ? $c[1] : ($c[2] ?? 'B')) : 'B';
 		return ['part' => (int)($part[1] !== '' ? $part[1] : ($part[2] ?? 0)), 'conformance' => strtoupper($conformance)];
 	}
@@ -321,30 +388,42 @@ class FacturXPdfService {
 		$intents = $doc->resolve($catalog->get('OutputIntents'));
 		foreach (is_array($intents) ? $intents : [] as $intent) {
 			$intent = $doc->resolve($intent);
-			if ($intent instanceof PdfDict && $intent->get('S') instanceof PdfName && $intent->get('S')->name === 'GTS_PDFA1') return true;
+			if ($intent instanceof PdfDict && $intent->get('S') instanceof PdfName && $intent->get('S')->name === 'GTS_PDFA1') {
+				return true;
+			}
 		}
 		return false;
 	}
 
 	/** @param array<string,string> $info */
 	private function xmp(array $info, \DateTimeImmutable $created, \DateTimeImmutable $modified, ?string $pdfaConformance, string $documentType, string $conformanceLevel): string {
-		$e = static fn(string $value): string => htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+		$e = static fn (string $value): string => htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 		$descriptions = [];
 		if ($pdfaConformance !== null) {
 			$descriptions[] = '<rdf:Description rdf:about="" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"><pdfaid:part>3</pdfaid:part><pdfaid:conformance>' . $e($pdfaConformance) . '</pdfaid:conformance></rdf:Description>';
 		}
 		$dc = '';
-		if ($info['Title'] !== '') $dc .= '<dc:title><rdf:Alt><rdf:li xml:lang="x-default">' . $e($info['Title']) . '</rdf:li></rdf:Alt></dc:title>';
-		if ($info['Author'] !== '') $dc .= '<dc:creator><rdf:Seq><rdf:li>' . $e($info['Author']) . '</rdf:li></rdf:Seq></dc:creator>';
-		if ($info['Subject'] !== '') $dc .= '<dc:description><rdf:Alt><rdf:li xml:lang="x-default">' . $e($info['Subject']) . '</rdf:li></rdf:Alt></dc:description>';
+		if ($info['Title'] !== '') {
+			$dc .= '<dc:title><rdf:Alt><rdf:li xml:lang="x-default">' . $e($info['Title']) . '</rdf:li></rdf:Alt></dc:title>';
+		}
+		if ($info['Author'] !== '') {
+			$dc .= '<dc:creator><rdf:Seq><rdf:li>' . $e($info['Author']) . '</rdf:li></rdf:Seq></dc:creator>';
+		}
+		if ($info['Subject'] !== '') {
+			$dc .= '<dc:description><rdf:Alt><rdf:li xml:lang="x-default">' . $e($info['Subject']) . '</rdf:li></rdf:Alt></dc:description>';
+		}
 		$descriptions[] = '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:format>application/pdf</dc:format>' . $dc . '</rdf:Description>';
 		$xmpBasic = '<xmp:CreateDate>' . $created->format('Y-m-d\TH:i:sP') . '</xmp:CreateDate><xmp:ModifyDate>' . $modified->format('Y-m-d\TH:i:sP') . '</xmp:ModifyDate><xmp:MetadataDate>' . $modified->format('Y-m-d\TH:i:sP') . '</xmp:MetadataDate>';
-		if ($info['Creator'] !== '') $xmpBasic .= '<xmp:CreatorTool>' . $e($info['Creator']) . '</xmp:CreatorTool>';
+		if ($info['Creator'] !== '') {
+			$xmpBasic .= '<xmp:CreatorTool>' . $e($info['Creator']) . '</xmp:CreatorTool>';
+		}
 		$descriptions[] = '<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/">' . $xmpBasic . '</rdf:Description>';
 		$pdf = ($info['Producer'] !== '' ? '<pdf:Producer>' . $e($info['Producer']) . '</pdf:Producer>' : '') . ($info['Keywords'] !== '' ? '<pdf:Keywords>' . $e($info['Keywords']) . '</pdf:Keywords>' : '');
-		if ($pdf !== '') $descriptions[] = '<rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/">' . $pdf . '</rdf:Description>';
+		if ($pdf !== '') {
+			$descriptions[] = '<rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/">' . $pdf . '</rdf:Description>';
+		}
 		$descriptions[] = '<rdf:Description rdf:about="" xmlns:fx="' . self::FX_NAMESPACE . '"><fx:DocumentType>' . $e($documentType) . '</fx:DocumentType><fx:DocumentFileName>' . self::ATTACHMENT . '</fx:DocumentFileName><fx:Version>1.0</fx:Version><fx:ConformanceLevel>' . $e($conformanceLevel) . '</fx:ConformanceLevel></rdf:Description>';
-		$property = static fn(string $name, string $description): string => '<rdf:li rdf:parseType="Resource"><pdfaProperty:name>' . $name . '</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>' . $description . '</pdfaProperty:description></rdf:li>';
+		$property = static fn (string $name, string $description): string => '<rdf:li rdf:parseType="Resource"><pdfaProperty:name>' . $name . '</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>' . $description . '</pdfaProperty:description></rdf:li>';
 		$descriptions[] = '<rdf:Description rdf:about="" xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#" xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#">'
 			. '<pdfaExtension:schemas><rdf:Bag><rdf:li rdf:parseType="Resource">'
 			. '<pdfaSchema:schema>Factur-X PDFA Extension Schema</pdfaSchema:schema><pdfaSchema:namespaceURI>' . self::FX_NAMESPACE . '</pdfaSchema:namespaceURI><pdfaSchema:prefix>fx</pdfaSchema:prefix>'
@@ -366,7 +445,9 @@ class FacturXPdfService {
 	}
 
 	private function parsePdfDate(string $value): ?\DateTimeImmutable {
-		if (preg_match("/^(?:D:)?(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?(?:([Zz])|([+-])(\d{2})'?(\d{2})?'?)?/", trim($value), $m) !== 1) return null;
+		if (preg_match("/^(?:D:)?(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?(?:([Zz])|([+-])(\d{2})'?(\d{2})?'?)?/", trim($value), $m) !== 1) {
+			return null;
+		}
 		$zone = ($m[8] ?? '') !== '' ? $m[8] . $m[9] . ':' . (($m[10] ?? '') !== '' ? $m[10] : '00') : '+00:00';
 		$string = sprintf('%s-%s-%sT%s:%s:%s%s', $m[1], ($m[2] ?? '') ?: '01', ($m[3] ?? '') ?: '01', ($m[4] ?? '') ?: '00', ($m[5] ?? '') ?: '00', ($m[6] ?? '') ?: '00', $zone);
 		$date = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i:sP', $string);

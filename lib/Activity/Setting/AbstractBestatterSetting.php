@@ -14,7 +14,8 @@ abstract class AbstractBestatterSetting extends ActivitySettings {
 		protected IURLGenerator $urlGenerator,
 		private IUserSession $userSession,
 		private TeamService $team,
-	) {}
+	) {
+	}
 
 	public function getIcon() {
 		return $this->urlGenerator->imagePath('bestatter', 'app.svg');

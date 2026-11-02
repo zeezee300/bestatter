@@ -17,7 +17,9 @@ class Version4801Date20260929000100 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if ($schema->hasTable('bestatter_article_components')) $schema->dropTable('bestatter_article_components');
+		if ($schema->hasTable('bestatter_article_components')) {
+			$schema->dropTable('bestatter_article_components');
+		}
 		return $schema;
 	}
 }

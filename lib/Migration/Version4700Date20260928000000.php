@@ -23,14 +23,19 @@ use OCP\Migration\SimpleMigrationStep;
 class Version4700Date20260928000000 extends SimpleMigrationStep {
 	private const REFRESHED = ['ZUSATZ_ZAHLUNG', 'ZUSATZ_NACHSORGE'];
 
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function postSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void {
 		foreach (self::REFRESHED as $key) {
 			$query = $this->db->getQueryBuilder();
 			$template = $query->select('id', 'active', 'origin')->from('bestatter_process_templates')
 				->where($query->expr()->eq('template_key', $query->createNamedParameter($key)))->executeQuery()->fetchAssociative();
-			if ($template === false || (bool)$template['active'] || (string)$template['origin'] !== 'BUNDLED') continue;
+			if ($template === false || (bool)$template['active'] || (string)$template['origin'] !== 'BUNDLED') {
+				continue;
+			}
 			$steps = $this->db->getQueryBuilder();
 			$stepIds = array_map('intval', $steps->select('id')->from('bestatter_process_steps')
 				->where($steps->expr()->eq('template_id', $steps->createNamedParameter((int)$template['id'])))->executeQuery()->fetchFirstColumn());
@@ -38,7 +43,9 @@ class Version4700Date20260928000000 extends SimpleMigrationStep {
 				$runs = $this->db->getQueryBuilder();
 				$used = (int)$runs->select($runs->func()->count('id'))->from('bestatter_process_runs')
 					->where($runs->expr()->in('step_id', $runs->createNamedParameter($stepIds, IQueryBuilder::PARAM_INT_ARRAY)))->executeQuery()->fetchOne();
-				if ($used > 0) continue;
+				if ($used > 0) {
+					continue;
+				}
 				$delete = $this->db->getQueryBuilder();
 				$delete->delete('bestatter_process_steps')->where($delete->expr()->in('id', $delete->createNamedParameter($stepIds, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
 			}

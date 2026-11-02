@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace OCA\Bestatter\Command;
 
 use OCA\Bestatter\Service\CaseFolderPlanService;
@@ -15,7 +17,12 @@ use Symfony\Component\Console\Output\OutputInterface;
  * dauern würde. Standard ist der Trockenlauf; umbenannt wird nur mit --execute und Bestätigungscode.
  */
 class CaseFolderRename extends Command {
-	public function __construct(private CaseFolderPlanService $plans, private InstallationConfigService $installation) { parent::__construct(); }
+	public function __construct(
+		private CaseFolderPlanService $plans,
+		private InstallationConfigService $installation,
+	) {
+		parent::__construct();
+	}
 
 	protected function configure(): void {
 		$this->setName('bestatter:case-folder-rename')
@@ -31,10 +38,16 @@ class CaseFolderRename extends Command {
 		$plan = $this->installation->folderPlan();
 		$found = false;
 		foreach ($plan as &$item) {
-			if ($item['key'] === strtoupper($reference) || $item['name'] === $reference) { $item['name'] = trim((string)$input->getArgument('name')); $found = true; }
+			if ($item['key'] === strtoupper($reference) || $item['name'] === $reference) {
+				$item['name'] = trim((string)$input->getArgument('name'));
+				$found = true;
+			}
 		}
 		unset($item);
-		if (!$found) { $output->writeln('<error>Ordner „' . $reference . '“ ist nicht im Ordnerplan. Vorhanden: ' . implode(', ', array_map(static fn(array $item): string => $item['key'] . ' = ' . $item['name'], $this->installation->folderPlan())) . '</error>'); return self::FAILURE; }
+		if (!$found) {
+			$output->writeln('<error>Ordner „' . $reference . '“ ist nicht im Ordnerplan. Vorhanden: ' . implode(', ', array_map(static fn (array $item): string => $item['key'] . ' = ' . $item['name'], $this->installation->folderPlan())) . '</error>');
+			return self::FAILURE;
+		}
 		$preview = $this->plans->preview($plan);
 		unset($preview['plan']);
 		$output->writeln(json_encode($preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -42,7 +55,10 @@ class CaseFolderRename extends Command {
 			$output->writeln('<comment>Trockenlauf: nichts verändert. Ausführen mit --execute --confirmation=' . CaseFolderPlanService::CONFIRMATION . '</comment>');
 			return self::SUCCESS;
 		}
-		if ((string)$input->getOption('confirmation') !== CaseFolderPlanService::CONFIRMATION) { $output->writeln('<error>Bestätigungscode fehlt oder ist falsch.</error>'); return self::FAILURE; }
+		if ((string)$input->getOption('confirmation') !== CaseFolderPlanService::CONFIRMATION) {
+			$output->writeln('<error>Bestätigungscode fehlt oder ist falsch.</error>');
+			return self::FAILURE;
+		}
 		$result = $this->plans->apply($plan);
 		$output->writeln(json_encode(['renamedFolders' => $result['renamedFolders'] ?? 0, 'updatedReferences' => $result['updatedReferences'] ?? []], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		$output->writeln('<info>Ordner umbenannt.</info>');

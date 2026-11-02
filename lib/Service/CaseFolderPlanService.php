@@ -40,7 +40,8 @@ class CaseFolderPlanService {
 		private IConfig $config,
 		private AuditService $audit,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/** Aktueller Plan mit Verwendung je Ordner (für die Administration). */
 	public function current(): array {
@@ -48,13 +49,13 @@ class CaseFolderPlanService {
 		$functions = $this->installation->functionFolders();
 		$templates = $this->templateUsage();
 		return [
-			'plan' => array_map(fn(array $item): array => $item + [
-				'functions' => array_values(array_keys(array_filter($functions, static fn(string $key): bool => $key === $item['key']))),
+			'plan' => array_map(fn (array $item): array => $item + [
+				'functions' => array_values(array_keys(array_filter($functions, static fn (string $key): bool => $key === $item['key']))),
 				'templates' => $templates[$item['name']] ?? [],
 				'standard' => array_key_exists($item['key'], InstallationConfigService::STANDARD_FOLDERS),
 			], $plan),
 			'functions' => $functions,
-			'functionLabels' => array_map(static fn(array $definition): string => $definition[1], InstallationConfigService::FUNCTIONS),
+			'functionLabels' => array_map(static fn (array $definition): string => $definition[1], InstallationConfigService::FUNCTIONS),
 			'locked' => $this->lockedSince() !== null,
 			'command' => 'occ bestatter:case-folder-rename',
 		];
@@ -62,7 +63,7 @@ class CaseFolderPlanService {
 
 	/**
 	 * Vorschau einer Planänderung – verändert nichts.
-	 * @param list<array{key?: string, name: string}> $input
+	 * @param list<array{key?: string, name: string, kinds?: list<string>}> $input
 	 * @param array<string, string> $functionInput Funktion => Kennzeichen
 	 */
 	public function preview(array $input, array $functionInput = [], bool $withCaseScan = true): array {
@@ -71,22 +72,47 @@ class CaseFolderPlanService {
 		$oldByKey = array_column($old, 'name', 'key');
 		$newByKey = array_column($plan, 'name', 'key');
 		$renames = [];
-		foreach ($newByKey as $key => $name) if (isset($oldByKey[$key]) && $oldByKey[$key] !== $name) $renames[$key] = ['key' => $key, 'from' => $oldByKey[$key], 'to' => $name];
-		$added = array_values(array_map(static fn(string $key): array => ['key' => $key, 'name' => $newByKey[$key]], array_keys(array_diff_key($newByKey, $oldByKey))));
-		$removed = array_values(array_map(static fn(string $key): array => ['key' => $key, 'name' => $oldByKey[$key]], array_keys(array_diff_key($oldByKey, $newByKey))));
+		foreach ($newByKey as $key => $name) {
+			if (isset($oldByKey[$key]) && $oldByKey[$key] !== $name) {
+				$renames[$key] = ['key' => $key, 'from' => $oldByKey[$key], 'to' => $name];
+			}
+		}
+		$added = array_values(array_map(static fn (string $key): array => ['key' => $key, 'name' => $newByKey[$key]], array_keys(array_diff_key($newByKey, $oldByKey))));
+		$removed = array_values(array_map(static fn (string $key): array => ['key' => $key, 'name' => $oldByKey[$key]], array_keys(array_diff_key($oldByKey, $newByKey))));
 		$orderChanged = array_values(array_intersect(array_keys($newByKey), array_keys($oldByKey))) !== array_values(array_intersect(array_keys($oldByKey), array_keys($newByKey)));
+		$oldKinds = array_column($old, 'kinds', 'key');
+		$kindsChanged = [];
+		foreach ($plan as $item) {
+			if (isset($oldKinds[$item['key']]) && $oldKinds[$item['key']] !== $item['kinds']) {
+				$kindsChanged[] = ['key' => $item['key'], 'name' => $item['name'], 'kinds' => $item['kinds']];
+			}
+		}
 		$functionChanges = [];
-		foreach ($functions as $function => $key) if (($this->installation->functionFolders()[$function] ?? '') !== $key) $functionChanges[] = ['function' => $function, 'label' => InstallationConfigService::FUNCTIONS[$function][1], 'from' => $oldByKey[$this->installation->functionFolders()[$function] ?? ''] ?? '', 'to' => $newByKey[$key]];
+		foreach ($functions as $function => $key) {
+			if (($this->installation->functionFolders()[$function] ?? '') !== $key) {
+				$functionChanges[] = ['function' => $function, 'label' => InstallationConfigService::FUNCTIONS[$function][1], 'from' => $oldByKey[$this->installation->functionFolders()[$function] ?? ''] ?? '', 'to' => $newByKey[$key]];
+			}
+		}
 
 		$blocked = [];
 		$templates = $this->templateUsage();
 		$scan = $withCaseScan && ($renames !== [] || $removed !== []) ? $this->scanCases(array_column($renames, 'to', 'from'), array_column($removed, 'name')) : ['folders' => [], 'conflicts' => [], 'nonEmpty' => [], 'cases' => 0];
 		foreach ($removed as $item) {
 			$reasons = [];
-			foreach ($functions as $function => $key) if ($key === $item['key']) $reasons[] = 'ist ' . InstallationConfigService::FUNCTIONS[$function][1];
-			if (!empty($templates[$item['name']])) $reasons[] = 'Ziel der Vorlage(n) ' . implode(', ', $templates[$item['name']]);
-			if (!empty($scan['nonEmpty'][$item['name']])) $reasons[] = 'enthält Dateien in ' . count($scan['nonEmpty'][$item['name']]) . ' Fall/Fällen (z. B. ' . implode(', ', array_slice($scan['nonEmpty'][$item['name']], 0, 3)) . ')';
-			if ($reasons !== []) $blocked[] = ['key' => $item['key'], 'name' => $item['name'], 'reasons' => $reasons];
+			foreach ($functions as $function => $key) {
+				if ($key === $item['key']) {
+					$reasons[] = 'ist ' . InstallationConfigService::FUNCTIONS[$function][1];
+				}
+			}
+			if (!empty($templates[$item['name']])) {
+				$reasons[] = 'Ziel der Vorlage(n) ' . implode(', ', $templates[$item['name']]);
+			}
+			if (!empty($scan['nonEmpty'][$item['name']])) {
+				$reasons[] = 'enthält Dateien in ' . count($scan['nonEmpty'][$item['name']]) . ' Fall/Fällen (z. B. ' . implode(', ', array_slice($scan['nonEmpty'][$item['name']], 0, 3)) . ')';
+			}
+			if ($reasons !== []) {
+				$blocked[] = ['key' => $item['key'], 'name' => $item['name'], 'reasons' => $reasons];
+			}
 		}
 		$references = $renames !== [] ? $this->countReferences(array_column($renames, 'to', 'from')) : [];
 		foreach ($renames as $key => $rename) {
@@ -94,12 +120,14 @@ class CaseFolderPlanService {
 			$renames[$key]['templates'] = $templates[$rename['from']] ?? [];
 		}
 		$conflicts = [];
-		foreach ($scan['conflicts'] as $name => $cases) $conflicts[] = ['name' => $name, 'cases' => array_slice($cases, 0, 20), 'count' => count($cases)];
+		foreach ($scan['conflicts'] as $name => $cases) {
+			$conflicts[] = ['name' => $name, 'cases' => array_slice($cases, 0, 20), 'count' => count($cases)];
+		}
 		return [
 			'plan' => $plan, 'functions' => $functions,
-			'renames' => array_values($renames), 'added' => $added, 'removed' => $removed, 'orderChanged' => $orderChanged, 'functionChanges' => $functionChanges,
+			'renames' => array_values($renames), 'added' => $added, 'removed' => $removed, 'orderChanged' => $orderChanged, 'functionChanges' => $functionChanges, 'kindsChanged' => $kindsChanged,
 			'blocked' => $blocked, 'conflicts' => $conflicts, 'references' => $references, 'casesScanned' => $scan['cases'],
-			'changed' => $renames !== [] || $added !== [] || $removed !== [] || $orderChanged || $functionChanges !== [],
+			'changed' => $renames !== [] || $added !== [] || $removed !== [] || $orderChanged || $functionChanges !== [] || $kindsChanged !== [],
 			'canApply' => $blocked === [] && $conflicts === [],
 		];
 	}
@@ -107,14 +135,22 @@ class CaseFolderPlanService {
 	/** Planänderung übernehmen (Ordner umbenennen, Verweise umstellen, Plan speichern). */
 	public function apply(array $input, array $functionInput = []): array {
 		$preview = $this->preview($input, $functionInput);
-		if (!$preview['changed']) return $preview + ['applied' => false];
-		if ($preview['blocked'] !== []) throw new \InvalidArgumentException('Nicht übernommen: ' . implode('; ', array_map(static fn(array $item): string => '„' . $item['name'] . '“ ' . implode(', ', $item['reasons']), $preview['blocked'])) . '.');
-		if ($preview['conflicts'] !== []) throw new \InvalidArgumentException('Nicht übernommen: In ' . array_sum(array_column($preview['conflicts'], 'count')) . ' Fall/Fällen gibt es den neuen Ordnernamen schon (z. B. ' . implode(', ', array_slice($preview['conflicts'][0]['cases'], 0, 3)) . '). Bitte dort zuerst zusammenführen.');
+		if (!$preview['changed']) {
+			return $preview + ['applied' => false];
+		}
+		if ($preview['blocked'] !== []) {
+			throw new \InvalidArgumentException('Nicht übernommen: ' . implode('; ', array_map(static fn (array $item): string => '„' . $item['name'] . '“ ' . implode(', ', $item['reasons']), $preview['blocked'])) . '.');
+		}
+		if ($preview['conflicts'] !== []) {
+			throw new \InvalidArgumentException('Nicht übernommen: In ' . array_sum(array_column($preview['conflicts'], 'count')) . ' Fall/Fällen gibt es den neuen Ordnernamen schon (z. B. ' . implode(', ', array_slice($preview['conflicts'][0]['cases'], 0, 3)) . '). Bitte dort zuerst zusammenführen.');
+		}
 		$this->lock();
 		$moved = [];
 		try {
 			$map = array_column($preview['renames'], 'to', 'from');
-			if ($map !== []) $moved = $this->renameCaseFolders($map);
+			if ($map !== []) {
+				$moved = $this->renameCaseFolders($map);
+			}
 			$this->db->beginTransaction();
 			try {
 				$updated = $map !== [] ? $this->rewriteReferences($map) : [];
@@ -142,33 +178,54 @@ class CaseFolderPlanService {
 		return $value > 0 && $value > time() - self::LOCK_SECONDS ? $value : null;
 	}
 
-	/** @return array{0: list<array{key: string, name: string}>, 1: array<string, string>} */
+	/** @return array{0: list<array{key: string, name: string, kinds: list<string>}>, 1: array<string, string>} */
 	private function normalize(array $input, array $functionInput): array {
 		$old = $this->installation->folderPlan();
 		$oldKeys = array_column($old, 'key');
-		$plan = []; $names = []; $keys = [];
+		$plan = [];
+		$names = [];
+		$keys = [];
 		foreach ($input as $item) {
-			if (!is_array($item)) continue;
+			if (!is_array($item)) {
+				continue;
+			}
 			$name = $this->installation->validFolderName((string)($item['name'] ?? ''), 'Fall-Unterordner');
 			$lower = mb_strtolower($name);
-			if (isset($names[$lower])) throw new \InvalidArgumentException('Der Ordnername „' . $name . '“ kommt doppelt vor.');
+			if (isset($names[$lower])) {
+				throw new \InvalidArgumentException('Der Ordnername „' . $name . '“ kommt doppelt vor.');
+			}
 			$names[$lower] = true;
 			$key = strtoupper(trim((string)($item['key'] ?? '')));
-			if ($key !== '' && !in_array($key, $oldKeys, true)) throw new \InvalidArgumentException('Unbekanntes Ordner-Kennzeichen „' . $key . '“. Neue Ordner ohne Kennzeichen anlegen.');
-			if ($key === '') {
-				$base = InstallationConfigService::keyFromName($name); $key = $base; $n = 2;
-				while (isset($keys[$key]) || in_array($key, $oldKeys, true)) $key = $base . '_' . $n++;
+			if ($key !== '' && !in_array($key, $oldKeys, true)) {
+				throw new \InvalidArgumentException('Unbekanntes Ordner-Kennzeichen „' . $key . '“. Neue Ordner ohne Kennzeichen anlegen.');
 			}
-			if (isset($keys[$key])) throw new \InvalidArgumentException('Das Kennzeichen „' . $key . '“ kommt doppelt vor.');
+			if ($key === '') {
+				$base = InstallationConfigService::keyFromName($name);
+				$key = $base;
+				$n = 2;
+				while (isset($keys[$key]) || in_array($key, $oldKeys, true)) {
+					$key = $base . '_' . $n++;
+				}
+			}
+			if (isset($keys[$key])) {
+				throw new \InvalidArgumentException('Das Kennzeichen „' . $key . '“ kommt doppelt vor.');
+			}
 			$keys[$key] = true;
-			$plan[] = ['key' => $key, 'name' => $name];
+			// 0.89.7: „Anlegen bei“ (Sterbefall, Auftrag, Vorsorge); leer = bei allen Vorgangsarten.
+			$plan[] = ['key' => $key, 'name' => $name, 'kinds' => InstallationConfigService::planKinds($item['kinds'] ?? [])];
 		}
-		if ($plan === []) throw new \InvalidArgumentException('Mindestens ein Fall-Unterordner ist erforderlich.');
+		if ($plan === []) {
+			throw new \InvalidArgumentException('Mindestens ein Fall-Unterordner ist erforderlich.');
+		}
 		$functions = $this->installation->functionFolders();
 		foreach (InstallationConfigService::FUNCTIONS as $function => [, $label]) {
-			if (isset($functionInput[$function]) && trim((string)$functionInput[$function]) !== '') $functions[$function] = strtoupper(trim((string)$functionInput[$function]));
+			if (isset($functionInput[$function]) && trim((string)$functionInput[$function]) !== '') {
+				$functions[$function] = strtoupper(trim((string)$functionInput[$function]));
+			}
 			// Zeigt die Funktion auf einen entfernten Ordner, meldet die Vorschau das als Sperrgrund.
-			if (!isset($keys[$functions[$function]]) && !in_array($functions[$function], $oldKeys, true)) throw new \InvalidArgumentException('„' . $label . '“ muss auf einen Ordner des Plans zeigen.');
+			if (!isset($keys[$functions[$function]]) && !in_array($functions[$function], $oldKeys, true)) {
+				throw new \InvalidArgumentException('„' . $label . '“ muss auf einen Ordner des Plans zeigen.');
+			}
 		}
 		return [$plan, $functions];
 	}
@@ -179,20 +236,31 @@ class CaseFolderPlanService {
 	 * @return array{folders: array<string, list<string>>, conflicts: array<string, list<string>>, nonEmpty: array<string, list<string>>, cases: int}
 	 */
 	private function scanCases(array $renames, array $removedNames): array {
-		$folders = []; $conflicts = []; $nonEmpty = []; $cases = 0;
+		$folders = [];
+		$conflicts = [];
+		$nonEmpty = [];
+		$cases = 0;
 		$vacated = array_keys($renames);
 		foreach ($this->caseFolders() as [$label, $case]) {
 			$cases++;
 			foreach ($renames as $from => $to) {
-				if (!$case->nodeExists($from)) continue;
+				if (!$case->nodeExists($from)) {
+					continue;
+				}
 				$folders[$from][] = $label;
 				// Ziel existiert schon und wird nicht selbst weg-umbenannt → Konflikt
-				if ($case->nodeExists($to) && !in_array($to, $vacated, true)) $conflicts[$to][] = $label;
+				if ($case->nodeExists($to) && !in_array($to, $vacated, true)) {
+					$conflicts[$to][] = $label;
+				}
 			}
 			foreach ($removedNames as $name) {
-				if (!$case->nodeExists($name)) continue;
+				if (!$case->nodeExists($name)) {
+					continue;
+				}
 				$node = $case->get($name);
-				if ($node instanceof Folder && $node->getDirectoryListing() !== []) $nonEmpty[$name][] = $label;
+				if ($node instanceof Folder && $node->getDirectoryListing() !== []) {
+					$nonEmpty[$name][] = $label;
+				}
 			}
 		}
 		return ['folders' => $folders, 'conflicts' => $conflicts, 'nonEmpty' => $nonEmpty, 'cases' => $cases];
@@ -200,10 +268,19 @@ class CaseFolderPlanService {
 
 	/** @return \Generator<array{0: string, 1: Folder}> alle Fallordner (zentral und Altbestände) */
 	private function caseFolders(): \Generator {
-		foreach ($this->storage->existingFolders($this->installation->casesPath()) as $base) {
-			foreach ($base['folder']->getDirectoryListing() as $year) {
-				if (!$year instanceof Folder || !preg_match('/^\d{4}$/', $year->getName())) continue;
-				foreach ($year->getDirectoryListing() as $case) if ($case instanceof Folder) yield [$base['label'] . '/' . $year->getName() . '/' . $case->getName(), $case];
+		// 0.89.7: auch Aufträge und Vorsorgen (eigene Oberordner) bekommen umbenannte Unterordner.
+		foreach ($this->installation->allCasesPaths() as $casesPath) {
+			foreach ($this->storage->existingFolders($casesPath) as $base) {
+				foreach ($base['folder']->getDirectoryListing() as $year) {
+					if (!$year instanceof Folder || !preg_match('/^\d{4}$/', $year->getName())) {
+						continue;
+					}
+					foreach ($year->getDirectoryListing() as $case) {
+						if ($case instanceof Folder) {
+							yield [$base['label'] . '/' . $year->getName() . '/' . $case->getName(), $case];
+						}
+					}
+				}
 			}
 		}
 	}
@@ -215,12 +292,17 @@ class CaseFolderPlanService {
 	 * @return list<array{0: \OCP\Files\Node, 1: string}> umbenannte Ordner mit ursprünglichem Namen (für Rücknahme)
 	 */
 	private function renameCaseFolders(array $map): array {
-		$moved = []; $staged = [];
+		$moved = [];
+		$staged = [];
 		foreach ($this->caseFolders() as [, $case]) {
 			foreach ($map as $from => $to) {
-				if (!$case->nodeExists($from)) continue;
+				if (!$case->nodeExists($from)) {
+					continue;
+				}
 				$node = $case->get($from);
-				if (!$node instanceof Folder) continue;
+				if (!$node instanceof Folder) {
+					continue;
+				}
 				$temporary = '.umbenennen-' . bin2hex(random_bytes(4)) . '-' . InstallationConfigService::keyFromName($to);
 				$node = $node->move(rtrim($case->getPath(), '/') . '/' . $temporary);
 				$moved[] = [$node, $from];
@@ -228,7 +310,9 @@ class CaseFolderPlanService {
 			}
 		}
 		foreach ($staged as $index => [$case, $node, $to]) {
-			if ($case->nodeExists($to)) throw new \RuntimeException('Im Fallordner ' . $case->getName() . ' gibt es „' . $to . '“ bereits.');
+			if ($case->nodeExists($to)) {
+				throw new \RuntimeException('Im Fallordner ' . $case->getName() . ' gibt es „' . $to . '“ bereits.');
+			}
 			$final = $node->move(rtrim($case->getPath(), '/') . '/' . $to);
 			$moved[$index] = [$final, $moved[$index][1]];
 		}
@@ -238,7 +322,11 @@ class CaseFolderPlanService {
 	/** @param list<array{0: \OCP\Files\Node, 1: string}> $moved */
 	private function rollbackMoves(array $moved): void {
 		foreach (array_reverse($moved) as [$node, $original]) {
-			try { $node->move(rtrim($node->getParent()->getPath(), '/') . '/' . $original); } catch (\Throwable $error) { $this->logger->error('Ordner konnte nicht zurückbenannt werden.', ['folder' => $node->getPath(), 'original' => $original, 'reason' => $error->getMessage()]); }
+			try {
+				$node->move(rtrim($node->getParent()->getPath(), '/') . '/' . $original);
+			} catch (\Throwable $error) {
+				$this->logger->error('Ordner konnte nicht zurückbenannt werden.', ['folder' => $node->getPath(), 'original' => $original, 'reason' => $error->getMessage()]);
+			}
 		}
 	}
 
@@ -247,8 +335,14 @@ class CaseFolderPlanService {
 		$counts = [];
 		foreach (self::REFERENCES as $reference) {
 			$count = 0;
-			foreach ($this->rows($reference) as $row) if ($this->rewriteValue($reference['kind'], $row[$reference['column']], $map) !== $row[$reference['column']]) $count++;
-			if ($count > 0) $counts[$reference['table']] = $count;
+			foreach ($this->rows($reference) as $row) {
+				if ($this->rewriteValue($reference['kind'], $row[$reference['column']], $map) !== $row[$reference['column']]) {
+					$count++;
+				}
+			}
+			if ($count > 0) {
+				$counts[$reference['table']] = $count;
+			}
 		}
 		return $counts;
 	}
@@ -261,22 +355,34 @@ class CaseFolderPlanService {
 			foreach ($this->rows($reference) as $row) {
 				$value = $row[$reference['column']];
 				$new = $this->rewriteValue($reference['kind'], $value, $map);
-				if ($new === $value) continue;
+				if ($new === $value) {
+					continue;
+				}
 				$query = $this->db->getQueryBuilder();
 				$query->update($reference['table'])->set($reference['column'], $query->createNamedParameter($new))->where($query->expr()->eq($reference['id'], $query->createNamedParameter((int)$row[$reference['id']])))->executeStatement();
 				$count++;
 			}
-			if ($count > 0) $updated[$reference['table']] = $count;
+			if ($count > 0) {
+				$updated[$reference['table']] = $count;
+			}
 		}
 		return $updated;
 	}
 
 	private function rewriteValue(string $kind, mixed $value, array $map): mixed {
-		if ($value === null || $value === '') return $value;
-		if ($kind === 'name') return $map[(string)$value] ?? $value;
-		if ($kind === 'path') return $this->rewritePath((string)$value, $map);
+		if ($value === null || $value === '') {
+			return $value;
+		}
+		if ($kind === 'name') {
+			return $map[(string)$value] ?? $value;
+		}
+		if ($kind === 'path') {
+			return $this->rewritePath((string)$value, $map);
+		}
 		$decoded = json_decode((string)$value, true);
-		if (!is_array($decoded)) return $value;
+		if (!is_array($decoded)) {
+			return $value;
+		}
 		$changed = false;
 		$rewritten = $this->rewriteJson($decoded, $map, $changed);
 		return $changed ? json_encode($rewritten, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) : $value;
@@ -284,22 +390,37 @@ class CaseFolderPlanService {
 
 	private function rewriteJson(array $data, array $map, bool &$changed): array {
 		foreach ($data as $key => $value) {
-			if (is_array($value)) { $data[$key] = $this->rewriteJson($value, $map, $changed); continue; }
-			if (!is_string($value) || $value === '') continue;
+			if (is_array($value)) {
+				$data[$key] = $this->rewriteJson($value, $map, $changed);
+				continue;
+			}
+			if (!is_string($value) || $value === '') {
+				continue;
+			}
 			$name = (string)$key;
 			$new = $value;
-			if (in_array($name, ['subfolder', 'outputSubfolder', 'folder'], true)) $new = $map[$value] ?? $value;
-			elseif ($name === 'relativePath') { $parts = explode('/', $value, 2); if (isset($map[$parts[0]]) && count($parts) === 2) $new = $map[$parts[0]] . '/' . $parts[1]; }
-			elseif (in_array($name, ['path', 'filePath', 'file_path'], true)) $new = $this->rewritePath($value, $map);
-			if ($new !== $value) { $data[$key] = $new; $changed = true; }
+			if (in_array($name, ['subfolder', 'outputSubfolder', 'folder'], true)) {
+				$new = $map[$value] ?? $value;
+			} elseif ($name === 'relativePath') {
+				$parts = explode('/', $value, 2);
+				if (isset($map[$parts[0]]) && count($parts) === 2) {
+					$new = $map[$parts[0]] . '/' . $parts[1];
+				}
+			} elseif (in_array($name, ['path', 'filePath', 'file_path'], true)) {
+				$new = $this->rewritePath($value, $map);
+			}
+			if ($new !== $value) {
+				$data[$key] = $new;
+				$changed = true;
+			}
 		}
 		return $data;
 	}
 
 	/** Ersetzt den Unterordner direkt hinter „<Fallordner>/<Jahr>/<Fallnummer>/“. */
 	private function rewritePath(string $path, array $map): string {
-		$cases = preg_quote(trim($this->installation->casesFolder(), '/'), '#');
-		return (string)preg_replace_callback('#(^|/)(' . $cases . '/\d{4}/[^/]+/)([^/]+)(?=/|$)#u', static fn(array $m): string => $m[1] . $m[2] . ($map[$m[3]] ?? $m[3]), $path);
+		$cases = implode('|', array_map(static fn (string $name): string => preg_quote(trim($name, '/'), '#'), [$this->installation->casesFolder(), $this->installation->ordersFolder(), $this->installation->precareFolder()]));
+		return (string)preg_replace_callback('#(^|/)((?:' . $cases . ')/\d{4}/[^/]+/)([^/]+)(?=/|$)#u', static fn (array $m): string => $m[1] . $m[2] . ($map[$m[3]] ?? $m[3]), $path);
 	}
 
 	/** @return list<array<string, mixed>> */
@@ -307,7 +428,9 @@ class CaseFolderPlanService {
 		try {
 			$query = $this->db->getQueryBuilder();
 			return $query->select($reference['id'], $reference['column'])->from($reference['table'])->where($query->expr()->isNotNull($reference['column']))->executeQuery()->fetchAllAssociative();
-		} catch (\Throwable) { return []; }
+		} catch (\Throwable) {
+			return [];
+		}
 	}
 
 	/** @return array<string, list<string>> Ordnername => Vorlagen */
@@ -317,16 +440,23 @@ class CaseFolderPlanService {
 			$query = $this->db->getQueryBuilder();
 			foreach ($query->select('name', 'output_subfolder')->from('bestatter_document_templates')->where($query->expr()->isNotNull('output_subfolder'))->executeQuery()->fetchAllAssociative() as $row) {
 				$folder = $this->installation->resolveSubfolder((string)$row['output_subfolder']) ?? (string)$row['output_subfolder'];
-				if ($folder !== '') $usage[$folder][] = (string)$row['name'];
+				if ($folder !== '') {
+					$usage[$folder][] = (string)$row['name'];
+				}
 			}
-		} catch (\Throwable) {}
+		} catch (\Throwable) {
+		}
 		return $usage;
 	}
 
 	private function lock(): void {
-		if ($this->lockedSince() !== null) throw new \RuntimeException('Der Ordnerplan wird gerade umgestellt. Bitte in einigen Minuten erneut versuchen.');
+		if ($this->lockedSince() !== null) {
+			throw new \RuntimeException('Der Ordnerplan wird gerade umgestellt. Bitte in einigen Minuten erneut versuchen.');
+		}
 		$this->config->setAppValue(Application::APP_ID, self::LOCK_KEY, (string)time());
 	}
 
-	private function unlock(): void { $this->config->deleteAppValue(Application::APP_ID, self::LOCK_KEY); }
+	private function unlock(): void {
+		$this->config->deleteAppValue(Application::APP_ID, self::LOCK_KEY);
+	}
 }

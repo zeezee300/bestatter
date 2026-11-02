@@ -13,7 +13,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 class DevelopmentReset extends Command {
 	private const CONFIRMATION = 'BESTATTER-ENTWICKLUNGSRESET';
 
-	public function __construct(private DevelopmentResetService $resetService) {
+	public function __construct(
+		private DevelopmentResetService $resetService,
+	) {
 		parent::__construct();
 	}
 

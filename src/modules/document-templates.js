@@ -1,3 +1,4 @@
+import { handbookMoreLink } from './handbook.js'
 // 0.88.2: Customizing → Dokumentvorlagen übersichtlich: Suche und Bereichsfilter, Gruppen nach Kategorie, je Vorlage eine
 // Zeile mit voller Bezeichnung, Datei, Ablageort und Zustand der Datei; Bearbeiten klappt das Formular unter der Zeile auf.
 // Der Bestattungsauftrag zeigt, ob die Datei den Vollmachtsteil enthält, und bietet die neue Standardfassung an.
@@ -18,7 +19,20 @@ export const LOCKED_ACTIVE_KEYS = ['BESTATTUNGSAUFTRAG', 'RECHNUNG', 'KORREKTUR'
 export function templateNeedsAttention(file) {
 	if (!file) return false
 	if (file.state === 'MISSING') return true
-	return file.key === 'BESTATTUNGSAUFTRAG' && file.state === 'CUSTOM' && file.powerOfAttorney === false
+	if (file.key === 'BESTATTUNGSAUFTRAG' && file.state === 'CUSTOM' && file.powerOfAttorney === false) return true
+	return orderChoiceProblems(file).length > 0
+}
+
+/** 0.89.3: Prüfung der Auftragsvorlage gegen Customizing → Ankreuzfelder und die Unterschrift am Tablet. */
+export function orderChoiceProblems(file) {
+	const check = file?.key === 'BESTATTUNGSAUFTRAG' && !['OUTDATED_STANDARD', 'NOT_PROVISIONED', 'MISSING'].includes(file.state) && file.powerOfAttorney !== false ? file.orderChoices : null
+	if (!check) return []
+	const problems = []
+	if ((check.missing || []).length) problems.push(`Aktive Ankreuzfelder fehlen in der Datei: ${check.missing.map((item) => `„${item.label}“ (${item.placeholder})`).join(', ')}. Sie erscheinen weder im Auftrag noch bei der Unterschrift.`)
+	if ((check.unknown || []).length) problems.push(`Platzhalter ohne Ankreuzfeld: ${check.unknown.join(', ')}. Bitte unter Customizing → Ankreuzfelder anlegen oder aus der Datei entfernen.`)
+	if (Number(check.staticBoxes || 0) > 0) problems.push(`Die Datei enthält ${check.staticBoxes} fest getippte Kästchen (☐/☒). Sie bleiben bei der Unterschrift am Tablet leer – dafür ein Ankreuzfeld anlegen und dessen Platzhalter einsetzen.`)
+	if (check.signatureField === false) problems.push('Das Feld für die Unterschrift am Tablet ({{order.client_signature}}) fehlt.')
+	return problems
 }
 
 /** Vorlagen nach Kategorie gruppieren; Reihenfolge der Gruppen nach der kleinsten Sortierung darin. */
@@ -57,6 +71,7 @@ export function createDocumentTemplatesModule(ctx) {
 		if (file && FILE_STATES[file.state]) { const [text, tone, hint] = FILE_STATES[file.state]; list.push(`<span class="bp-template-badge is-${tone}" title="${esc(hint)}">${esc(text)}</span>`) }
 		if (file?.text) list.push('<span class="bp-template-badge is-muted" title="Textvorlage (TXT), zum Beispiel für E-Mail- und Brieftexte der Abmeldungen.">Textvorlage</span>')
 		if (entry.key === 'BESTATTUNGSAUFTRAG' && file && file.state !== 'NOT_PROVISIONED' && file.state !== 'MISSING') list.push(file.powerOfAttorney || file.state === 'OUTDATED_STANDARD' ? '<span class="bp-template-badge is-ok" title="Auftrag und Vollmacht in einem Dokument.">Mit Vollmachtsteil</span>' : '<span class="bp-template-badge is-warning" title="Die Vollmacht wird als eigenes Dokument erzeugt.">Ohne Vollmachtsteil</span>')
+		if (entry.key === 'BESTATTUNGSAUFTRAG' && file?.orderChoices && file.powerOfAttorney !== false && file.state !== 'OUTDATED_STANDARD') list.push(`<span class="bp-template-badge ${orderChoiceProblems(file).length ? 'is-warning' : 'is-ok'}" title="Aktive Ankreuzfelder aus Customizing → Ankreuzfelder, die in der Datei stehen.">Ankreuzfelder ${Number(file.orderChoices.present)} von ${Number(file.orderChoices.active)}</span>`)
 		if (file?.system) list.push('<span class="bp-template-badge is-muted" title="Die App verwendet diese Vorlage fest unter ihrem Schlüssel. Nicht löschen; nur die Datei ändern oder austauschen.">Fest verwendet</span>')
 		if (!entry.active) list.push('<span class="bp-template-badge is-muted">Inaktiv</span>')
 		if (entry.supportsPdf && !file?.text) list.push('<span class="bp-template-badge is-plain">mit PDF</span>')
@@ -66,6 +81,11 @@ export function createDocumentTemplatesModule(ctx) {
 	function orderNotice(entry, file) {
 		if (entry.key !== 'BESTATTUNGSAUFTRAG' || !file || file.state !== 'CUSTOM' || file.powerOfAttorney !== false) return ''
 		return `<div class="bp-template-notice" role="note"><p><b>Ohne Vollmachtsteil:</b> Diese Datei ist eine eigene, ältere Fassung des Bestattungsauftrags. Die App lässt sie unverändert und erzeugt die Bestattungsvollmacht weiter als eigenes Dokument.</p><p>„Neue Standardfassung übernehmen“ aktiviert „Bestattungsauftrag und Vollmacht“. Ihre bisherige Datei bleibt als Kopie im Vorlagenordner.</p><button type="button" class="bp-primary" data-template-adopt="${esc(entry.key)}">Neue Standardfassung übernehmen</button></div>`
+	}
+
+	function orderChoiceNotice(entry, file) {
+		const problems = entry.key === 'BESTATTUNGSAUFTRAG' ? orderChoiceProblems(file) : []
+		return problems.length ? `<div class="bp-template-notice" role="note" data-template-choice-check><p><b>Prüfung für Ankreuzfelder und Unterschrift am Tablet:</b></p><ul>${problems.map((problem) => `<li>${esc(problem)}</li>`).join('')}</ul></div>` : ''
 	}
 
 	function editor(entry, file) {
@@ -98,7 +118,7 @@ export function createDocumentTemplatesModule(ctx) {
 		return `<article class="bp-template-row${entry.active ? '' : ' is-inactive'}${editing ? ' is-editing' : ''}" data-template-row="${entry.id}" data-template-category="${esc(String(entry.category || '').trim() || 'Allgemein')}" data-template-attention="${templateNeedsAttention(file) ? '1' : '0'}" data-template-search="${esc(search)}">
 			<div class="bp-template-main"><h5>${esc(entry.name || 'Neue Dokumentvorlage')}</h5><p class="bp-template-meta"><code>${esc(entry.key || '–')}</code> · ${esc(meta)}</p>${entry.description ? `<p class="bp-template-description">${esc(entry.description)}</p>` : ''}<div class="bp-template-badges">${badges(entry, file)}</div></div>
 			<div class="bp-template-actions">${file?.text || !entry.fileName ? '' : `<button type="button" class="bp-secondary" data-template-preview="${entry.id}">Vorschau</button>`}<button type="button" class="bp-secondary" data-template-edit="${entry.id}" aria-expanded="${editing ? 'true' : 'false'}">${editing ? 'Zuklappen' : 'Bearbeiten'}</button></div>
-			${orderNotice(entry, file)}${editing ? editor(entry, file) : ''}</article>`
+			${orderNotice(entry, file)}${orderChoiceNotice(entry, file)}${editing ? editor(entry, file) : ''}</article>`
 	}
 
 	function documentTemplatesView() {
@@ -113,7 +133,7 @@ export function createDocumentTemplatesModule(ctx) {
 		const summary = `${templates.length} Vorlagen · ${templates.filter((entry) => entry.active).length} aktiv · ${custom} eigene Fassungen${attention ? ` · <b class="bp-warning-text">${attention} mit Handlungsbedarf</b>` : ''}`
 		const list = groups.map((group) => `<section class="bp-template-group" data-template-group="${esc(group.category)}"><h4>${esc(group.category)} <small>${group.items.length}</small></h4><div class="bp-template-list">${group.items.map(row).join('')}</div></section>`).join('')
 		return `<section class="bp-panel bp-config-admin bp-template-admin"><datalist id="document-required-fields">${(state.documentTemplateOptions?.requiredFields || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist><datalist id="document-template-categories">${categories.map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
-			<div class="bp-panel-head"><div><h3>Dokumentvorlagen</h3><p class="bp-muted">Jede Vorlage ist eine Word-Datei (DOCX) im Nextcloud-Ordner „${esc(path)}“. Hier legen Sie Bezeichnung, Ablage in der Fallakte und Aktivierung fest und sehen den Zustand der Datei. Den Inhalt bearbeiten Sie in der Datei, zum Beispiel mit Nextcloud Office. Angepasste Dateien überschreibt die App nie.</p></div>
+			<div class="bp-panel-head"><div><h3>Dokumentvorlagen</h3><p class="bp-muted">Jede Vorlage ist eine Word-Datei (DOCX) im Nextcloud-Ordner „${esc(path)}“. Hier legen Sie Bezeichnung, Ablage in der Fallakte und Aktivierung fest und sehen den Zustand der Datei. Den Inhalt bearbeiten Sie in der Datei, zum Beispiel mit Nextcloud Office. Angepasste Dateien überschreibt die App nie.${handbookMoreLink('customizing-dokumentvorlagen', esc)}</p></div>
 			<div class="bp-head-actions"><button class="bp-primary" id="new-document-template">+ Dokumentvorlage</button><button class="bp-secondary" id="provision-templates" title="Legt mitgelieferte Vorlagen an, die im Vorlagenordner noch fehlen. Vorhandene Dateien bleiben unverändert.">Fehlende Standardvorlagen ergänzen</button><details class="bp-action-menu" id="template-tools-menu"><summary class="bp-secondary">Werkzeuge</summary><div class="bp-action-menu-list" role="menu"><button type="button" class="bp-menu-item" id="download-template-fields" role="menuitem" title="Alle Platzhalter mit Klarnamen und Datenquelle als CSV-Datei.">Feldkatalog als CSV</button><button type="button" class="bp-menu-item" id="download-logo-placeholder" role="menuitem" title="Dieses Bild an der gewünschten Stelle in eine DOCX-Vorlage einfügen; beim Erzeugen ersetzt es die App durch das Logo der Niederlassung.">Logo-Platzhalter herunterladen</button></div></details></div></div>
 			<div class="bp-template-toolbar"><label class="bp-template-search"><span class="hidden-visually">Vorlagen durchsuchen</span><input type="search" id="document-template-search" placeholder="Vorlage suchen – Name, Schlüssel oder Datei" value="${esc(current.query)}"></label><label class="bp-template-filter"><span class="hidden-visually">Bereich</span><select id="document-template-category"><option value="">Alle Bereiche</option>${categories.map((name) => `<option value="${esc(name)}" ${current.category === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label><label class="bp-inline-check"><input type="checkbox" id="document-template-attention" ${current.attention ? 'checked' : ''}> Nur mit Handlungsbedarf</label></div>
 			<p class="bp-template-summary">${summary}</p>${state.documentTemplateFiles?.error ? `<p class="bp-warning">Zustand der Dateien konnte nicht geprüft werden: ${esc(state.documentTemplateFiles.error)}</p>` : ''}

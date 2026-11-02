@@ -94,7 +94,10 @@ Mit freundlichen Grüßen'],
 		],
 	];
 
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function postSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void {
 		$query = $this->db->getQueryBuilder();
@@ -105,20 +108,30 @@ Mit freundlichen Grüßen'],
 		$updated = 0;
 		foreach ($rows as $row) {
 			$texts = self::TEXTS[(string)$row['template_key']] ?? null;
-			if ($texts === null) continue;
+			if ($texts === null) {
+				continue;
+			}
 			$changes = [];
 			foreach (['subject' => 'subject_template', 'body' => 'body_template'] as $part => $column) {
 				[$old, $new] = $texts[$part];
-				if ($old !== $new && str_replace("\r\n", "\n", (string)$row[$column]) === $old) $changes[$column] = $new;
+				if ($old !== $new && str_replace("\r\n", "\n", (string)$row[$column]) === $old) {
+					$changes[$column] = $new;
+				}
 			}
-			if ($changes === []) continue;
+			if ($changes === []) {
+				continue;
+			}
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_dereg_templates')->set('updated_at', $update->createNamedParameter(date('c')))
 				->where($update->expr()->eq('id', $update->createNamedParameter((int)$row['id'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT)));
-			foreach ($changes as $column => $value) $update->set($column, $update->createNamedParameter($value));
+			foreach ($changes as $column => $value) {
+				$update->set($column, $update->createNamedParameter($value));
+			}
 			$update->executeStatement();
 			$updated += count($changes);
 		}
-		if ($updated > 0) $output->info('Abmeldevorlagen: Fallnummer („Unser Zeichen“) in ' . $updated . ' unveränderten Standardtext(en) ergänzt.');
+		if ($updated > 0) {
+			$output->info('Abmeldevorlagen: Fallnummer („Unser Zeichen“) in ' . $updated . ' unveränderten Standardtext(en) ergänzt.');
+		}
 	}
 }

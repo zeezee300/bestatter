@@ -25,10 +25,15 @@ class Version5700Date20261013000000 extends SimpleMigrationStep {
 		],
 	];
 
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function postSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void {
-		if (!$this->db->tableExists('bestatter_document_templates')) return;
+		if (!$this->db->tableExists('bestatter_document_templates')) {
+			return;
+		}
 		foreach (self::CHANGES as $key => $columns) {
 			foreach ($columns as $column => [$old, $new]) {
 				$query = $this->db->getQueryBuilder();

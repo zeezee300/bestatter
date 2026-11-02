@@ -47,22 +47,22 @@ class PaperlessAcceptanceCheck extends Command {
 			}
 		}
 
-		$download = ['status'=>'NOT_RUN', 'reason'=>$documentId === ''
+		$download = ['status' => 'NOT_RUN', 'reason' => $documentId === ''
 			? 'Keine Dokument-ID angegeben und kein abrufbarer Beleg ausgewählt.'
 			: null];
 		if ($documentId !== '') {
 			try {
 				$file = $this->paperless->downloadDocument($documentId);
 				$download = [
-					'status'=>'OK',
-					'documentId'=>$documentId,
-					'mimeType'=>$file['mimeType'],
-					'extension'=>$file['extension'],
-					'bytes'=>strlen($file['content']),
-					'sha256'=>hash('sha256', $file['content']),
+					'status' => 'OK',
+					'documentId' => $documentId,
+					'mimeType' => $file['mimeType'],
+					'extension' => $file['extension'],
+					'bytes' => strlen($file['content']),
+					'sha256' => hash('sha256', $file['content']),
 				];
 			} catch (\Throwable $error) {
-				$download = ['status'=>'ERROR', 'documentId'=>$documentId, 'message'=>$this->safeMessage($error)];
+				$download = ['status' => 'ERROR', 'documentId' => $documentId, 'message' => $this->safeMessage($error)];
 			}
 		}
 
@@ -70,42 +70,50 @@ class PaperlessAcceptanceCheck extends Command {
 		$externalStatus = $this->statusCounts($externalRows, 'sync_status');
 		$jobStatus = $this->statusCounts($jobRows, 'job_status');
 		$errors = [];
-		if (($connection['status'] ?? 'ERROR') !== 'OK') $errors[] = 'CONNECTION';
-		if ($duplicates !== []) $errors[] = 'DUPLICATE_EXTERNAL_DOCUMENT_IDS';
-		if (($download['status'] ?? '') === 'ERROR') $errors[] = 'DOCUMENT_DOWNLOAD';
+		if (($connection['status'] ?? 'ERROR') !== 'OK') {
+			$errors[] = 'CONNECTION';
+		}
+		if ($duplicates !== []) {
+			$errors[] = 'DUPLICATE_EXTERNAL_DOCUMENT_IDS';
+		}
+		if (($download['status'] ?? '') === 'ERROR') {
+			$errors[] = 'DOCUMENT_DOWNLOAD';
+		}
 		// 0.81.0: Einrichtung des Belegeingangs (Feld „Fallnummer“, Dokumenttypen der Dokumentarten, Webhook, letzte Meldung)
 		$setup = $this->setup->check();
-		if ($setup['status'] === 'ERROR') $errors[] = 'INBOX_SETUP';
+		if ($setup['status'] === 'ERROR') {
+			$errors[] = 'INBOX_SETUP';
+		}
 
 		$result = [
-			'version'=>Application::VERSION,
-			'readOnly'=>true,
-			'configuration'=>[
-				'mode'=>$settings['mode'],
-				'enabled'=>$settings['enabled'],
-				'baseUrl'=>$settings['baseUrl'],
-				'apiTokenConfigured'=>$settings['tokenConfigured'],
-				'webhookSecretConfigured'=>$settings['webhookSecretConfigured'],
-				'documentTypeId'=>$settings['documentTypeId'],
-				'tagIds'=>$settings['tagIds'],
+			'version' => Application::VERSION,
+			'readOnly' => true,
+			'configuration' => [
+				'mode' => $settings['mode'],
+				'enabled' => $settings['enabled'],
+				'baseUrl' => $settings['baseUrl'],
+				'apiTokenConfigured' => $settings['tokenConfigured'],
+				'webhookSecretConfigured' => $settings['webhookSecretConfigured'],
+				'documentTypeId' => $settings['documentTypeId'],
+				'tagIds' => $settings['tagIds'],
 			],
-			'connection'=>$connection,
-			'inbox'=>['count'=>count($inbox['items']), 'mode'=>$inbox['mode'], 'manualFallback'=>$inbox['manualFallback']],
-			'inboxSetup'=>['status'=>$setup['status'], 'message'=>$setup['message'], 'items'=>$setup['items']],
-			'downloadProbe'=>$download,
-			'integrity'=>[
-				'externalDocuments'=>count($externalRows),
-				'externalStatus'=>$externalStatus,
-				'integrationJobs'=>count($jobRows),
-				'jobStatus'=>$jobStatus,
-				'duplicateDocumentIds'=>$duplicates,
+			'connection' => $connection,
+			'inbox' => ['count' => count($inbox['items']), 'mode' => $inbox['mode'], 'manualFallback' => $inbox['manualFallback']],
+			'inboxSetup' => ['status' => $setup['status'], 'message' => $setup['message'], 'items' => $setup['items']],
+			'downloadProbe' => $download,
+			'integrity' => [
+				'externalDocuments' => count($externalRows),
+				'externalStatus' => $externalStatus,
+				'integrationJobs' => count($jobRows),
+				'jobStatus' => $jobStatus,
+				'duplicateDocumentIds' => $duplicates,
 			],
-			'assignment'=>[
-				'status'=>'NOT_RUN',
-				'reason'=>'Die Fallzuordnung erzeugt eine Eingangsrechnung und eine Nextcloud-Datei und ist daher nicht Teil der lesenden Prüfung.',
+			'assignment' => [
+				'status' => 'NOT_RUN',
+				'reason' => 'Die Fallzuordnung erzeugt eine Eingangsrechnung und eine Nextcloud-Datei und ist daher nicht Teil der lesenden Prüfung.',
 			],
-			'overall'=>$errors === [] ? 'OK' : 'ERROR',
-			'errors'=>$errors,
+			'overall' => $errors === [] ? 'OK' : 'ERROR',
+			'errors' => $errors,
 		];
 
 		$output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
@@ -142,9 +150,11 @@ class PaperlessAcceptanceCheck extends Command {
 		$ids = [];
 		foreach ($rows as $row) {
 			$id = trim((string)($row['external_document_id'] ?? ''));
-			if ($id !== '') $ids[$id][] = (int)$row['id'];
+			if ($id !== '') {
+				$ids[$id][] = (int)$row['id'];
+			}
 		}
-		return array_filter($ids, static fn(array $recordIds): bool => count($recordIds) > 1);
+		return array_filter($ids, static fn (array $recordIds): bool => count($recordIds) > 1);
 	}
 
 	private function safeMessage(\Throwable $error): string {

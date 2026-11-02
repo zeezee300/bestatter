@@ -8,7 +8,7 @@ Die folgenden mitgelieferten Bestandteile stammen von Dritten und stehen unter i
 | bacon/bacon-qr-code | 3.1.1 | BSD-2-Clause | `vendor/bacon/bacon-qr-code/` |
 | dasprid/enum | 1.0.7 | BSD-2-Clause | `vendor/dasprid/enum/` |
 | endroid/qr-code | 6.0.9 | MIT | `vendor/endroid/qr-code/` |
-| Tabler Icons (Symbole „trash“, „printer“, „mail“, „help-circle“, „book“, „settings“) | – | MIT | eingebettet in `js/main.js` (Quelle `src/modules/icons.js`) |
+| Tabler Icons (Symbole „trash“, „printer“, „mail“, „help-circle“, „book“, „settings“ sowie die Symbole der Seitennavigation, darunter „receipt“, „umbrella“ und „calculator“) | – | MIT | eingebettet in `js/main.js` (Quelle `src/modules/icons.js`) |
 | Tabler Icons (48 Symbole der Marker-Auswahl, Outline-Variante, unverändert übernommen) | 3.48.0 | MIT | `resources/label-icons.json` |
 
 Nur zur Entwicklung genutzte Werkzeuge (z. B. PHPUnit, PHPStan, Vite, nextcloud/ocp) werden nicht mit ausgeliefert und sind hier nicht aufgeführt.

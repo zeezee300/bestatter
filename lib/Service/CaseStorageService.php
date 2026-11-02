@@ -18,7 +18,9 @@ use Psr\Log\LoggerInterface;
 /**
  * 0.70.0 (OP-040) – Zentrale Auflösung der Fallablage.
  *
- * USER    = bisheriges Verhalten: Ablage im Nextcloud-Ordner der angemeldeten Person.
+ * USER    = Ablage im Arbeitsordner der angemeldeten Person. Ist dieser Arbeitsordner bei allen Mitgliedern
+ *           derselbe Teamordner (App „Team folders“), ist die Ablage gemeinsam – das ist seit 0.89.8 der empfohlene
+ *           Weg, ein eigenes Ablagekonto ist dann nicht nötig.
  * CENTRAL = gemeinsame Fallablage im Nextcloud-Konto „storage_account“, unabhängig davon, wer angemeldet
  *           ist. Liegt der Arbeitsordner in einem Teamordner (App „Group folders“/„Team folders“), sehen alle
  *           Mitglieder denselben Ordner; liegt er im eigenen Ordner des Kontos, gibt die App ihn für die
@@ -33,38 +35,53 @@ class CaseStorageService {
 		private InstallationConfigService $installation,
 		private IShareManager $shareManager,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
-	public function isCentral(): bool { return $this->installation->storageMode() === 'CENTRAL' && $this->installation->storageAccount() !== ''; }
+	public function isCentral(): bool {
+		return $this->installation->storageMode() === 'CENTRAL' && $this->installation->storageAccount() !== '';
+	}
 
 	/**
 	 * Basisordner, relativ zu dem alle konfigurierten Pfade (Arbeitsordner, Fälle, Vorlagen …) gelten.
 	 * $uid wird nur im Modus USER ausgewertet (z. B. ausführende Person eines Ablaufschritts).
 	 */
 	public function baseFolder(?string $uid = null): Folder {
-		if ($this->isCentral()) return $this->accountFolder($this->installation->storageAccount());
+		if ($this->isCentral()) {
+			return $this->accountFolder($this->installation->storageAccount());
+		}
 		$uid = $uid !== null && $uid !== '' ? $uid : $this->userSession->getUser()?->getUID();
-		if ($uid === null || $uid === '') throw new \RuntimeException('Kein angemeldeter Nextcloud-Benutzer.');
+		if ($uid === null || $uid === '') {
+			throw new \RuntimeException('Kein angemeldeter Nextcloud-Benutzer.');
+		}
 		return $this->rootFolder->getUserFolder($uid);
 	}
 
 	/** 0.71.0: Eigener Nextcloud-Ordner einer Person – unabhängig von der Betriebsart (für private Zwischenablagen). */
 	public function personalFolder(?string $uid = null): Folder {
 		$uid = $uid !== null && $uid !== '' ? $uid : $this->userSession->getUser()?->getUID();
-		if ($uid === null || $uid === '') throw new \RuntimeException('Kein angemeldeter Nextcloud-Benutzer.');
+		if ($uid === null || $uid === '') {
+			throw new \RuntimeException('Kein angemeldeter Nextcloud-Benutzer.');
+		}
 		return $this->rootFolder->getUserFolder($uid);
 	}
 
 	/** Wie baseFolder(), liefert aber null statt einer Ausnahme (z. B. ohne Sitzung im Hintergrundjob). */
 	public function baseFolderOrNull(?string $uid = null): ?Folder {
-		try { return $this->baseFolder($uid); } catch (\Throwable) { return null; }
+		try {
+			return $this->baseFolder($uid);
+		} catch (\Throwable) {
+			return null;
+		}
 	}
 
 	/** Relativer Pfad eines Knotens zum Basisordner (für Anzeige und Protokoll). */
 	public function relativePath(Node $node, ?Folder $base = null): string {
 		$base ??= $this->baseFolderOrNull();
 		$path = $node->getPath();
-		if ($base !== null && str_starts_with($path, rtrim($base->getPath(), '/') . '/')) return substr($path, strlen(rtrim($base->getPath(), '/')) + 1);
+		if ($base !== null && str_starts_with($path, rtrim($base->getPath(), '/') . '/')) {
+			return substr($path, strlen(rtrim($base->getPath(), '/')) + 1);
+		}
 		return (string)preg_replace('#^/[^/]+/files/#', '', $path);
 	}
 
@@ -76,12 +93,23 @@ class CaseStorageService {
 	public function allBases(bool $includeLegacy = true): array {
 		$result = [];
 		if ($this->isCentral()) {
-			try { $result[] = ['uid' => $this->installation->storageAccount(), 'central' => true, 'folder' => $this->accountFolder($this->installation->storageAccount())]; } catch (\Throwable $error) { $this->logger->warning('Zentrale Ablage nicht erreichbar.', ['reason' => $error->getMessage()]); }
-			if (!$includeLegacy) return $result;
+			try {
+				$result[] = ['uid' => $this->installation->storageAccount(), 'central' => true, 'folder' => $this->accountFolder($this->installation->storageAccount())];
+			} catch (\Throwable $error) {
+				$this->logger->warning('Zentrale Ablage nicht erreichbar.', ['reason' => $error->getMessage()]);
+			}
+			if (!$includeLegacy) {
+				return $result;
+			}
 		}
 		foreach ($this->bestatterUids() as $uid) {
-			if ($this->isCentral() && $uid === $this->installation->storageAccount()) continue;
-			try { $result[] = ['uid' => $uid, 'central' => false, 'folder' => $this->rootFolder->getUserFolder($uid)]; } catch (\Throwable) {}
+			if ($this->isCentral() && $uid === $this->installation->storageAccount()) {
+				continue;
+			}
+			try {
+				$result[] = ['uid' => $uid, 'central' => false, 'folder' => $this->rootFolder->getUserFolder($uid)];
+			} catch (\Throwable) {
+			}
 		}
 		return $result;
 	}
@@ -92,12 +120,17 @@ class CaseStorageService {
 	 * @return list<array{uid:string, central:bool, label:string, folder:Folder}>
 	 */
 	public function existingFolders(string $relativePath, bool $includeLegacy = true): array {
-		$result = []; $seen = [];
+		$result = [];
+		$seen = [];
 		foreach ($this->allBases($includeLegacy) as $base) {
 			$folder = $this->existingPath($base['folder'], $relativePath);
-			if ($folder === null) continue;
+			if ($folder === null) {
+				continue;
+			}
 			$id = (int)$folder->getId();
-			if (isset($seen[$id])) continue;
+			if (isset($seen[$id])) {
+				continue;
+			}
 			$seen[$id] = true;
 			$result[] = ['uid' => $base['uid'], 'central' => $base['central'], 'label' => ($base['central'] ? 'zentral:' : '') . $base['uid'] . '/' . trim($relativePath, '/'), 'folder' => $folder];
 		}
@@ -109,7 +142,11 @@ class CaseStorageService {
 		$uids = [];
 		foreach (array_unique([$this->installation->memberGroup(), ...$this->installation->adminGroups()]) as $name) {
 			$group = $this->groupManager->get($name);
-			if ($group !== null) foreach ($group->getUsers() as $user) $uids[$user->getUID()] = $user->getUID();
+			if ($group !== null) {
+				foreach ($group->getUsers() as $user) {
+					$uids[$user->getUID()] = $user->getUID();
+				}
+			}
 		}
 		$uids = array_values($uids);
 		sort($uids, SORT_NATURAL | SORT_FLAG_CASE);
@@ -122,31 +159,52 @@ class CaseStorageService {
 		$status = ['mode' => $this->installation->storageMode(), 'account' => $account, 'central' => $this->isCentral(), 'accountValid' => false, 'rootPath' => $this->installation->storageRoot(), 'location' => '', 'shares' => [], 'missingShares' => [], 'warnings' => []];
 		if ($account !== '') {
 			$user = $this->userManager->get($account);
-			if ($user === null) $status['warnings'][] = 'Das Ablagekonto „' . $account . '“ existiert nicht.';
-			elseif (!$user->isEnabled()) $status['warnings'][] = 'Das Ablagekonto „' . $account . '“ ist deaktiviert.';
-			else {
+			if ($user === null) {
+				$status['warnings'][] = 'Das Ablagekonto „' . $account . '“ existiert nicht.';
+			} elseif (!$user->isEnabled()) {
+				$status['warnings'][] = 'Das Ablagekonto „' . $account . '“ ist deaktiviert.';
+			} else {
 				$status['accountValid'] = true;
 				try {
 					$root = $this->existingPath($this->rootFolder->getUserFolder($account), $this->installation->storageRoot());
-					if ($root === null) $status['location'] = 'NOT_CREATED';
-					else {
+					if ($root === null) {
+						$status['location'] = 'NOT_CREATED';
+					} else {
 						$status['location'] = $this->locationType($root, $account);
 						$missing = $this->missingRights($root);
-						if ($missing !== []) $status['warnings'][] = 'Dem Ablagekonto fehlen im Arbeitsordner Rechte: ' . implode(', ', $missing) . '. Beim Teamordner bitte der Gruppe des Ablagekontos Lesen, Schreiben und Löschen geben.';
+						if ($missing !== []) {
+							$status['warnings'][] = 'Dem Ablagekonto fehlen im Arbeitsordner Rechte: ' . implode(', ', $missing) . '. Beim Teamordner bitte der Gruppe des Ablagekontos Lesen, Schreiben und Löschen geben.';
+						}
 						if ($status['location'] === 'OWN') {
 							$shared = $this->groupShares($root, $account);
 							$status['shares'] = array_keys($shared);
 							$status['missingShares'] = array_values(array_diff($this->shareGroups(), array_keys($shared)));
 						}
 					}
-				} catch (\Throwable $error) { $status['warnings'][] = 'Arbeitsordner des Ablagekontos nicht lesbar: ' . $error->getMessage(); }
+				} catch (\Throwable $error) {
+					$status['warnings'][] = 'Arbeitsordner des Ablagekontos nicht lesbar: ' . $error->getMessage();
+				}
 			}
 		}
 		$teamfolder = null;
-		try { $teamfolder = $this->sharedTeamfolder(); } catch (\Throwable) {}
+		try {
+			$teamfolder = $this->sharedTeamfolder();
+		} catch (\Throwable) {
+		}
 		$status['existingTeamfolder'] = $teamfolder;
-		if (!$this->isCentral() && $teamfolder !== null) $status['warnings'][] = 'Die Bestatter-Ablage liegt bereits im Teamordner „' . $teamfolder['name'] . '“ (' . implode(', ', $teamfolder['members']) . '). Empfehlung: das Ablagekonto diesem Teamordner zuordnen (eigene Gruppe mit Lese-, Schreib- und Löschrecht) statt die Dateien zu kopieren – siehe docs/FALLABLAGE.md, „Vorhandener Teamordner“.';
-		elseif (!$this->isCentral()) $status['warnings'][] = 'Die Fallablage ist noch benutzerbezogen: Jede Person arbeitet in ihrem eigenen Nextcloud-Ordner. Für die Arbeit mit mehreren Konten die zentrale Ablage einrichten.';
+		// 0.89.8: Teamordner als gemeinsame Ablage – ohne Ablagekonto. Wer ihn nicht eingebunden hat, legt Fallakten im eigenen Ordner ab.
+		$status['teamfolderMissing'] = [];
+		$status['teamfolderShared'] = false;
+		if (!$this->isCentral() && $teamfolder !== null) {
+			$status['teamfolderMissing'] = array_values(array_diff($this->bestatterUids(), $teamfolder['members']));
+			$status['teamfolderShared'] = $status['teamfolderMissing'] === [];
+		}
+		$status['shared'] = $this->isCentral() || $status['teamfolderShared'];
+		if (!$this->isCentral() && $teamfolder !== null && !$status['teamfolderShared']) {
+			$status['warnings'][] = 'Gemeinsame Fallablage im Teamordner „' . $teamfolder['name'] . '“ – diese Personen sehen ihn nicht und legen Fallakten in ihrem eigenen Ordner ab: ' . implode(', ', $status['teamfolderMissing']) . '. Bitte in die Gruppe „' . $this->installation->memberGroup() . '“ aufnehmen bzw. dem Teamordner zuordnen.';
+		} elseif (!$this->isCentral() && $teamfolder === null) {
+			$status['warnings'][] = 'Die Fallablage ist noch benutzerbezogen: Jede Person arbeitet in ihrem eigenen Nextcloud-Ordner. Für die Arbeit mit mehreren Konten einen Teamordner „' . $this->installation->storageRoot() . '“ für die Gruppe „' . $this->installation->memberGroup() . '“ anlegen (App „Team folders“, Lesen, Schreiben, Löschen); das Nextcloud-Einrichtungspaket legt ihn an. Ein eigenes Ablagekonto ist nicht nötig.';
+		}
 		return $status;
 	}
 
@@ -156,18 +214,28 @@ class CaseStorageService {
 	 */
 	public function prepareAccount(string $account, bool $createShares = true): array {
 		$account = trim($account);
-		if ($account === '' || !preg_match('/^[A-Za-z0-9 _.@\-\']{1,64}$/', $account)) throw new \InvalidArgumentException('Bitte die Benutzerkennung des Ablagekontos angeben.');
+		if ($account === '' || !preg_match('/^[A-Za-z0-9 _.@\-\']{1,64}$/', $account)) {
+			throw new \InvalidArgumentException('Bitte die Benutzerkennung des Ablagekontos angeben.');
+		}
 		$user = $this->userManager->get($account);
-		if ($user === null) throw new \InvalidArgumentException('Das Nextcloud-Konto „' . $account . '“ existiert nicht. Bitte zuerst anlegen (z. B. „bestatter-ablage“).');
-		if (!$user->isEnabled()) throw new \InvalidArgumentException('Das Nextcloud-Konto „' . $account . '“ ist deaktiviert.');
+		if ($user === null) {
+			throw new \InvalidArgumentException('Das Nextcloud-Konto „' . $account . '“ existiert nicht. Bitte zuerst anlegen.');
+		}
+		if (!$user->isEnabled()) {
+			throw new \InvalidArgumentException('Das Nextcloud-Konto „' . $account . '“ ist deaktiviert.');
+		}
 		$root = $this->installation->ensurePath($this->rootFolder->getUserFolder($account), $this->installation->storageRoot());
 		$missing = $this->missingRights($root);
-		if ($missing !== []) throw new \InvalidArgumentException('Dem Ablagekonto fehlen im Arbeitsordner Rechte: ' . implode(', ', $missing) . '. Beim Teamordner bitte der Gruppe des Ablagekontos Lesen, Schreiben und Löschen geben.');
+		if ($missing !== []) {
+			throw new \InvalidArgumentException('Dem Ablagekonto fehlen im Arbeitsordner Rechte: ' . implode(', ', $missing) . '. Beim Teamordner bitte der Gruppe des Ablagekontos Lesen, Schreiben und Löschen geben.');
+		}
 		$location = $this->locationType($root, $account);
 		$created = [];
 		// 0.70.2: Gruppenfreigaben erst beim Aktivieren anlegen. Eine vorher angelegte Freigabe „Bestatter“ kann bei den
 		// Mitgliedern den gleichnamigen Teamordner oder eigenen Ordner verdecken und so die Bestandsaufnahme verfälschen.
-		if ($location === 'OWN' && $createShares) $created = $this->ensureShares($root, $account);
+		if ($location === 'OWN' && $createShares) {
+			$created = $this->ensureShares($root, $account);
+		}
 		return ['account' => $account, 'location' => $location, 'createdShares' => $created, 'rootPath' => $this->installation->storageRoot()];
 	}
 
@@ -185,12 +253,16 @@ class CaseStorageService {
 
 	private function accountFolder(string $account): Folder {
 		$user = $this->userManager->get($account);
-		if ($user === null || !$user->isEnabled()) throw new \RuntimeException('Das Ablagekonto „' . $account . '“ ist nicht verfügbar. Bitte in der Administration unter „Ablage“ prüfen.');
+		if ($user === null || !$user->isEnabled()) {
+			throw new \RuntimeException('Das Ablagekonto „' . $account . '“ ist nicht verfügbar. Bitte in der Administration unter „Ablage“ prüfen.');
+		}
 		return $this->rootFolder->getUserFolder($account);
 	}
 
 	/** Öffentliche Variante von locationType() für Migration und Prüfungen. */
-	public function locationOf(Folder $folder, string $uid): string { return $this->locationType($folder, $uid); }
+	public function locationOf(Folder $folder, string $uid): string {
+		return $this->locationType($folder, $uid);
+	}
 
 	/**
 	 * 0.70.2: Entfernt die von der App angelegten Gruppenfreigaben (Bestatter-Gruppen) eines Ordners des Kontos.
@@ -200,8 +272,15 @@ class CaseStorageService {
 		$removed = [];
 		$groups = array_flip($this->shareGroups());
 		foreach ($this->groupShares($folder, $account) as $group => $share) {
-			if (!isset($groups[$group])) continue;
-			try { $this->shareManager->deleteShare($share); $removed[] = $group; } catch (\Throwable $error) { $this->logger->warning('Freigabe konnte nicht entfernt werden.', ['group' => $group, 'reason' => $error->getMessage()]); }
+			if (!isset($groups[$group])) {
+				continue;
+			}
+			try {
+				$this->shareManager->deleteShare($share);
+				$removed[] = $group;
+			} catch (\Throwable $error) {
+				$this->logger->warning('Freigabe konnte nicht entfernt werden.', ['group' => $group, 'reason' => $error->getMessage()]);
+			}
 		}
 		return $removed;
 	}
@@ -211,13 +290,24 @@ class CaseStorageService {
 	 * @return array{name:string, members:list<string>}|null
 	 */
 	public function sharedTeamfolder(): ?array {
-		$found = null; $members = [];
+		$found = null;
+		$members = [];
 		foreach ($this->bestatterUids() as $uid) {
-			if ($this->isCentral() && $uid === $this->installation->storageAccount()) continue;
-			try { $root = $this->existingPath($this->rootFolder->getUserFolder($uid), $this->installation->storageRoot()); } catch (\Throwable) { continue; }
-			if ($root === null || $this->locationType($root, $uid) !== 'TEAMFOLDER') continue;
+			if ($this->isCentral() && $uid === $this->installation->storageAccount()) {
+				continue;
+			}
+			try {
+				$root = $this->existingPath($this->rootFolder->getUserFolder($uid), $this->installation->storageRoot());
+			} catch (\Throwable) {
+				continue;
+			}
+			if ($root === null || $this->locationType($root, $uid) !== 'TEAMFOLDER') {
+				continue;
+			}
 			$found ??= ['id' => (int)$root->getId(), 'name' => $root->getName()];
-			if ((int)$root->getId() === $found['id']) $members[] = $uid;
+			if ((int)$root->getId() === $found['id']) {
+				$members[] = $uid;
+			}
 		}
 		return $found === null ? null : ['name' => $found['name'], 'members' => $members];
 	}
@@ -227,32 +317,50 @@ class CaseStorageService {
 		try {
 			$mount = $root->getMountPoint();
 			$type = method_exists($mount, 'getMountType') ? (string)$mount->getMountType() : '';
-			if ($type === 'group') return 'TEAMFOLDER';
-			if ($type === 'shared') return 'SHARED';
+			if ($type === 'group') {
+				return 'TEAMFOLDER';
+			}
+			if ($type === 'shared') {
+				return 'SHARED';
+			}
 			$owner = $root->getOwner()?->getUID();
-			if ($owner !== null && $owner !== $account) return 'SHARED';
-		} catch (\Throwable) {}
+			if ($owner !== null && $owner !== $account) {
+				return 'SHARED';
+			}
+		} catch (\Throwable) {
+		}
 		return 'OWN';
 	}
 
 	/** @return list<string> fehlende Rechte (die App ersetzt Ausgaben und räumt auf, braucht also auch Löschrecht) */
 	private function missingRights(Folder $root): array {
-		$permissions = $root->getPermissions(); $missing = [];
-		foreach ([Constants::PERMISSION_READ => 'Lesen', Constants::PERMISSION_CREATE => 'Anlegen', Constants::PERMISSION_UPDATE => 'Ändern', Constants::PERMISSION_DELETE => 'Löschen'] as $bit => $label) if (($permissions & $bit) === 0) $missing[] = $label;
+		$permissions = $root->getPermissions();
+		$missing = [];
+		foreach ([Constants::PERMISSION_READ => 'Lesen', Constants::PERMISSION_CREATE => 'Anlegen', Constants::PERMISSION_UPDATE => 'Ändern', Constants::PERMISSION_DELETE => 'Löschen'] as $bit => $label) {
+			if (($permissions & $bit) === 0) {
+				$missing[] = $label;
+			}
+		}
 		return $missing;
 	}
 
 	/** @return list<string> */
 	private function shareGroups(): array {
 		$groups = [];
-		foreach (array_unique([$this->installation->memberGroup(), ...$this->installation->adminGroups()]) as $name) if ($this->groupManager->groupExists($name)) $groups[] = $name;
+		foreach (array_unique([$this->installation->memberGroup(), ...$this->installation->adminGroups()]) as $name) {
+			if ($this->groupManager->groupExists($name)) {
+				$groups[] = $name;
+			}
+		}
 		return $groups;
 	}
 
 	/** @return array<string, IShare> */
 	private function groupShares(Folder $root, string $account): array {
 		$result = [];
-		foreach ($this->shareManager->getSharesBy($account, IShare::TYPE_GROUP, $root, false, -1) as $share) $result[(string)$share->getSharedWith()] = $share;
+		foreach ($this->shareManager->getSharesBy($account, IShare::TYPE_GROUP, $root, false, -1) as $share) {
+			$result[(string)$share->getSharedWith()] = $share;
+		}
 		return $result;
 	}
 
@@ -261,7 +369,9 @@ class CaseStorageService {
 		$existing = $this->groupShares($root, $account);
 		$created = [];
 		foreach ($this->shareGroups() as $group) {
-			if (isset($existing[$group])) continue;
+			if (isset($existing[$group])) {
+				continue;
+			}
 			$share = $this->shareManager->newShare();
 			$share->setNode($root)->setShareType(IShare::TYPE_GROUP)->setSharedWith($group)->setSharedBy($account)->setShareOwner($account)
 				->setPermissions(Constants::PERMISSION_ALL & ~Constants::PERMISSION_SHARE);
@@ -274,10 +384,16 @@ class CaseStorageService {
 	private function existingPath(Folder $base, string $relativePath): ?Folder {
 		$folder = $base;
 		foreach (explode('/', trim($relativePath, '/')) as $name) {
-			if ($name === '') continue;
-			if (!$folder->nodeExists($name)) return null;
+			if ($name === '') {
+				continue;
+			}
+			if (!$folder->nodeExists($name)) {
+				return null;
+			}
 			$node = $folder->get($name);
-			if (!$node instanceof Folder) return null;
+			if (!$node instanceof Folder) {
+				return null;
+			}
 			$folder = $node;
 		}
 		return $folder;

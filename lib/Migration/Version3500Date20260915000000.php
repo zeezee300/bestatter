@@ -37,11 +37,17 @@ class Version3500Date20260915000000 extends SimpleMigrationStep {
 		}
 
 		foreach (['bestatter_case_services', 'bestatter_commercial_docs', 'bestatter_invoices'] as $tableName) {
-			if (!$schema->hasTable($tableName)) continue;
+			if (!$schema->hasTable($tableName)) {
+				continue;
+			}
 			$table = $schema->getTable($tableName);
-			if (!$table->hasColumn('side_order_id')) $table->addColumn('side_order_id', 'integer', ['unsigned' => true, 'notnull' => false]);
+			if (!$table->hasColumn('side_order_id')) {
+				$table->addColumn('side_order_id', 'integer', ['unsigned' => true, 'notnull' => false]);
+			}
 			$indexName = 'bestatter_' . substr(str_replace('bestatter_', '', $tableName), 0, 18) . '_side_order';
-			if (!$table->hasIndex($indexName)) $table->addIndex(['case_id', 'side_order_id'], $indexName);
+			if (!$table->hasIndex($indexName)) {
+				$table->addIndex(['case_id', 'side_order_id'], $indexName);
+			}
 		}
 		return $schema;
 	}

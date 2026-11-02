@@ -81,7 +81,7 @@ class UpdateCheck extends Command {
 			} finally {
 				$this->userSession->setUser($previous);
 			}
-			$problems = array_values(array_map(static fn(array $check): string => $check['label'] . ': ' . $check['message'], array_filter($system['checks'], static fn(array $check): bool => $check['status'] === 'ERROR')));
+			$problems = array_values(array_map(static fn (array $check): string => $check['label'] . ': ' . $check['message'], array_filter($system['checks'], static fn (array $check): bool => $check['status'] === 'ERROR')));
 			$checks[] = ['key' => 'system', 'label' => 'Systemprüfung', 'status' => $system['overall'] === 'ERROR' ? 'ERROR' : ($system['overall'] === 'WARN' ? 'WARN' : 'OK'),
 				'message' => sprintf('%d in Ordnung, %d Hinweise, %d Fehler', $system['summary']['ok'], $system['summary']['warnings'], $system['summary']['errors']) . ($problems !== [] ? ' – ' . implode('; ', $problems) : '')];
 		}
@@ -90,7 +90,14 @@ class UpdateCheck extends Command {
 		$checks[] = ['key' => 'audit', 'label' => 'Audit-Kette', 'status' => in_array($audit['status'], ['OK', 'WARN'], true) ? $audit['status'] : 'ERROR', 'message' => $audit['message']];
 
 		$overall = 'OK';
-		foreach ($checks as $check) { if ($check['status'] === 'ERROR') { $overall = 'ERROR'; break; } if ($check['status'] === 'WARN') $overall = 'WARN'; }
+		foreach ($checks as $check) {
+			if ($check['status'] === 'ERROR') {
+				$overall = 'ERROR';
+				break;
+			} if ($check['status'] === 'WARN') {
+				$overall = 'WARN';
+			}
+		}
 		$result = ['version' => Application::VERSION, 'installedVersion' => $installed, 'overall' => $overall, 'checkedAs' => $context?->getUID(), 'checkedAt' => date('c'), 'checks' => $checks];
 
 		if ($input->getOption('record')) {
@@ -107,18 +114,28 @@ class UpdateCheck extends Command {
 			$output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 		} else {
 			$symbols = ['OK' => 'OK     ', 'WARN' => 'HINWEIS', 'ERROR' => 'FEHLER '];
-			foreach ($checks as $check) $output->writeln($symbols[$check['status']] . ' ' . $check['label'] . ': ' . $check['message']);
+			foreach ($checks as $check) {
+				$output->writeln($symbols[$check['status']] . ' ' . $check['label'] . ': ' . $check['message']);
+			}
 			$output->writeln('Ergebnis: ' . ['OK' => 'in Ordnung', 'WARN' => 'in Ordnung, mit Hinweisen', 'ERROR' => 'FEHLER'][$overall] . ' (Bestatter ' . Application::VERSION . ')');
 		}
 		return $overall === 'ERROR' ? self::FAILURE : self::SUCCESS;
 	}
 
 	private function contextUser(string $uid): ?\OCP\IUser {
-		if ($uid !== '') return $this->users->get($uid);
+		if ($uid !== '') {
+			return $this->users->get($uid);
+		}
 		foreach ($this->installation->adminGroups() as $groupId) {
 			$group = $this->groups->get($groupId);
-			if ($group === null) continue;
-			foreach ($group->getUsers() as $user) if ($user->isEnabled()) return $user;
+			if ($group === null) {
+				continue;
+			}
+			foreach ($group->getUsers() as $user) {
+				if ($user->isEnabled()) {
+					return $user;
+				}
+			}
 		}
 		return null;
 	}

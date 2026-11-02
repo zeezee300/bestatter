@@ -25,15 +25,23 @@ final class BackupSchedule {
 	 * @return array{frequency:string,hour:int,weekday:int,kind:string,autoCleanup:bool}
 	 */
 	public static function normalize(array $input, array $current = []): array {
-		$value = static fn(string $key): mixed => array_key_exists($key, $input) ? $input[$key] : ($current[$key] ?? self::DEFAULTS[$key]);
+		$value = static fn (string $key): mixed => array_key_exists($key, $input) ? $input[$key] : ($current[$key] ?? self::DEFAULTS[$key]);
 		$frequency = strtoupper(trim((string)$value('frequency')));
-		if (!isset(self::FREQUENCIES[$frequency])) throw new \InvalidArgumentException('Unbekannter Rhythmus der automatischen Sicherung: „' . $frequency . '“.');
+		if (!isset(self::FREQUENCIES[$frequency])) {
+			throw new \InvalidArgumentException('Unbekannter Rhythmus der automatischen Sicherung: „' . $frequency . '“.');
+		}
 		$kind = strtoupper(trim((string)$value('kind')));
-		if (!isset(self::KINDS[$kind])) throw new \InvalidArgumentException('Unbekannte Art der automatischen Sicherung: „' . $kind . '“.');
+		if (!isset(self::KINDS[$kind])) {
+			throw new \InvalidArgumentException('Unbekannte Art der automatischen Sicherung: „' . $kind . '“.');
+		}
 		$hour = $value('hour');
-		if (!is_numeric($hour) || (int)$hour != $hour || (int)$hour < 0 || (int)$hour > 23) throw new \InvalidArgumentException('Die Uhrzeit der automatischen Sicherung muss eine volle Stunde zwischen 0 und 23 sein.');
+		if (!is_numeric($hour) || (int)$hour != $hour || (int)$hour < 0 || (int)$hour > 23) {
+			throw new \InvalidArgumentException('Die Uhrzeit der automatischen Sicherung muss eine volle Stunde zwischen 0 und 23 sein.');
+		}
 		$weekday = $value('weekday');
-		if (!is_numeric($weekday) || (int)$weekday != $weekday || !isset(self::WEEKDAYS[(int)$weekday])) throw new \InvalidArgumentException('Der Wochentag der automatischen Sicherung muss zwischen 1 (Montag) und 7 (Sonntag) liegen.');
+		if (!is_numeric($weekday) || (int)$weekday != $weekday || !isset(self::WEEKDAYS[(int)$weekday])) {
+			throw new \InvalidArgumentException('Der Wochentag der automatischen Sicherung muss zwischen 1 (Montag) und 7 (Sonntag) liegen.');
+		}
 		$cleanup = $value('autoCleanup');
 		$cleanup = is_bool($cleanup) ? $cleanup : in_array(strtolower(trim((string)$cleanup)), ['1', 'true', 'ja', 'yes', 'on'], true);
 		return ['frequency' => $frequency, 'hour' => (int)$hour, 'weekday' => (int)$weekday, 'kind' => $kind, 'autoCleanup' => $cleanup];
@@ -41,18 +49,28 @@ final class BackupSchedule {
 
 	/** Ändert sich der Termin (Rhythmus, Stunde, Wochentag), beginnt der Zeitplan neu – sonst liefe sofort eine „verpasste“ Sicherung. */
 	public static function timingChanged(array $before, array $after): bool {
-		foreach (['frequency', 'hour', 'weekday'] as $key) if (($before[$key] ?? null) !== ($after[$key] ?? null)) return true;
+		foreach (['frequency', 'hour', 'weekday'] as $key) {
+			if (($before[$key] ?? null) !== ($after[$key] ?? null)) {
+				return true;
+			}
+		}
 		return false;
 	}
 
 	/** Letzter Termin, der nicht nach $now liegt (in der Zeitzone von $now); null bei „Aus“. */
 	public static function lastSlot(array $schedule, \DateTimeImmutable $now): ?\DateTimeImmutable {
-		if (($schedule['frequency'] ?? 'OFF') === 'OFF') return null;
+		if (($schedule['frequency'] ?? 'OFF') === 'OFF') {
+			return null;
+		}
 		$slot = $now->setTime((int)$schedule['hour'], 0, 0);
-		if ($slot > $now) $slot = $slot->modify('-1 day');
+		if ($slot > $now) {
+			$slot = $slot->modify('-1 day');
+		}
 		if ($schedule['frequency'] === 'WEEKLY') {
 			// Rückwärts bis zum gewünschten Wochentag (höchstens 6 Tage); setTime nach modify hält die Stunde auch über Zeitumstellungen.
-			while ((int)$slot->format('N') !== (int)$schedule['weekday']) $slot = $slot->modify('-1 day')->setTime((int)$schedule['hour'], 0, 0);
+			while ((int)$slot->format('N') !== (int)$schedule['weekday']) {
+				$slot = $slot->modify('-1 day')->setTime((int)$schedule['hour'], 0, 0);
+			}
 		}
 		return $slot;
 	}
@@ -60,23 +78,35 @@ final class BackupSchedule {
 	/** Nächster Termin nach $now; null bei „Aus“. */
 	public static function nextSlot(array $schedule, \DateTimeImmutable $now): ?\DateTimeImmutable {
 		$last = self::lastSlot($schedule, $now);
-		if ($last === null) return null;
+		if ($last === null) {
+			return null;
+		}
 		return $last->modify($schedule['frequency'] === 'WEEKLY' ? '+7 days' : '+1 day')->setTime((int)$schedule['hour'], 0, 0);
 	}
 
 	/** Fällig, wenn der letzte Termin nach dem letzten Versuch und nach der letzten Änderung des Zeitplans liegt. */
 	public static function isDue(array $schedule, \DateTimeImmutable $now, ?\DateTimeImmutable $lastAttempt, ?\DateTimeImmutable $since): bool {
 		$slot = self::lastSlot($schedule, $now);
-		if ($slot === null) return false;
-		foreach ([$lastAttempt, $since] as $reference) if ($reference !== null && $reference >= $slot) return false;
+		if ($slot === null) {
+			return false;
+		}
+		foreach ([$lastAttempt, $since] as $reference) {
+			if ($reference !== null && $reference >= $slot) {
+				return false;
+			}
+		}
 		return true;
 	}
 
 	/** Überfällig: Der letzte Termin liegt mehr als den Spielraum zurück, ohne dass seither eine Sicherung gelungen ist. */
 	public static function overdue(array $schedule, \DateTimeImmutable $now, ?\DateTimeImmutable $lastSuccess, ?\DateTimeImmutable $since): bool {
 		$slot = self::lastSlot($schedule, $now);
-		if ($slot === null || $now->getTimestamp() - $slot->getTimestamp() <= self::GRACE_SECONDS) return false;
-		if ($since !== null && $since >= $slot) return false;
+		if ($slot === null || $now->getTimestamp() - $slot->getTimestamp() <= self::GRACE_SECONDS) {
+			return false;
+		}
+		if ($since !== null && $since >= $slot) {
+			return false;
+		}
 		return $lastSuccess === null || $lastSuccess < $slot;
 	}
 

@@ -13,9 +13,13 @@ use OCP\Migration\SimpleMigrationStep;
 class Version4000Date20260917020000 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		$schema = $schemaClosure();
-		if (!$schema->hasTable('bestatter_mail_outbox')) return $schema;
+		if (!$schema->hasTable('bestatter_mail_outbox')) {
+			return $schema;
+		}
 		$table = $schema->getTable('bestatter_mail_outbox');
-		if (!$table->hasColumn('reply_to')) $table->addColumn('reply_to', 'string', ['length' => 320, 'notnull' => false]);
+		if (!$table->hasColumn('reply_to')) {
+			$table->addColumn('reply_to', 'string', ['length' => 320, 'notnull' => false]);
+		}
 		return $schema;
 	}
 }

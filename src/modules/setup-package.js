@@ -1,3 +1,5 @@
+import { referenceNotice } from './catalog-references.js'
+
 /**
  * 0.75.3 – Einrichtungspaket (Administration → „Einrichtungspaket“) und Logo je Niederlassung
  * (Administration → „Niederlassungen“). Pflege nur für Bestatter-Administratoren.
@@ -5,8 +7,9 @@
 export function createSetupPackageModule(ctx) {
 	const { state, esc, api, apiBase, render, notifySuccess, notifyError, notifyWarning, confirmAction, download } = ctx
 	const TYPES = [
-		['article-groups', 'Warengruppen'], ['articles', 'Leistungskatalog (Artikel)'], ['price-list', 'Preislisten'], ['document-template', 'Dokumentvorlagen'],
-		['order-form', 'Auftragsformulare'], ['labels', 'Marker (mit Auswahl aktiv/inaktiv)'], ['document-kinds', 'Dokumentarten (mit Paperless-Zuordnung)'], ['process-template', 'Ablaufvorlagen'], ['logo', 'Logos der Niederlassungen'],
+		['branches', 'Niederlassungen (ohne Bankverbindung)'], ['article-groups', 'Warengruppen'], ['articles', 'Leistungskatalog (Artikel)'], ['price-list', 'Preislisten'], ['document-template', 'Dokumentvorlagen'],
+		['order-form', 'Auftragsformulare'], ['labels', 'Marker (mit Auswahl aktiv/inaktiv)'], ['document-kinds', 'Dokumentarten (mit Paperless-Zuordnung)'], ['process-template', 'Ablaufvorlagen'],
+		['order-choices', 'Ankreuzfelder (Auftrag)'], ['typical-costs', 'Typische Fremdkosten'], ['variant-rules', 'Variantenregeln'], ['surcharge-rules', 'Zuschlagsstaffeln'], ['logo', 'Logos der Niederlassungen'],
 	]
 	const pkg = () => (state.setupPackage ||= { customer: '', types: TYPES.map(([key]) => key), file: null, preview: null, decisions: {}, result: null })
 
@@ -57,7 +60,7 @@ export function createSetupPackageModule(ctx) {
 			const warnings = item.warnings?.length ? `<ul class="bp-setup-warnings">${item.warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul>` : ''
 			return `<tr><td>${esc(item.typeLabel)}</td><td><b>${esc(item.title)}</b><small>${esc(item.key)}</small></td><td><span class="bp-status ${item.status === 'NEU' ? 'ready' : item.status === 'FEHLER' ? 'error' : ''}">${esc(statusLabel[item.status] || item.status)}</span></td><td>${esc(item.details || '')}${warnings}</td><td><select data-setup-decision="${item.index}" aria-label="Aktion für ${esc(item.title)}" ${item.actions.length < 2 ? 'disabled' : ''}>${options}</select><small>Vorschlag: ${esc(item.actionLabels[item.actions.indexOf(item.defaultAction)] || item.defaultAction)}</small></td></tr>`
 		}).join('')
-		const result = p.result ? `<aside class="bp-of-report ${p.result.summary.failed ? 'has-warnings' : ''}" role="status"><b>Eingespielt: ${p.result.summary.done} · übersprungen: ${p.result.summary.skipped} · fehlgeschlagen: ${p.result.summary.failed}</b><small>Sicherung vorher: ${esc(p.result.backup.path || '–')}</small><ul>${p.result.results.map((row) => `<li>${esc(row.typeLabel)} „${esc(row.title)}“ – ${esc(row.actionLabel)}: ${row.ok ? '' : 'Fehler: '}${esc(row.message)}</li>`).join('')}</ul></aside>` : ''
+		const result = p.result ? `<aside class="bp-of-report ${p.result.summary.failed ? 'has-warnings' : ''}" role="status"><b>Eingespielt: ${p.result.summary.done} · übersprungen: ${p.result.summary.skipped} · fehlgeschlagen: ${p.result.summary.failed}</b><small>Sicherung vorher: ${esc(p.result.backup.path || '–')}</small><ul>${p.result.results.map((row) => `<li>${esc(row.typeLabel)} „${esc(row.title)}“ – ${esc(row.actionLabel)}: ${row.ok ? '' : 'Fehler: '}${esc(row.message)}</li>`).join('')}</ul></aside>${referenceNotice(p.result.references, esc)}${p.result.references && !p.result.references.catalogEmpty && !p.result.references.count ? `<p class="bp-muted" data-catalog-references="0">${esc(p.result.references.message)}</p>` : ''}` : ''
 		const manifest = p.preview?.manifest
 		const importPanel = `<section class="bp-panel"><div class="bp-panel-head"><div><h3>Einrichtungspaket einspielen</h3><p class="bp-muted">Zuerst zeigt eine Vorschau jeden Eintrag mit Stand und vorgeschlagener Aktion; vorhandene Inhalte werden nur geändert, wenn Sie das wählen. Vor dem Einspielen legt die App automatisch eine Sicherung der App-Daten an. Ersetzte Dokumentvorlagen bleiben als datierte Kopie im Vorlagenordner.</p></div></div>
 			<div class="bp-row-actions"><label class="bp-secondary bp-file-button">Paket auswählen …<input type="file" id="setup-import-file" accept=".zip,application/zip" hidden></label>${p.file ? `<span class="bp-muted">${esc(p.file.name)}</span>` : ''}</div>

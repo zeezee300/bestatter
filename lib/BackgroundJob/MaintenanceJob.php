@@ -10,7 +10,10 @@ use OCP\BackgroundJob\IJob;
 use OCP\BackgroundJob\TimedJob;
 
 class MaintenanceJob extends TimedJob {
-	public function __construct(ITimeFactory $time, private MaintenanceService $maintenance) {
+	public function __construct(
+		ITimeFactory $time,
+		private MaintenanceService $maintenance,
+	) {
 		parent::__construct($time);
 		$this->setInterval(6 * 60 * 60);
 		$this->setTimeSensitivity(IJob::TIME_INSENSITIVE);

@@ -14,7 +14,9 @@ class Version3300Date20260911000000 extends SimpleMigrationStep {
 		$schema = $schemaClosure();
 		if ($schema->hasTable('bestatter_case_services')) {
 			$table = $schema->getTable('bestatter_case_services');
-			if (!$table->hasColumn('note')) $table->addColumn('note', 'text', ['notnull' => false]);
+			if (!$table->hasColumn('note')) {
+				$table->addColumn('note', 'text', ['notnull' => false]);
+			}
 		}
 		return $schema;
 	}

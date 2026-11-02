@@ -20,11 +20,19 @@ class Version5100Date20261002000000 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if (!$schema->hasTable('bestatter_capture_imports')) return null;
+		if (!$schema->hasTable('bestatter_capture_imports')) {
+			return null;
+		}
 		$t = $schema->getTable('bestatter_capture_imports');
 		$changed = false;
-		if (!$t->hasColumn('ocr_engine')) { $t->addColumn('ocr_engine', Types::STRING, ['length' => 16, 'notnull' => false]); $changed = true; }
-		if (!$t->hasColumn('ocr_task_id')) { $t->addColumn('ocr_task_id', Types::BIGINT, ['notnull' => false, 'unsigned' => true]); $changed = true; }
+		if (!$t->hasColumn('ocr_engine')) {
+			$t->addColumn('ocr_engine', Types::STRING, ['length' => 16, 'notnull' => false]);
+			$changed = true;
+		}
+		if (!$t->hasColumn('ocr_task_id')) {
+			$t->addColumn('ocr_task_id', Types::BIGINT, ['notnull' => false, 'unsigned' => true]);
+			$changed = true;
+		}
 		return $changed ? $schema : null;
 	}
 }

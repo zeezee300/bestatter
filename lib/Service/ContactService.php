@@ -13,7 +13,8 @@ class ContactService {
 		private IManager $contacts,
 		private IGroupManager $groups,
 		private InstallationConfigService $installationConfig,
-	) {}
+	) {
+	}
 
 	public function list(): array {
 		$result = [];
@@ -45,8 +46,14 @@ class ContactService {
 	}
 
 	public function find(int $id): ?array {
-		if ($id === 0) return null;
-		foreach ($this->list() as $contact) if ((int)$contact['id'] === $id) return $contact;
+		if ($id === 0) {
+			return null;
+		}
+		foreach ($this->list() as $contact) {
+			if ((int)$contact['id'] === $id) {
+				return $contact;
+			}
+		}
 		return null;
 	}
 
@@ -61,9 +68,13 @@ class ContactService {
 		$candidate = ['title' => $title] + $data;
 		$result = [];
 		foreach ($this->list() as $contact) {
-			if (($contact['data']['source'] ?? '') === 'nextcloud-group') continue;
+			if (($contact['data']['source'] ?? '') === 'nextcloud-group') {
+				continue;
+			}
 			$reasons = self::matchReasons($candidate, ['title' => $contact['title']] + $contact['data']);
-			if ($reasons === []) continue;
+			if ($reasons === []) {
+				continue;
+			}
 			$result[] = [
 				'id' => $contact['id'], 'title' => $contact['title'], 'addressBook' => $contact['data']['addressBook'] ?? '',
 				'sameAddress' => in_array('ADDRESS', $reasons, true), 'reasons' => $reasons, 'reasonText' => self::reasonText($reasons),
@@ -71,7 +82,7 @@ class ContactService {
 			];
 		}
 		// Stärkere Übereinstimmungen zuerst (mehr Gründe, gleicher Name vor ähnlichem Namen).
-		usort($result, static fn(array $a, array $b): int => [count($b['reasons']), in_array('NAME', $b['reasons'], true)] <=> [count($a['reasons']), in_array('NAME', $a['reasons'], true)]);
+		usort($result, static fn (array $a, array $b): int => [count($b['reasons']), in_array('NAME', $b['reasons'], true)] <=> [count($a['reasons']), in_array('NAME', $a['reasons'], true)]);
 		return array_slice($result, 0, 5);
 	}
 
@@ -80,26 +91,37 @@ class ContactService {
 		$reasons = [];
 		$name = self::normalizeName(self::fullName($candidate));
 		$other = self::normalizeName(self::fullName($existing));
-		if ($name !== '' && $name === $other) $reasons[] = 'NAME';
-		elseif ($name !== '' && $other !== '') {
-			$a = explode(' ', $name); $b = explode(' ', $other);
-			$shorter = count($a) <= count($b) ? $a : $b; $longer = count($a) <= count($b) ? $b : $a;
-			if (count($shorter) >= 2 && array_diff($shorter, $longer) === []) $reasons[] = 'NAME_SIMILAR';
+		if ($name !== '' && $name === $other) {
+			$reasons[] = 'NAME';
+		} elseif ($name !== '' && $other !== '') {
+			$a = explode(' ', $name);
+			$b = explode(' ', $other);
+			$shorter = count($a) <= count($b) ? $a : $b;
+			$longer = count($a) <= count($b) ? $b : $a;
+			if (count($shorter) >= 2 && array_diff($shorter, $longer) === []) {
+				$reasons[] = 'NAME_SIMILAR';
+			}
 		}
 		$phones = array_filter(array_map([self::class, 'normalizePhone'], [(string)($candidate['phone'] ?? ''), (string)($candidate['mobile'] ?? '')]));
 		$otherPhones = array_filter(array_map([self::class, 'normalizePhone'], array_merge(explode(',', (string)($existing['phones'] ?? $existing['phone'] ?? '')), [(string)($existing['phone'] ?? ''), (string)($existing['mobile'] ?? '')])));
-		if ($phones !== [] && array_intersect($phones, $otherPhones) !== []) $reasons[] = 'PHONE';
+		if ($phones !== [] && array_intersect($phones, $otherPhones) !== []) {
+			$reasons[] = 'PHONE';
+		}
 		$email = mb_strtolower(trim((string)($candidate['email'] ?? '')));
-		if ($email !== '' && $email === mb_strtolower(trim((string)($existing['email'] ?? '')))) $reasons[] = 'EMAIL';
+		if ($email !== '' && $email === mb_strtolower(trim((string)($existing['email'] ?? '')))) {
+			$reasons[] = 'EMAIL';
+		}
 		$street = self::normalizeStreet((string)($candidate['street'] ?? ''));
 		$postalCode = trim((string)($candidate['postalCode'] ?? ''));
-		if ($street !== '' && $postalCode !== '' && $street === self::normalizeStreet((string)($existing['street'] ?? '')) && $postalCode === trim((string)($existing['postalCode'] ?? ''))) $reasons[] = 'ADDRESS';
+		if ($street !== '' && $postalCode !== '' && $street === self::normalizeStreet((string)($existing['street'] ?? '')) && $postalCode === trim((string)($existing['postalCode'] ?? ''))) {
+			$reasons[] = 'ADDRESS';
+		}
 		return $reasons;
 	}
 
 	public static function reasonText(array $reasons): string {
 		$labels = ['NAME' => 'gleicher Name', 'NAME_SIMILAR' => 'ähnlicher Name', 'PHONE' => 'gleiche Telefonnummer', 'EMAIL' => 'gleiche E-Mail-Adresse', 'ADDRESS' => 'gleiche Anschrift'];
-		return implode(', ', array_map(static fn(string $reason): string => $labels[$reason] ?? $reason, $reasons));
+		return implode(', ', array_map(static fn (string $reason): string => $labels[$reason] ?? $reason, $reasons));
 	}
 
 	/** „Dr. Rainer  Müller“, „Müller, Rainer“ und „rainer mueller“ ergeben denselben Schlüssel „mueller rainer“. */
@@ -107,7 +129,7 @@ class ContactService {
 		$name = mb_strtolower(trim($name));
 		$name = strtr($name, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss', 'é' => 'e', 'è' => 'e', 'á' => 'a', 'à' => 'a']);
 		$name = (string)preg_replace('/[^\p{L}\p{N}]+/u', ' ', $name);
-		$tokens = array_values(array_filter(explode(' ', $name), static fn(string $token): bool => $token !== '' && !in_array($token, ['herr', 'frau', 'dr', 'prof', 'med', 'dipl', 'ing', 'von', 'van', 'der', 'de'], true)));
+		$tokens = array_values(array_filter(explode(' ', $name), static fn (string $token): bool => $token !== '' && !in_array($token, ['herr', 'frau', 'dr', 'prof', 'med', 'dipl', 'ing', 'von', 'van', 'der', 'de'], true)));
 		sort($tokens);
 		return implode(' ', $tokens);
 	}
@@ -133,15 +155,23 @@ class ContactService {
 	 * Wunsch aus dem Reiter „Kontakte“. Mit $uri wird ein bereits übernommener Eintrag aktualisiert.
 	 */
 	public function savePerson(array $person, string $uri = ''): array {
-		if (!$this->contacts->isEnabled()) throw new \RuntimeException('Nextcloud Contacts ist nicht verfuegbar.');
+		if (!$this->contacts->isEnabled()) {
+			throw new \RuntimeException('Nextcloud Contacts ist nicht verfuegbar.');
+		}
 		$first = trim((string)($person['firstName'] ?? ''));
 		$last = trim((string)($person['lastName'] ?? ''));
-		if ($first === '' || $last === '') throw new \InvalidArgumentException('Für das Adressbuch werden Vor- und Nachname benötigt.');
+		if ($first === '' || $last === '') {
+			throw new \InvalidArgumentException('Für das Adressbuch werden Vor- und Nachname benötigt.');
+		}
 		$book = $this->organizationAddressBook();
 		$properties = ['FN' => $first . ' ' . $last, 'N' => str_replace(';', ',', $last) . ';' . str_replace(';', ',', $first) . ';;;', 'CATEGORIES' => 'Angehörige'];
 		$phones = [];
-		if (trim((string)($person['mobile'] ?? '')) !== '') $phones[] = ['value' => trim((string)$person['mobile']), 'type' => 'CELL'];
-		if (trim((string)($person['phone'] ?? '')) !== '') $phones[] = ['value' => trim((string)$person['phone']), 'type' => 'VOICE'];
+		if (trim((string)($person['mobile'] ?? '')) !== '') {
+			$phones[] = ['value' => trim((string)$person['mobile']), 'type' => 'CELL'];
+		}
+		if (trim((string)($person['phone'] ?? '')) !== '') {
+			$phones[] = ['value' => trim((string)$person['phone']), 'type' => 'VOICE'];
+		}
 		$properties['TEL'] = $phones;
 		$properties['EMAIL'] = trim((string)($person['email'] ?? '')) !== '' ? [['value' => trim((string)$person['email']), 'type' => 'HOME']] : [];
 		$postalCode = trim((string)($person['postalCode'] ?? ''));
@@ -149,9 +179,11 @@ class ContactService {
 		$street = trim((string)($person['street'] ?? ''));
 		$country = trim((string)($person['country'] ?? '')) ?: 'Deutschland';
 		$properties['ADR'] = $street !== '' || $postalCode !== '' || $city !== ''
-			? [['value' => implode(';', array_map(static fn(string $part): string => str_replace(';', ',', $part), ['', '', $street, $city, '', $postalCode, $country])), 'type' => 'HOME']]
+			? [['value' => implode(';', array_map(static fn (string $part): string => str_replace(';', ',', $part), ['', '', $street, $city, '', $postalCode, $country])), 'type' => 'HOME']]
 			: [];
-		if ($uri !== '') $properties['URI'] = $uri;
+		if ($uri !== '') {
+			$properties['URI'] = $uri;
+		}
 		$saved = $book->createOrUpdate($properties);
 		return $this->map($saved, $book);
 	}
@@ -179,10 +211,12 @@ class ContactService {
 		if (($payload['street'] ?? '') !== '' || $postalCode !== '' || $city !== '') {
 			// 0.75.2: als strukturierte Adresse übergeben. Ein einfacher Text wurde von Nextcloud maskiert und landete
 			// vollständig im ersten Teilfeld („Postfach“) statt in Straße, Ort, PLZ und Land.
-			$parts = array_map(static fn(string $part): string => str_replace(';', ',', trim($part)), ['', '', (string)($payload['street'] ?? ''), $city, '', $postalCode, $country]);
+			$parts = array_map(static fn (string $part): string => str_replace(';', ',', trim($part)), ['', '', (string)($payload['street'] ?? ''), $city, '', $postalCode, $country]);
 			$properties['ADR'] = [['value' => implode(';', $parts), 'type' => 'WORK']];
 		}
-		if (($payload['url'] ?? '') !== '') $properties['URL'] = (string)$payload['url'];
+		if (($payload['url'] ?? '') !== '') {
+			$properties['URL'] = (string)$payload['url'];
+		}
 		$created = $book->createOrUpdate($properties);
 		return $this->map($created, $book);
 	}
@@ -212,7 +246,7 @@ class ContactService {
 		}
 		$category = $contact['CATEGORIES'] ?? '';
 		if (is_array($category)) {
-			$category = implode(',', array_map(static fn($value) => is_array($value) ? (string)($value['value'] ?? '') : (string)$value, $category));
+			$category = implode(',', array_map(static fn ($value) => is_array($value) ? (string)($value['value'] ?? '') : (string)$value, $category));
 		}
 		return [
 			'id' => abs((int)crc32($book->getKey() . ':' . (string)($contact['id'] ?? $title))),
@@ -252,8 +286,10 @@ class ContactService {
 
 	/** @return list<string> alle Werte einer mehrfach vorkommenden Eigenschaft (z. B. mehrere Telefonnummern). */
 	private function values(mixed $value): array {
-		if (!is_array($value)) return trim((string)$value) !== '' ? [(string)$value] : [];
-		return array_values(array_filter(array_map(static fn($entry): string => is_array($entry) ? (string)($entry['value'] ?? '') : (string)$entry, $value), static fn(string $entry): bool => trim($entry) !== ''));
+		if (!is_array($value)) {
+			return trim((string)$value) !== '' ? [(string)$value] : [];
+		}
+		return array_values(array_filter(array_map(static fn ($entry): string => is_array($entry) ? (string)($entry['value'] ?? '') : (string)$entry, $value), static fn (string $entry): bool => trim($entry) !== ''));
 	}
 
 	private function addressPart(mixed $value, int $index): string {

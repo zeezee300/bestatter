@@ -16,12 +16,16 @@ class IbanValidator {
 
 	public function isValid(string $iban): bool {
 		$iban = $this->normalize($iban);
-		if (!$this->hasValidFormat($iban)) return false;
+		if (!$this->hasValidFormat($iban)) {
+			return false;
+		}
 		$rearranged = substr($iban, 4) . substr($iban, 0, 4);
 		$remainder = 0;
 		foreach (str_split($rearranged) as $character) {
 			$digits = ctype_alpha($character) ? (string)(ord($character) - 55) : $character;
-			foreach (str_split($digits) as $digit) $remainder = (($remainder * 10) + (int)$digit) % 97;
+			foreach (str_split($digits) as $digit) {
+				$remainder = (($remainder * 10) + (int)$digit) % 97;
+			}
 		}
 		return $remainder === 1;
 	}

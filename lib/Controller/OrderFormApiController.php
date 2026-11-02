@@ -13,7 +13,12 @@ use OCP\IRequest;
 
 /** 0.74.0 – Auftragsformular-Vorlagen (Pflege: Bestatter-Administration) und Erfassung im Fall (Mitglieder). */
 class OrderFormApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private OrderFormService $forms, private TeamService $team) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private OrderFormService $forms,
+		private TeamService $team,
+	) {
 		parent::__construct($appName, $request);
 	}
 
@@ -33,12 +38,6 @@ class OrderFormApiController extends ApiController {
 	public function delete(int $id): DataResponse {
 		$this->team->requireBestatterAdmin();
 		return new DataResponse($this->forms->delete($id));
-	}
-
-	#[NoAdminRequired]
-	public function installSample(): DataResponse {
-		$this->team->requireBestatterAdmin();
-		return new DataResponse($this->forms->installSample(), 201);
 	}
 
 	/** 0.75.2: Vorlage als Austauschdatei herunterladen. */
@@ -68,7 +67,9 @@ class OrderFormApiController extends ApiController {
 		$declaredCents = null;
 		if ($declared !== '') {
 			$normalized = preg_match('/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/', $declared) === 1 ? str_replace(['.', ','], ['', '.'], $declared) : str_replace(',', '.', $declared);
-			if (preg_match('/^\d+(\.\d{1,2})?$/', $normalized) !== 1) throw new \InvalidArgumentException('Die Summe laut Papierformular ist keine gültige Eurosumme.');
+			if (preg_match('/^\d+(\.\d{1,2})?$/', $normalized) !== 1) {
+				throw new \InvalidArgumentException('Die Summe laut Papierformular ist keine gültige Eurosumme.');
+			}
 			$declaredCents = (int)round((float)$normalized * 100);
 		}
 		return new DataResponse($this->forms->saveEntry($caseId, $formId, is_array($decoded) ? $decoded : [], $declaredCents, $apply, $amendmentReason));

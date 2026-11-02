@@ -1,5 +1,6 @@
 import { navIcons } from './icons.js'
 import { handbookLink } from './handbook.js'
+import { viewForCaseKind } from './case-kinds.js'
 
 /**
  * 0.82.0 (OP-066) – Hauptnavigation als einklappbare Seitenleiste links.
@@ -15,8 +16,11 @@ import { handbookLink } from './handbook.js'
 export const NAV_STORAGE_KEY = 'bestatter-navigation'
 export const NAV_WIDE_QUERY = '(min-width: 1440px)'
 export const NAV_DRAWER_QUERY = '(max-width: 1023.98px)'
-const WORK_VIEWS = ['dashboard', 'capture', 'cases', 'task', 'schedule', 'document', 'inbox']
+// 0.89.7: Sterbefälle, Aufträge ohne Sterbefall und Vorsorgen als eigene Einträge (gleiche Listenansicht, Filter Vorgangsart).
+const WORK_VIEWS = ['dashboard', 'capture', 'cases', 'orders', 'precare', 'task', 'schedule', 'document', 'inbox']
 const SETTINGS_VIEWS = ['administration', 'customizing']
+// 0.90.0: „Buchhaltung“ nur für Bestatter-Administratoren und die Rollengruppe „Buchhaltung“ (team.canUseAccounting).
+const ACCOUNTING_VIEW = 'accounting'
 
 export function readNavPreference() {
 	try {
@@ -37,8 +41,8 @@ export function effectiveNavMode(preference) {
 	return matches(NAV_WIDE_QUERY) ? 'expanded' : 'collapsed'
 }
 
-export function activeNavView(view) {
-	return view === 'case-detail' ? 'cases' : view
+export function activeNavView(view, caseKind = '') {
+	return view === 'case-detail' ? viewForCaseKind(caseKind) : view
 }
 
 export function createNavigation(ctx) {
@@ -51,7 +55,7 @@ export function createNavigation(ctx) {
 
 	function item(view) {
 		const label = labelOf(view)
-		const active = activeNavView(state.view) === view
+		const active = activeNavView(state.view, state.currentCase?.caseKind) === view
 		return `<button type="button" class="bp-nav-item${active ? ' active' : ''}" data-view="${view}"${active ? ' aria-current="page"' : ''} title="${esc(label)}">${navIcons[view] || ''}<span class="bp-nav-label">${esc(label)}</span></button>`
 	}
 
@@ -66,7 +70,7 @@ export function createNavigation(ctx) {
 	}
 
 	function navigationView() {
-		const work = WORK_VIEWS.filter((view) => view !== 'capture' || state.assistantConfiguration?.guidedCaptureEnabled)
+		const work = [...WORK_VIEWS.filter((view) => view !== 'capture' || state.assistantConfiguration?.guidedCaptureEnabled), ...(state.team?.canUseAccounting ? [ACCOUNTING_VIEW] : [])]
 		const settings = state.team?.isBestatterAdmin ? SETTINGS_VIEWS : []
 		const toggle = toggleState()
 		return `<nav class="bp-app-nav" id="bestatter-navigation" aria-label="Bestatter-Navigation">

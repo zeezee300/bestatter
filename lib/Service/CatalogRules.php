@@ -40,6 +40,12 @@ final class CatalogRules {
 		'EXACTLY_ONE' => 'genau eine Position (Pflicht bei Festschreibung)',
 	];
 
+	/**
+	 * 0.89.5: Preisart einer Position. Festpreis = verbindlich vereinbart; Schätzbetrag = Erfahrungswert, abgerechnet wird der
+	 * tatsächliche Betrag laut Rechnung; nach Bescheid = Betrag steht erst mit dem Bescheid fest (darf bei der Festschreibung offen sein).
+	 */
+	public const PRICE_BASES = ['FIXED' => 'Festpreis', 'ESTIMATE' => 'Schätzbetrag', 'ON_NOTICE' => 'nach Bescheid'];
+
 	public const FUNERAL_SCOPES = ['ALL' => 'alle Bestattungsarten', 'BURIAL' => 'nur Erdbestattung', 'CREMATION' => 'nur Feuerbestattung'];
 
 	public const BOM_PRICING = ['HEADER' => 'Festpreis am Paket', 'ITEMS' => 'Summe der Positionen'];
@@ -67,7 +73,9 @@ final class CatalogRules {
 	}
 
 	public static function taxClassForRate(int $rate, string $positionType = 'EL'): string {
-		if (strtoupper($positionType) === 'DP' || $rate === 0) return 'A';
+		if (strtoupper($positionType) === 'DP' || $rate === 0) {
+			return 'A';
+		}
 		return $rate <= 10 ? 'E' : 'V';
 	}
 
@@ -79,26 +87,62 @@ final class CatalogRules {
 		return self::ARTICLE_TYPES[$articleType]['positionType'] ?? 'EL';
 	}
 
+	/** 0.89.5: gültige Preisart oder null. */
+	public static function priceBasis(mixed $value): ?string {
+		$basis = strtoupper(trim((string)$value));
+		return isset(self::PRICE_BASES[$basis]) ? $basis : null;
+	}
+
+	/** 0.89.5: Vorbelegung der Preisart eines Artikels: Fremdleistungen Schätzbetrag, Gebühren ohne Richtwert „nach Bescheid“. */
+	public static function defaultPriceBasis(string $articleType, bool $priceOnEntry = false, ?int $guidePriceCents = null): string {
+		return match (strtoupper($articleType)) {
+			'FREMDLEISTUNG' => 'ESTIMATE',
+			'AUSLAGE' => $priceOnEntry && (int)$guidePriceCents <= 0 ? 'ON_NOTICE' : 'ESTIMATE',
+			default => 'FIXED',
+		};
+	}
+
+	/** 0.89.5: Vorbelegung für Positionen ohne Artikel-Preisart (Freitext, Bestand vor 0.89.5). */
+	public static function defaultPriceBasisForPosition(string $positionType, bool $priceOnEntry = false, int $unitPriceCents = 0): string {
+		return match (strtoupper($positionType)) {
+			'FK' => 'ESTIMATE',
+			'DP' => $priceOnEntry && $unitPriceCents <= 0 ? 'ON_NOTICE' : 'ESTIMATE',
+			default => 'FIXED',
+		};
+	}
+
 	/**
 	 * Positionsstatus aus beauftragter, erbrachter und berechneter Menge. „Storniert“ ist die
 	 * einzige gespeicherte Ausnahme (Position wurde aus der Auswahl entfernt).
 	 */
 	public static function deriveStatus(int $ordered, int $performed, int $invoiced, string $stored = ''): string {
-		if (strtoupper($stored) === 'STORNIERT') return 'STORNIERT';
-		if ($invoiced > 0) return $invoiced >= max($ordered, $performed) ? 'ABGERECHNET' : 'TEILWEISE_ABGERECHNET';
-		if ($performed <= 0) return 'BEAUFTRAGT';
+		if (strtoupper($stored) === 'STORNIERT') {
+			return 'STORNIERT';
+		}
+		if ($invoiced > 0) {
+			return $invoiced >= max($ordered, $performed) ? 'ABGERECHNET' : 'TEILWEISE_ABGERECHNET';
+		}
+		if ($performed <= 0) {
+			return 'BEAUFTRAGT';
+		}
 		return $performed >= $ordered ? 'ERBRACHT' : 'TEILWEISE_ERBRACHT';
 	}
 
 	/** Paket-Kopf: Status aus den Unterpositionen (schwächster Fortschritt bestimmt). */
 	public static function aggregateStatus(array $statuses): string {
-		$statuses = array_values(array_filter($statuses, static fn(string $status): bool => $status !== 'STORNIERT'));
-		if ($statuses === []) return 'STORNIERT';
+		$statuses = array_values(array_filter($statuses, static fn (string $status): bool => $status !== 'STORNIERT'));
+		if ($statuses === []) {
+			return 'STORNIERT';
+		}
 		$order = ['BEAUFTRAGT' => 0, 'TEILWEISE_ERBRACHT' => 1, 'ERBRACHT' => 2, 'TEILWEISE_ABGERECHNET' => 3, 'ABGERECHNET' => 4];
-		$min = min(array_map(static fn(string $status): int => $order[$status] ?? 0, $statuses));
-		$max = max(array_map(static fn(string $status): int => $order[$status] ?? 0, $statuses));
-		if ($min === $max) return array_search($min, $order, true) ?: 'BEAUFTRAGT';
-		if ($max >= 3) return 'TEILWEISE_ABGERECHNET';
+		$min = min(array_map(static fn (string $status): int => $order[$status] ?? 0, $statuses));
+		$max = max(array_map(static fn (string $status): int => $order[$status] ?? 0, $statuses));
+		if ($min === $max) {
+			return array_search($min, $order, true) ?: 'BEAUFTRAGT';
+		}
+		if ($max >= 3) {
+			return 'TEILWEISE_ABGERECHNET';
+		}
 		return 'TEILWEISE_ERBRACHT';
 	}
 
@@ -111,15 +155,31 @@ final class CatalogRules {
 	 * @return array<string, int> Einzelpreis je Schlüssel in Cent
 	 */
 	public static function allocate(int $targetCents, array $lines): array {
-		if ($lines === []) return [];
+		if ($lines === []) {
+			return [];
+		}
 		$targetCents = max(0, $targetCents);
-		$sum = array_sum(array_map(static fn(array $line): int => max(0, (int)$line['listLineCents']), $lines));
+		$sum = array_sum(array_map(static fn (array $line): int => max(0, (int)$line['listLineCents']), $lines));
 		$anchor = null;
-		foreach ($lines as $key => $line) if ($line['anchor'] && (int)$line['quantityMilli'] === 1000) { $anchor = $key; break; }
-		if ($anchor === null) foreach ($lines as $key => $line) if ((int)$line['quantityMilli'] === 1000) { $anchor = $key; break; }
+		foreach ($lines as $key => $line) {
+			if ($line['anchor'] && (int)$line['quantityMilli'] === 1000) {
+				$anchor = $key;
+				break;
+			}
+		}
+		if ($anchor === null) {
+			foreach ($lines as $key => $line) {
+				if ((int)$line['quantityMilli'] === 1000) {
+					$anchor = $key;
+					break;
+				}
+			}
+		}
 		$amounts = [];
 		if ($sum <= 0) {
-			foreach ($lines as $key => $line) $amounts[$key] = 0;
+			foreach ($lines as $key => $line) {
+				$amounts[$key] = 0;
+			}
 			$amounts[$anchor ?? array_key_first($lines)] = $targetCents;
 		} else {
 			$fractions = [];
@@ -132,7 +192,9 @@ final class CatalogRules {
 			}
 			arsort($fractions);
 			foreach (array_keys($fractions) as $key) {
-				if ($assigned >= $targetCents) break;
+				if ($assigned >= $targetCents) {
+					break;
+				}
 				$amounts[$key]++;
 				$assigned++;
 			}
@@ -145,7 +207,9 @@ final class CatalogRules {
 			$actual += (int)round($quantity * $prices[$key] / 1000);
 		}
 		$difference = $targetCents - $actual;
-		if ($difference !== 0 && $anchor !== null) $prices[$anchor] = max(0, $prices[$anchor] + $difference);
+		if ($difference !== 0 && $anchor !== null) {
+			$prices[$anchor] = max(0, $prices[$anchor] + $difference);
+		}
 		return $prices;
 	}
 }

@@ -13,10 +13,24 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class ReportingApiController extends ApiController {
-	public function __construct(string $appName,IRequest $request,private ReportingService $reporting,private TeamService $teamService){parent::__construct($appName,$request);}
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private ReportingService $reporting,
+		private TeamService $teamService,
+	) {
+		parent::__construct($appName, $request);
+	}
 	#[NoAdminRequired]
-	public function summary(string $from='',string $to='',string $branch='ALL'): DataResponse { $this->teamService->requireBestatterAdmin(); return new DataResponse($this->reporting->summary($from,$to,$branch)); }
+	public function summary(string $from = '', string $to = '', string $branch = 'ALL'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		return new DataResponse($this->reporting->summary($from, $to, $branch));
+	}
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	public function csv(string $reportType,string $from='',string $to='',string $branch='ALL'): DataDownloadResponse { $this->teamService->requireBestatterAdmin(); $safe=strtolower(preg_replace('/[^a-z]/i','',$reportType)); return new DataDownloadResponse($this->reporting->csv($safe,$from,$to,$branch),'Bestatter-'.$safe.'-'.date('Ymd').'.csv','text/csv; charset=UTF-8'); }
+	public function csv(string $reportType, string $from = '', string $to = '', string $branch = 'ALL'): DataDownloadResponse {
+		$this->teamService->requireBestatterAdmin();
+		$safe = strtolower(preg_replace('/[^a-z]/i', '', $reportType));
+		return new DataDownloadResponse($this->reporting->csv($safe, $from, $to, $branch), 'Bestatter-' . $safe . '-' . date('Ymd') . '.csv', 'text/csv; charset=UTF-8');
+	}
 }

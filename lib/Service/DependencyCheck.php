@@ -22,9 +22,19 @@ final class DependencyCheck {
 	public static function report(?string $appRoot = null): array {
 		$appRoot ??= dirname(__DIR__, 2);
 		$missing = [];
-		if (!is_file($appRoot . '/vendor/autoload.php')) $missing[] = 'vendor/autoload.php';
-		foreach (self::CLASSES as $package => $class) if (!class_exists($class)) $missing[] = $package;
-		foreach (self::EXTENSIONS as $extension) if (!extension_loaded($extension)) $missing[] = 'PHP-Erweiterung ' . $extension;
+		if (!is_file($appRoot . '/vendor/autoload.php')) {
+			$missing[] = 'vendor/autoload.php';
+		}
+		foreach (self::CLASSES as $package => $class) {
+			if (!class_exists($class)) {
+				$missing[] = $package;
+			}
+		}
+		foreach (self::EXTENSIONS as $extension) {
+			if (!extension_loaded($extension)) {
+				$missing[] = 'PHP-Erweiterung ' . $extension;
+			}
+		}
 		$missing = array_values(array_unique($missing));
 		return [
 			'status' => $missing === [] ? 'OK' : 'ERROR',

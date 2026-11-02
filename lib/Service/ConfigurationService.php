@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
-use OCP\Files\Folder;
 use OCP\Files\File;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IDBConnection;
 use OCP\IUserSession;
@@ -22,7 +22,8 @@ class ConfigurationService {
 		private FolderService $folders,
 		private TemplateFieldCatalogService $templateFields,
 		private CountryConfigurationService $countryConfiguration,
-	) {}
+	) {
+	}
 
 	public function ensureSeedData(): void {
 		$this->seedDocuments();
@@ -33,7 +34,7 @@ class ConfigurationService {
 		$this->ensureSeedData();
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_document_templates')->orderBy('sort_order', 'ASC')->addOrderBy('name', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(fn(array $row): array => [
+		return array_map(fn (array $row): array => [
 			'id' => (int)$row['id'], 'key' => $row['template_key'], 'name' => $row['name'], 'category' => $row['category'],
 			'description' => $row['description'] ?? '', 'fileName' => $row['file_name'] ?? '', 'active' => (bool)$row['active'],
 			'requiredFields' => json_decode((string)($row['required_fields'] ?? '[]'), true) ?: [],
@@ -45,19 +46,31 @@ class ConfigurationService {
 	public function saveDocument(array $data, int $id = 0): array {
 		$key = strtoupper(trim((string)($data['key'] ?? '')));
 		$name = trim((string)($data['name'] ?? ''));
-		if ($key === '' || $name === '') throw new \InvalidArgumentException('Vorlagenschlüssel und Bezeichnung sind Pflichtfelder.');
-		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) throw new \InvalidArgumentException('Der Vorlagenschlüssel darf nur Buchstaben, Ziffern, Unterstriche und Bindestriche enthalten.');
+		if ($key === '' || $name === '') {
+			throw new \InvalidArgumentException('Vorlagenschlüssel und Bezeichnung sind Pflichtfelder.');
+		}
+		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) {
+			throw new \InvalidArgumentException('Der Vorlagenschlüssel darf nur Buchstaben, Ziffern, Unterstriche und Bindestriche enthalten.');
+		}
 		$this->assertUniqueKey('bestatter_document_templates', 'template_key', $key, $id, 'Vorlagenschlüssel');
 		$fileName = basename(trim((string)($data['fileName'] ?? '')));
-		if ($fileName === '' || !preg_match('/\.docx$/i', $fileName)) throw new \InvalidArgumentException('Bitte eine DOCX-Datei aus dem Bestatter-Vorlagenordner auswählen.');
-		if (!in_array($fileName, $this->templateFileNames(), true)) throw new \InvalidArgumentException('Die ausgewählte DOCX-Datei ist im konfigurierten Vorlagenordner nicht vorhanden.');
+		if ($fileName === '' || !preg_match('/\.docx$/i', $fileName)) {
+			throw new \InvalidArgumentException('Bitte eine DOCX-Datei aus dem Bestatter-Vorlagenordner auswählen.');
+		}
+		if (!in_array($fileName, $this->templateFileNames(), true)) {
+			throw new \InvalidArgumentException('Die ausgewählte DOCX-Datei ist im konfigurierten Vorlagenordner nicht vorhanden.');
+		}
 		$this->validateTemplatePlaceholders($fileName);
 		$outputSubfolder = $this->folders->resolveSubfolder(trim((string)($data['outputSubfolder'] ?? '')));
-		if ($outputSubfolder === null) throw new \InvalidArgumentException('Bitte einen zulässigen Standard-Unterordner der Fallakte auswählen.');
+		if ($outputSubfolder === null) {
+			throw new \InvalidArgumentException('Bitte einen zulässigen Standard-Unterordner der Fallakte auswählen.');
+		}
 		$requiredFields = array_values(array_unique(array_filter(array_map('trim', (array)($data['requiredFields'] ?? [])))));
 		$allowedFields = $this->allowedRequiredFields();
 		$invalidFields = array_values(array_diff($requiredFields, $allowedFields));
-		if ($invalidFields !== []) throw new \InvalidArgumentException('Unbekannte Pflichtfelder: ' . implode(', ', $invalidFields) . '. Bitte den Feldkatalog verwenden.');
+		if ($invalidFields !== []) {
+			throw new \InvalidArgumentException('Unbekannte Pflichtfelder: ' . implode(', ', $invalidFields) . '. Bitte den Feldkatalog verwenden.');
+		}
 		$values = [
 			'template_key' => $key, 'name' => $name, 'category' => trim((string)($data['category'] ?? 'Allgemein')),
 			'description' => trim((string)($data['description'] ?? '')), 'file_name' => $fileName,
@@ -71,7 +84,7 @@ class ConfigurationService {
 
 	public function documentTemplateOptions(): array {
 		return [
-			'files' => array_map(static fn(string $name): array => ['fileName' => $name, 'label' => $name], $this->templateFileNames()),
+			'files' => array_map(static fn (string $name): array => ['fileName' => $name, 'label' => $name], $this->templateFileNames()),
 			'subfolders' => $this->folders->allowedSubfolders(),
 			'requiredFields' => $this->allowedRequiredFields(),
 			'templatePath' => $this->folders->configuredPaths()['templates'],
@@ -80,11 +93,25 @@ class ConfigurationService {
 
 	public function duplicateDocument(int $id): array {
 		$source = null;
-		foreach ($this->documents() as $template) if ((int)$template['id'] === $id) { $source = $template; break; }
-		if ($source === null) throw new \InvalidArgumentException('Dokumentvorlage wurde nicht gefunden.');
-		$base = substr((string)$source['key'], 0, 88) . '_COPY'; $key = $base; $number = 2;
-		while ($this->exists('bestatter_document_templates', 'template_key', $key)) $key = $base . '_' . $number++;
-		$source['key'] = $key; $source['name'] = (string)$source['name'] . ' (Kopie)'; $source['active'] = false; $source['sortOrder'] = (int)$source['sortOrder'] + 1;
+		foreach ($this->documents() as $template) {
+			if ((int)$template['id'] === $id) {
+				$source = $template;
+				break;
+			}
+		}
+		if ($source === null) {
+			throw new \InvalidArgumentException('Dokumentvorlage wurde nicht gefunden.');
+		}
+		$base = substr((string)$source['key'], 0, 88) . '_COPY';
+		$key = $base;
+		$number = 2;
+		while ($this->exists('bestatter_document_templates', 'template_key', $key)) {
+			$key = $base . '_' . $number++;
+		}
+		$source['key'] = $key;
+		$source['name'] = (string)$source['name'] . ' (Kopie)';
+		$source['active'] = false;
+		$source['sortOrder'] = (int)$source['sortOrder'] + 1;
 		return $this->saveDocument($source, 0);
 	}
 
@@ -92,7 +119,8 @@ class ConfigurationService {
 		$this->ensureSeedData();
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_dereg_templates')->orderBy('sort_order', 'ASC')->addOrderBy('name', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => [
+		$referenceFields = $this->deregistrationReferenceFields();
+		return array_map(static fn (array $row): array => [
 			'id' => (int)$row['id'], 'key' => $row['template_key'], 'recipientType' => $row['recipient_type'], 'name' => $row['name'],
 			'contactCategory' => $row['contact_category'], 'deliveryChannels' => json_decode((string)$row['delivery_channels'], true) ?: [],
 			'defaultChannel' => $row['default_channel'], 'subjectTemplate' => $row['subject_template'], 'bodyTemplate' => $row['body_template'],
@@ -100,18 +128,50 @@ class ConfigurationService {
 			'allowedStatuses' => json_decode((string)($row['allowed_statuses'] ?? '[]'), true) ?: ['ENTWURF', 'VORBEREITET', 'VERSENDET', 'BESTAETIGT', 'ERLEDIGT'],
 			'followUpDays' => (int)($row['follow_up_days'] ?? 0), 'documentTemplateKey' => (string)($row['document_template_key'] ?? ''),
 			'active' => (bool)$row['active'], 'sortOrder' => (int)$row['sort_order'], 'updatedAt' => $row['updated_at'],
+			// 0.89.7: Referenzfeld je Abmeldung (z. B. Vertragsnummer) aus der Auslieferung – stand bisher nur in der Vorlagendatei
+			'referenceField' => $referenceFields[(string)$row['template_key']] ?? null,
 		], $rows);
+	}
+
+	/** @var array<string, array{field:string,label:string,required:bool}>|null */
+	private ?array $deregistrationReferenceFieldCache = null;
+
+	/** @return array<string, array{field:string,label:string,required:bool}> Referenzfelder der mitgelieferten Abmeldungsvorlagen je Schlüssel */
+	private function deregistrationReferenceFields(): array {
+		if ($this->deregistrationReferenceFieldCache !== null) {
+			return $this->deregistrationReferenceFieldCache;
+		}
+		$fields = [];
+		try {
+			$data = json_decode((string)file_get_contents(self::DEREGISTRATION_RESOURCE), true, 512, JSON_THROW_ON_ERROR);
+			foreach ((array)($data['templates'] ?? []) as $template) {
+				$reference = $template['referenceField'] ?? null;
+				if (!is_array($reference) || trim((string)($reference['field'] ?? '')) === '') {
+					continue;
+				}
+				$fields[strtoupper((string)($template['key'] ?? ''))] = ['field' => (string)$reference['field'], 'label' => (string)($reference['label'] ?? 'Referenznummer'), 'required' => (bool)($reference['required'] ?? false)];
+			}
+		} catch (\Throwable) {
+			$fields = [];
+		}
+		return $this->deregistrationReferenceFieldCache = $fields;
 	}
 
 	public function saveDeregistration(array $data, int $id = 0): array {
 		$key = strtoupper(trim((string)($data['key'] ?? '')));
 		$name = trim((string)($data['name'] ?? ''));
-		if ($key === '' || $name === '') throw new \InvalidArgumentException('Abmeldungsschlüssel und Bezeichnung sind Pflichtfelder.');
-		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) throw new \InvalidArgumentException('Der Abmeldungsschlüssel darf nur Buchstaben, Ziffern, Unterstriche und Bindestriche enthalten.');
+		if ($key === '' || $name === '') {
+			throw new \InvalidArgumentException('Abmeldungsschlüssel und Bezeichnung sind Pflichtfelder.');
+		}
+		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) {
+			throw new \InvalidArgumentException('Der Abmeldungsschlüssel darf nur Buchstaben, Ziffern, Unterstriche und Bindestriche enthalten.');
+		}
 		$this->assertUniqueKey('bestatter_dereg_templates', 'template_key', $key, $id, 'Abmeldungsschlüssel');
 		$channels = array_values(array_intersect(array_map('strtoupper', (array)($data['deliveryChannels'] ?? [])), ['EMAIL', 'POST', 'PORTAL', 'TELEFON']));
 		$default = strtoupper((string)($data['defaultChannel'] ?? ''));
-		if ($default !== '' && !in_array($default, $channels, true)) $default = '';
+		if ($default !== '' && !in_array($default, $channels, true)) {
+			$default = '';
+		}
 		$values = [
 			'template_key' => $key, 'recipient_type' => strtoupper(trim((string)($data['recipientType'] ?? $key))), 'name' => $name,
 			'contact_category' => trim((string)($data['contactCategory'] ?? '')), 'delivery_channels' => json_encode($channels, JSON_THROW_ON_ERROR),
@@ -130,7 +190,7 @@ class ConfigurationService {
 		$this->countryConfiguration->profiles();
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_branches')->orderBy('sort_order', 'ASC')->addOrderBy('name', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => [
+		return array_map(static fn (array $row): array => [
 			'id' => (int)$row['id'], 'key' => $row['branch_key'], 'name' => $row['name'], 'street' => $row['street'] ?? '',
 			'postalCode' => $row['postal_code'] ?? '', 'city' => $row['city'] ?? '', 'country' => $row['country'] ?: 'Deutschland',
 			'countryCode' => strtoupper((string)($row['country_code'] ?? 'DE')), 'federalState' => (string)($row['federal_state'] ?? ''),
@@ -147,16 +207,24 @@ class ConfigurationService {
 	public function saveBranch(array $data, int $id = 0): array {
 		$key = strtoupper(trim((string)($data['key'] ?? '')));
 		$name = trim((string)($data['name'] ?? ''));
-		if ($key === '' || $name === '') throw new \InvalidArgumentException('Niederlassungsschlüssel und Name sind Pflichtfelder.');
-		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) throw new \InvalidArgumentException('Der Niederlassungsschlüssel darf keine Leerzeichen enthalten. Erlaubt sind Buchstaben, Ziffern, Unterstriche und Bindestriche.');
+		if ($key === '' || $name === '') {
+			throw new \InvalidArgumentException('Niederlassungsschlüssel und Name sind Pflichtfelder.');
+		}
+		if (!preg_match('/^[A-Z0-9_-]+$/', $key)) {
+			throw new \InvalidArgumentException('Der Niederlassungsschlüssel darf keine Leerzeichen enthalten. Erlaubt sind Buchstaben, Ziffern, Unterstriche und Bindestriche.');
+		}
 		$this->assertUniqueKey('bestatter_branches', 'branch_key', $key, $id, 'Niederlassungsschlüssel');
 		$memberUids = array_values(array_unique(array_filter(array_map('trim', (array)($data['memberUids'] ?? [])))));
 		foreach ($memberUids as $uid) {
-			if ($this->team->member($uid) === null) throw new \InvalidArgumentException('Der Benutzer ' . $uid . ' gehört nicht zur Nextcloud-Gruppe Bestatter.');
+			if ($this->team->member($uid) === null) {
+				throw new \InvalidArgumentException('Der Benutzer ' . $uid . ' gehört nicht zur Nextcloud-Gruppe Bestatter.');
+			}
 		}
 		$country = $this->countryConfiguration->validateBranchProfile($data);
 		$countryLabel = trim((string)($data['country'] ?? ''));
-		if ($countryLabel === '') $countryLabel = $this->countryConfiguration->profile($country['countryCode'])['name'];
+		if ($countryLabel === '') {
+			$countryLabel = $this->countryConfiguration->profile($country['countryCode'])['name'];
+		}
 		$values = [
 			'branch_key' => $key, 'name' => $name, 'street' => trim((string)($data['street'] ?? '')),
 			'postal_code' => trim((string)($data['postalCode'] ?? '')), 'city' => trim((string)($data['city'] ?? '')),
@@ -177,7 +245,11 @@ class ConfigurationService {
 
 	public function branchByKey(string $key): ?array {
 		$key = strtoupper(trim($key));
-		foreach ($this->branches() as $branch) if ($branch['key'] === $key) return $branch;
+		foreach ($this->branches() as $branch) {
+			if ($branch['key'] === $key) {
+				return $branch;
+			}
+		}
 		return null;
 	}
 
@@ -194,7 +266,9 @@ class ConfigurationService {
 	}
 
 	public function saveBranchBankData(int $id, array $data): array {
-		if ($id <= 0) throw new \InvalidArgumentException('Die Niederlassung muss vor den Bankdaten gespeichert werden.');
+		if ($id <= 0) {
+			throw new \InvalidArgumentException('Die Niederlassung muss vor den Bankdaten gespeichert werden.');
+		}
 		$query = $this->db->getQueryBuilder();
 		if ($query->select('id')->from('bestatter_branches')->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeQuery()->fetchOne() === false) {
 			throw new \InvalidArgumentException('Niederlassung wurde nicht gefunden.');
@@ -202,9 +276,15 @@ class ConfigurationService {
 		$ibanValidator = new IbanValidator();
 		$iban = $ibanValidator->normalize((string)($data['iban'] ?? ''));
 		$bic = strtoupper(str_replace(' ', '', trim((string)($data['bic'] ?? ''))));
-		if ($iban !== '' && !$ibanValidator->hasValidFormat($iban)) throw new \InvalidArgumentException('Die IBAN hat kein gültiges Format.');
-		if ($iban !== '' && !$ibanValidator->isValid($iban)) throw new \InvalidArgumentException('Die IBAN ist ungültig (Prüfziffer stimmt nicht).');
-		if ($bic !== '' && !preg_match('/^[A-Z0-9]{8}([A-Z0-9]{3})?$/', $bic)) throw new \InvalidArgumentException('Die BIC muss 8 oder 11 Zeichen enthalten.');
+		if ($iban !== '' && !$ibanValidator->hasValidFormat($iban)) {
+			throw new \InvalidArgumentException('Die IBAN hat kein gültiges Format.');
+		}
+		if ($iban !== '' && !$ibanValidator->isValid($iban)) {
+			throw new \InvalidArgumentException('Die IBAN ist ungültig (Prüfziffer stimmt nicht).');
+		}
+		if ($bic !== '' && !preg_match('/^[A-Z0-9]{8}([A-Z0-9]{3})?$/', $bic)) {
+			throw new \InvalidArgumentException('Die BIC muss 8 oder 11 Zeichen enthalten.');
+		}
 		$values = [
 			'account_holder' => trim((string)($data['accountHolder'] ?? '')), 'bank_name' => trim((string)($data['bankName'] ?? '')),
 			'iban' => $iban, 'bic' => $bic, 'creditor_id' => trim((string)($data['creditorId'] ?? '')),
@@ -215,10 +295,18 @@ class ConfigurationService {
 		];
 		$update = $this->db->getQueryBuilder();
 		$update->update('bestatter_branches');
-		foreach ($values as $column => $value) $update->set($column, $update->createNamedParameter($value));
+		foreach ($values as $column => $value) {
+			$update->set($column, $update->createNamedParameter($value));
+		}
 		$affected = $update->where($update->expr()->eq('id', $update->createNamedParameter($id)))->executeStatement();
-		if ($affected > 1) throw new \RuntimeException('Die Bankdaten konnten nicht eindeutig gespeichert werden.');
-		foreach ($this->branches() as $branch) if ($branch['id'] === $id) return $branch;
+		if ($affected > 1) {
+			throw new \RuntimeException('Die Bankdaten konnten nicht eindeutig gespeichert werden.');
+		}
+		foreach ($this->branches() as $branch) {
+			if ($branch['id'] === $id) {
+				return $branch;
+			}
+		}
 		throw new \RuntimeException('Die gespeicherten Bankdaten konnten nicht erneut geladen werden.');
 	}
 
@@ -241,11 +329,19 @@ class ConfigurationService {
 
 	public function saveInvoiceSettings(array $data): array {
 		$current = null;
-		try { $q = $this->db->getQueryBuilder(); $current = $q->select('*')->from('bestatter_invoice_settings')->orderBy('id', 'ASC')->setMaxResults(1)->executeQuery()->fetchAssociative(); } catch (\Throwable) {}
+		try {
+			$q = $this->db->getQueryBuilder();
+			$current = $q->select('*')->from('bestatter_invoice_settings')->orderBy('id', 'ASC')->setMaxResults(1)->executeQuery()->fetchAssociative();
+		} catch (\Throwable) {
+		}
 		$pattern = strtoupper(trim((string)($data['pattern'] ?? $current['number_pattern'] ?? '{PREFIX}-{YYYY}-{SEQ}')));
-		if (!str_contains($pattern, '{SEQ}') || preg_match('/\{(?!PREFIX\}|YYYY\}|YY\}|SEQ\}|CASE\}|BRANCH\})[^}]+\}/', $pattern)) throw new \InvalidArgumentException('Das Nummernmuster muss {SEQ} enthalten und darf nur die angebotenen Platzhalter verwenden.');
+		if (!str_contains($pattern, '{SEQ}') || preg_match('/\{(?!PREFIX\}|YYYY\}|YY\}|SEQ\}|CASE\}|BRANCH\})[^}]+\}/', $pattern)) {
+			throw new \InvalidArgumentException('Das Nummernmuster muss {SEQ} enthalten und darf nur die angebotenen Platzhalter verwenden.');
+		}
 		$scope = strtoupper((string)($data['sequenceScope'] ?? $current['sequence_scope'] ?? 'YEAR_GLOBAL'));
-		if (!in_array($scope, ['YEAR_GLOBAL', 'YEAR_BRANCH', 'GLOBAL'], true)) throw new \InvalidArgumentException('Ungültiger Gültigkeitsbereich des Nummernkreises.');
+		if (!in_array($scope, ['YEAR_GLOBAL', 'YEAR_BRANCH', 'GLOBAL'], true)) {
+			throw new \InvalidArgumentException('Ungültiger Gültigkeitsbereich des Nummernkreises.');
+		}
 		$values = ['number_prefix' => strtoupper(trim((string)($data['prefix'] ?? $current['number_prefix'] ?? 'RE'))) ?: 'RE', 'number_pattern' => $pattern,
 			'sequence_length' => max(3, min(12, (int)($data['sequenceLength'] ?? $current['sequence_length'] ?? 6))), 'sequence_scope' => $scope,
 			'case_reference' => (int)($data['caseReference'] ?? $current['case_reference'] ?? true), 'zugferd_enabled' => (int)($data['zugferdEnabled'] ?? $current['zugferd_enabled'] ?? true),
@@ -254,8 +350,12 @@ class ConfigurationService {
 			'norm_validation_required' => (int)($data['normativeValidationRequired'] ?? $current['norm_validation_required'] ?? false),
 			'qr_enabled' => (int)($data['qrEnabled'] ?? $current['qr_enabled'] ?? true), 'updated_at' => date('c')];
 		$correctionPrefix = strtoupper(trim((string)($data['correctionPrefix'] ?? $current['correction_prefix'] ?? 'GS'))) ?: 'GS';
-		if (!preg_match('/^[A-Z0-9-]{1,20}$/', $correctionPrefix)) throw new \InvalidArgumentException('Das Präfix für Storno und Gutschrift darf nur Großbuchstaben, Ziffern und Bindestriche enthalten.');
-		if (is_array($current) && array_key_exists('correction_prefix', $current)) $values['correction_prefix'] = $correctionPrefix;
+		if (!preg_match('/^[A-Z0-9-]{1,20}$/', $correctionPrefix)) {
+			throw new \InvalidArgumentException('Das Präfix für Storno und Gutschrift darf nur Großbuchstaben, Ziffern und Bindestriche enthalten.');
+		}
+		if (is_array($current) && array_key_exists('correction_prefix', $current)) {
+			$values['correction_prefix'] = $correctionPrefix;
+		}
 		$this->upsert('bestatter_invoice_settings', $values, (int)($current['id'] ?? 0));
 		return $this->invoiceSettings();
 	}
@@ -269,21 +369,27 @@ class ConfigurationService {
 	}
 
 	public function delete(string $type, int $id): void {
-		$table = match ($type) { 'document' => 'bestatter_document_templates', 'deregistration' => 'bestatter_dereg_templates', 'branch' => 'bestatter_branches', default => throw new \InvalidArgumentException('Unbekannter Konfigurationstyp.') };
+		$table = match ($type) {
+			'document' => 'bestatter_document_templates', 'deregistration' => 'bestatter_dereg_templates', 'branch' => 'bestatter_branches', default => throw new \InvalidArgumentException('Unbekannter Konfigurationstyp.')
+		};
 		$query = $this->db->getQueryBuilder();
 		$query->delete($table)->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeStatement();
 	}
 
 	public function provisionTemplates(): array {
 		$user = $this->userSession->getUser();
-		if ($user === null) throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		if ($user === null) {
+			throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		}
 		$target = $this->folders->templatesFolder();
 		$templatePath = $this->folders->configuredPaths()['templates'];
 		$written = [];
 		foreach ($this->documents() as $template) {
 			$fileName = basename((string)$template['fileName']);
 			$source = __DIR__ . '/../../resources/templates/' . $fileName;
-			if ($fileName === '' || !is_file($source)) continue;
+			if ($fileName === '' || !is_file($source)) {
+				continue;
+			}
 			if ($target->nodeExists($fileName)) {
 				$file = $target->get($fileName);
 				$written[] = [
@@ -306,7 +412,9 @@ class ConfigurationService {
 		$data = json_decode((string)file_get_contents(self::DOCUMENT_RESOURCE), true, 512, JSON_THROW_ON_ERROR);
 		foreach ($data['templates'] ?? [] as $template) {
 			$key = strtoupper((string)$template['key']);
-			if ($this->exists('bestatter_document_templates', 'template_key', $key)) continue;
+			if ($this->exists('bestatter_document_templates', 'template_key', $key)) {
+				continue;
+			}
 			$this->upsert('bestatter_document_templates', [
 				'template_key' => $key, 'name' => (string)$template['name'], 'category' => (string)($template['category'] ?? 'Allgemein'),
 				'description' => (string)($template['description'] ?? ''), 'file_name' => basename((string)($template['file'] ?? '')),
@@ -322,7 +430,9 @@ class ConfigurationService {
 		$data = json_decode((string)file_get_contents(self::DEREGISTRATION_RESOURCE), true, 512, JSON_THROW_ON_ERROR);
 		foreach ($data['templates'] ?? [] as $template) {
 			$key = strtoupper((string)($template['key'] ?? $template['recipient_type']));
-			if ($this->exists('bestatter_dereg_templates', 'template_key', $key)) continue;
+			if ($this->exists('bestatter_dereg_templates', 'template_key', $key)) {
+				continue;
+			}
 			$channels = array_values(array_intersect(array_map('strtoupper', (array)($template['deliveryChannels'] ?? [])), ['EMAIL', 'POST', 'PORTAL', 'TELEFON']));
 			$this->upsert('bestatter_dereg_templates', [
 				'template_key' => $key, 'recipient_type' => strtoupper((string)($template['recipientType'] ?? $key)), 'name' => (string)$template['name'],
@@ -344,7 +454,11 @@ class ConfigurationService {
 
 	private function templateFileNames(): array {
 		$names = [];
-		foreach ($this->templateFolder()->getDirectoryListing() as $node) if ($node instanceof File && preg_match('/\.docx$/i', $node->getName())) $names[] = $node->getName();
+		foreach ($this->templateFolder()->getDirectoryListing() as $node) {
+			if ($node instanceof File && preg_match('/\.docx$/i', $node->getName())) {
+				$names[] = $node->getName();
+			}
+		}
 		sort($names, SORT_NATURAL | SORT_FLAG_CASE);
 		return $names;
 	}
@@ -355,20 +469,32 @@ class ConfigurationService {
 
 	private function validateTemplatePlaceholders(string $fileName): void {
 		$node = $this->templateFolder()->get($fileName);
-		if (!$node instanceof File) throw new \InvalidArgumentException('Die ausgewählte Vorlage ist keine Datei.');
-		if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird zur Prüfung von DOCX-Vorlagen benötigt.');
+		if (!$node instanceof File) {
+			throw new \InvalidArgumentException('Die ausgewählte Vorlage ist keine Datei.');
+		}
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird zur Prüfung von DOCX-Vorlagen benötigt.');
+		}
 		$temp = tempnam(sys_get_temp_dir(), 'bestatter-docx-');
-		if ($temp === false) throw new \RuntimeException('Temporäre Vorlagenprüfung konnte nicht vorbereitet werden.');
+		if ($temp === false) {
+			throw new \RuntimeException('Temporäre Vorlagenprüfung konnte nicht vorbereitet werden.');
+		}
 		try {
 			file_put_contents($temp, $node->getContent());
 			$zip = new \ZipArchive();
-			if ($zip->open($temp) !== true) throw new \InvalidArgumentException('Die ausgewählte Datei ist kein gültiges DOCX-Dokument.');
+			if ($zip->open($temp) !== true) {
+				throw new \InvalidArgumentException('Die ausgewählte Datei ist kein gültiges DOCX-Dokument.');
+			}
 			$text = '';
 			for ($index = 0; $index < $zip->numFiles; $index++) {
 				$name = (string)$zip->getNameIndex($index);
-				if (!preg_match('#^word/(document|header[0-9]*|footer[0-9]*)\.xml$#i', $name)) continue;
+				if (!preg_match('#^word/(document|header[0-9]*|footer[0-9]*)\.xml$#i', $name)) {
+					continue;
+				}
 				$xml = $zip->getFromIndex($index);
-				if (is_string($xml)) $text .= html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8') . "\n";
+				if (is_string($xml)) {
+					$text .= html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8') . "\n";
+				}
 			}
 			$zip->close();
 			preg_match_all('/\{\{[^{}]+\}\}/u', $text, $matches);
@@ -377,20 +503,28 @@ class ConfigurationService {
 			$allowed = array_merge(array_column($this->templateFields->fields(), 'placeholder'), $this->templateFields->legacyPlaceholders());
 			// 0.75.2: Datumsformat für jedes Feld zulässig, z. B. {{case.date_of_birth|date:DD.MM.YYYY}} (wie beim Erzeugen).
 			$invalid = array_values(array_filter(array_diff($found, $allowed), static function (string $placeholder) use ($allowed): bool {
-				if (!preg_match('/^\{\{([^{}|]+)\|date:(DD\.MM\.YYYY|DD\.MM\.YY|YYYY-MM-DD)\}\}$/u', $placeholder, $match)) return true;
+				if (!preg_match('/^\{\{([^{}|]+)\|date:(DD\.MM\.YYYY|DD\.MM\.YY|YYYY-MM-DD)\}\}$/u', $placeholder, $match)) {
+					return true;
+				}
 				return !in_array('{{' . $match[1] . '}}', $allowed, true);
 			}));
-			if ($invalid !== []) throw new \InvalidArgumentException('Nicht unterstützte Platzhalter in der DOCX-Vorlage: ' . implode(', ', $invalid) . '.');
-			if (substr_count($text, '{{') !== count($allPlaceholders) || substr_count($text, '}}') !== count($allPlaceholders)) throw new \InvalidArgumentException('Die DOCX-Vorlage enthält einen unvollständigen oder beschädigten Platzhalter.');
+			if ($invalid !== []) {
+				throw new \InvalidArgumentException('Nicht unterstützte Platzhalter in der DOCX-Vorlage: ' . implode(', ', $invalid) . '.');
+			}
+			if (substr_count($text, '{{') !== count($allPlaceholders) || substr_count($text, '}}') !== count($allPlaceholders)) {
+				throw new \InvalidArgumentException('Die DOCX-Vorlage enthält einen unvollständigen oder beschädigten Platzhalter.');
+			}
 		} finally {
-			if (is_file($temp)) unlink($temp);
+			if (is_file($temp)) {
+				unlink($temp);
+			}
 		}
 	}
 
 	private function allowedRequiredFields(): array {
 		$schemaFile = __DIR__ . '/../../resources/case-field-schema.json';
 		$schema = is_file($schemaFile) ? json_decode((string)file_get_contents($schemaFile), true, 512, JSON_THROW_ON_ERROR) : [];
-		$fields = array_map(static fn(array $field): string => (string)$field['key'], $schema);
+		$fields = array_map(static fn (array $field): string => (string)$field['key'], $schema);
 		$fields = array_merge($fields, ['date_of_death_or_interval','pension_insurance_number','order_client_name','order_client_address','order_number','order_date','services','funeral_event_date']);
 		return array_values(array_unique(array_filter($fields)));
 	}
@@ -398,30 +532,42 @@ class ConfigurationService {
 	private function assertUniqueKey(string $table, string $column, string $value, int $id, string $label): void {
 		$query = $this->db->getQueryBuilder();
 		$query->select('id')->from($table)->where($query->expr()->eq($column, $query->createNamedParameter($value)));
-		if ($id > 0) $query->andWhere($query->expr()->neq('id', $query->createNamedParameter($id)));
-		if ($query->executeQuery()->fetchOne() !== false) throw new \InvalidArgumentException($label . ' ist bereits vergeben.');
+		if ($id > 0) {
+			$query->andWhere($query->expr()->neq('id', $query->createNamedParameter($id)));
+		}
+		if ($query->executeQuery()->fetchOne() !== false) {
+			throw new \InvalidArgumentException($label . ' ist bereits vergeben.');
+		}
 	}
 
 	private function upsert(string $table, array $values, int $id): void {
 		$query = $this->db->getQueryBuilder();
 		if ($id > 0) {
 			$query->update($table);
-			foreach ($values as $column => $value) $query->set($column, $query->createNamedParameter($value));
+			foreach ($values as $column => $value) {
+				$query->set($column, $query->createNamedParameter($value));
+			}
 			$query->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeStatement();
 			return;
 		}
 		$values['created_at'] = date('c');
-		$query->insert($table)->values(array_map(fn(mixed $value) => $query->createNamedParameter($value), $values))->executeStatement();
+		$query->insert($table)->values(array_map(fn (mixed $value) => $query->createNamedParameter($value), $values))->executeStatement();
 	}
 
 	private function findByKey(array $items, string $key): array {
-		foreach ($items as $item) if ((string)$item['key'] === $key) return $item;
+		foreach ($items as $item) {
+			if ((string)$item['key'] === $key) {
+				return $item;
+			}
+		}
 		throw new \InvalidArgumentException('Gespeicherte Konfiguration wurde nicht gefunden.');
 	}
 
 	private function folder(Folder $parent, string $name): Folder {
 		$node = $parent->nodeExists($name) ? $parent->get($name) : $parent->newFolder($name);
-		if (!$node instanceof Folder) throw new \RuntimeException('„' . $name . '“ ist eine Datei, erwartet wird ein Ordner. Bitte die Datei umbenennen oder entfernen.');
+		if (!$node instanceof Folder) {
+			throw new \RuntimeException('„' . $name . '“ ist eine Datei, erwartet wird ein Ordner. Bitte die Datei umbenennen oder entfernen.');
+		}
 		return $node;
 	}
 }

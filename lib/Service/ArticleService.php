@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
-use OCA\Bestatter\AppInfo\Application;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
@@ -21,9 +20,7 @@ use OCP\IUserSession;
  * Festschreibung stabil, der Leistungsstatus ergibt sich aus den Mengen.
  */
 class ArticleService {
-	private const SEED_FILE = __DIR__ . '/../../resources/article-catalog.json';
 	/** Beispielartikel bis 0.68 – werden bei Übernahme des Beispielkatalogs 2026 deaktiviert. */
-	private const LEGACY_SAMPLE_NUMBERS = ['DL-EINBETTEN', 'LA-SARG-STANDARD', 'LA-URNE-STANDARD', 'LA-DECKE-KISSEN', 'LA-TOTENBEKLEIDUNG', 'DL-BEKLEIDUNG-EIGEN', 'DL-UEBERFUEHRUNG', 'DL-AUFBAHRUNG-OFFEN', 'DL-AUFBAHRUNG-TRAUERFEIER', 'DL-TRAUERFEIER-ORG', 'DL-KREMATORIUM-TRANSFER', 'DL-URNE-FRIEDHOF', 'DL-URNENBEISETZUNG', 'DL-KRANZTRANSPORT', 'DL-LAUTSPRECHER', 'DL-FORMALITAETEN', 'DR-TRAUERANZEIGE', 'DR-TRAUERBRIEF', 'ZU-AUSSERHALB', 'AU-ARZT-TOTENSCHEIN', 'GE-MELDEAMT', 'GE-STANDESAMT-ABSCHRIFT', 'GE-STANDESAMT-STERBEURKUNDE', 'GE-FRIEDHOF', 'AU-ORGANIST', 'AU-TRAEGER', 'AU-GRABARBEITEN', 'AU-RECHTSMEDIZIN', 'FL-SARGSCHMUCK', 'FL-URNENSCHMUCK', 'FL-KRANZ', 'FL-NACHWERFBLUMEN', 'FL-GESTECK', 'PK-FEUER-BASIS', 'PK-ERDE-BASIS'];
 	private const FALLBACK_UNITS = ['STK', 'PAUSCHAL', 'STD', 'KM', 'TAG', 'KG', 'L', 'SATZ', 'PERS'];
 
 	public function __construct(
@@ -48,8 +45,6 @@ class ArticleService {
 
 	public function catalog(): array {
 		$this->customizing->ensureSeedData();
-		$this->structure->ensureSeedData();
-		$this->ensureSeedData();
 		$groups = $this->structure->groups();
 		$articles = $this->articles();
 		return [
@@ -57,10 +52,10 @@ class ArticleService {
 			'areas' => $this->structure->areas(),
 			'groups' => $groups,
 			// Kompatibilität für ältere Oberflächen/Exporte.
-			'groupRules' => array_map(static fn(array $group): array => ['groupKey' => $group['key'], 'groupName' => $group['name'], 'exclusiveSelection' => $group['selectionRule'] !== 'MANY', 'selectionRule' => $group['selectionRule']], $groups),
+			'groupRules' => array_map(static fn (array $group): array => ['groupKey' => $group['key'], 'groupName' => $group['name'], 'exclusiveSelection' => $group['selectionRule'] !== 'MANY', 'selectionRule' => $group['selectionRule']], $groups),
 			'priceLists' => $this->priceLists->lists(),
-			'articleTypes' => array_map(static fn(string $key, array $type): array => ['value' => $key, 'label' => $type['label'], 'positionType' => $type['positionType']], array_keys(CatalogRules::ARTICLE_TYPES), CatalogRules::ARTICLE_TYPES),
-			'taxClasses' => array_map(static fn(string $key, string $label): array => ['value' => $key, 'label' => $label, 'rate' => CatalogRules::taxRate($key)], array_keys(CatalogRules::TAX_CLASSES), CatalogRules::TAX_CLASSES),
+			'articleTypes' => array_map(static fn (string $key, array $type): array => ['value' => $key, 'label' => $type['label'], 'positionType' => $type['positionType']], array_keys(CatalogRules::ARTICLE_TYPES), CatalogRules::ARTICLE_TYPES),
+			'taxClasses' => array_map(static fn (string $key, string $label): array => ['value' => $key, 'label' => $label, 'rate' => CatalogRules::taxRate($key)], array_keys(CatalogRules::TAX_CLASSES), CatalogRules::TAX_CLASSES),
 			'selectionRules' => $this->options(CatalogRules::SELECTION_RULES),
 			'funeralScopes' => $this->options(CatalogRules::FUNERAL_SCOPES),
 			'bomPricing' => $this->options(CatalogRules::BOM_PRICING),
@@ -73,6 +68,11 @@ class ArticleService {
 		];
 	}
 
+	/** 0.89.5: alle Artikel (für typische Fremdkosten), Schlüssel Artikel-ID. @return array<int, array> */
+	public function allArticles(): array {
+		return $this->articles();
+	}
+
 	/** @return array<int, array> */
 	private function articles(): array {
 		$groups = $this->structure->groupMap();
@@ -81,15 +81,19 @@ class ArticleService {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_articles')->orderBy('article_number', 'ASC')->executeQuery()->fetchAllAssociative();
 		$result = [];
-		foreach ($rows as $row) $result[(int)$row['id']] = $this->mapArticle($row, $groups, $prices, $boms);
-		uasort($result, static fn(array $left, array $right): int => [$left['areaSortOrder'], $left['groupSortOrder'], $left['articleNumber']] <=> [$right['areaSortOrder'], $right['groupSortOrder'], $right['articleNumber']]);
+		foreach ($rows as $row) {
+			$result[(int)$row['id']] = $this->mapArticle($row, $groups, $prices, $boms);
+		}
+		uasort($result, static fn (array $left, array $right): int => [$left['areaSortOrder'], $left['groupSortOrder'], $left['articleNumber']] <=> [$right['areaSortOrder'], $right['groupSortOrder'], $right['articleNumber']]);
 		return $result;
 	}
 
 	public function article(int $id): array {
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('*')->from('bestatter_articles')->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeQuery()->fetchAssociative();
-		if (!$row) throw new \InvalidArgumentException('Leistung wurde nicht gefunden.');
+		if (!$row) {
+			throw new \InvalidArgumentException('Leistung wurde nicht gefunden.');
+		}
 		return $this->mapArticle($row, $this->structure->groupMap(), $this->priceLists->prices(), $this->boms->all());
 	}
 
@@ -112,31 +116,39 @@ class ArticleService {
 			'cost_type' => CatalogRules::costType($values['articleType']), 'funeral_scope' => (string)($group['funeralScope'] ?? 'ALL'),
 			'vat_rate' => CatalogRules::taxRate($values['taxClass']), 'unit' => $values['unit'], 'quantity_decimals' => $values['quantityDecimals'],
 			'supplier_contact' => $values['supplierContact'], 'photo_path' => $values['photoPath'], 'purchase_price_cents' => $values['purchasePriceCents'],
-			'guide_price_cents' => $values['guidePriceCents'],
+			'guide_price_cents' => $values['guidePriceCents'], 'price_basis' => $values['priceBasis'],
 		];
 		$this->db->beginTransaction();
 		try {
 			$query = $this->db->getQueryBuilder();
 			if ($id === null) {
 				$insert = [];
-				foreach ($columns as $column => $value) $insert[$column] = $query->createNamedParameter($value);
+				foreach ($columns as $column => $value) {
+					$insert[$column] = $query->createNamedParameter($value);
+				}
 				$insert['exclusive_group'] = $query->createNamedParameter($rule !== 'MANY', IQueryBuilder::PARAM_BOOL);
 				$insert['price_on_entry'] = $query->createNamedParameter($values['priceOnEntry'], IQueryBuilder::PARAM_BOOL);
 				$insert['active'] = $query->createNamedParameter($values['active'], IQueryBuilder::PARAM_BOOL);
 				$insert['sales_price_cents'] = $query->createNamedParameter(0);
 				$insert['created_at'] = $query->createNamedParameter($now);
 				$insert['updated_at'] = $query->createNamedParameter($now);
-				if ($this->findIdByNumber($values['articleNumber'])) throw new \InvalidArgumentException('Die Artikelnummer ' . $values['articleNumber'] . ' ist bereits vergeben.');
+				if ($this->findIdByNumber($values['articleNumber'])) {
+					throw new \InvalidArgumentException('Die Artikelnummer ' . $values['articleNumber'] . ' ist bereits vergeben.');
+				}
 				try {
 					$query->insert('bestatter_articles')->values($insert)->executeStatement();
 				} catch (\OCP\DB\Exception $error) {
-					if ($error->getReason() !== \OCP\DB\Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) throw $error;
+					if ($error->getReason() !== \OCP\DB\Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+						throw $error;
+					}
 					throw new \InvalidArgumentException('Die Artikelnummer ' . $values['articleNumber'] . ' ist bereits vergeben.');
 				}
 				$id = (int)$this->db->lastInsertId('bestatter_articles');
 			} else {
 				$query->update('bestatter_articles');
-				foreach ($columns as $column => $value) $query->set($column, $query->createNamedParameter($value));
+				foreach ($columns as $column => $value) {
+					$query->set($column, $query->createNamedParameter($value));
+				}
 				$query->set('exclusive_group', $query->createNamedParameter($rule !== 'MANY', IQueryBuilder::PARAM_BOOL))
 					->set('price_on_entry', $query->createNamedParameter($values['priceOnEntry'], IQueryBuilder::PARAM_BOOL))
 					->set('active', $query->createNamedParameter($values['active'], IQueryBuilder::PARAM_BOOL))
@@ -151,8 +163,12 @@ class ArticleService {
 			}
 			if ($values['articleType'] === 'PAKET') {
 				$bom = is_array($input['bom'] ?? null) ? $input['bom'] : null;
-				if ($bom === null && $components !== []) $bom = ['pricing' => 'ITEMS', 'printMode' => 'ITEMS_NO_PRICES', 'items' => array_map(static fn(array $component, int $index): array => ['itemNo' => ($index + 1) * 10, 'articleId' => (int)($component['articleId'] ?? 0), 'quantity' => isset($component['quantityMilli']) ? (int)$component['quantityMilli'] / 1000 : ($component['quantity'] ?? 1), 'itemType' => 'FIXED'], $components, array_keys($components))];
-				if ($bom !== null) $this->boms->save($id, $bom, $this->articles());
+				if ($bom === null && $components !== []) {
+					$bom = ['pricing' => 'ITEMS', 'printMode' => 'ITEMS_NO_PRICES', 'items' => array_map(static fn (array $component, int $index): array => ['itemNo' => ($index + 1) * 10, 'articleId' => (int)($component['articleId'] ?? 0), 'quantity' => isset($component['quantityMilli']) ? (int)$component['quantityMilli'] / 1000 : ($component['quantity'] ?? 1), 'itemType' => 'FIXED'], $components, array_keys($components))];
+				}
+				if ($bom !== null) {
+					$this->boms->save($id, $bom, $this->articles());
+				}
 			} elseif ($current !== null && ($current['articleType'] ?? '') === 'PAKET') {
 				$this->boms->delete($id);
 			}
@@ -185,61 +201,20 @@ class ArticleService {
 		$query->delete('bestatter_articles')->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeStatement();
 	}
 
-	/**
-	 * Legt den Beispielkatalog 2026 an (vorhandene Artikelnummern bleiben unangetastet) und
-	 * deaktiviert auf Wunsch die Beispielartikel bis 0.68. Fälle behalten ihre Snapshots.
-	 */
-	public function installSampleCatalog(bool $deactivateLegacySamples = true): array {
-		$seed = $this->seed();
-		foreach ((array)($seed['areas'] ?? []) as $area) {
-			if (!in_array((string)$area['key'], array_column($this->structure->areas(), 'key'), true)) $this->structure->saveArea(['key' => $area['key'], 'name' => $area['name'], 'sortOrder' => $area['sortOrder'] ?? 0]);
-		}
-		foreach ((array)($seed['groups'] ?? []) as $group) {
-			if ($this->structure->group((string)$group['key']) !== null) continue;
-			$this->structure->saveGroup(['key' => $group['key'], 'name' => $group['name'], 'areaKey' => $group['area'], 'selectionRule' => $group['selectionRule'] ?? 'MANY', 'funeralScope' => $group['funeralScope'] ?? 'ALL', 'sortOrder' => $group['sortOrder'] ?? 0], true);
-		}
-		$created = 0;
-		foreach ((array)($seed['articles'] ?? []) as $entry) {
-			if ($this->findIdByNumber((string)$entry['articleNumber']) > 0) continue;
-			$entry['priceValidFrom'] = '2026-01-01';
-			$this->save($entry);
-			$created++;
-		}
-		foreach ((array)($seed['boms'] ?? []) as $bom) {
-			$packageId = $this->findIdByNumber((string)$bom['package']);
-			if ($packageId === 0 || $this->boms->forPackage($packageId) !== null) continue;
-			$items = [];
-			foreach ((array)$bom['items'] as $item) {
-				$articleId = $this->findIdByNumber((string)$item['article']);
-				if ($articleId === 0) continue;
-				$items[] = ['itemNo' => $item['no'], 'articleId' => $articleId, 'quantity' => $item['quantity'] ?? 1, 'itemType' => $item['type'] ?? 'FIXED', 'altGroup' => $item['group'] ?? '', 'isDefault' => $item['default'] ?? false, 'credit' => $item['credit'] ?? 0];
-			}
-			if ($items !== []) $this->boms->save($packageId, ['pricing' => $bom['pricing'] ?? 'HEADER', 'printMode' => $bom['printMode'] ?? 'ITEMS_NO_PRICES', 'items' => $items], $this->articles());
-		}
-		$deactivated = 0;
-		if ($deactivateLegacySamples) {
-			$query = $this->db->getQueryBuilder();
-			$deactivated = $query->update('bestatter_articles')->set('active', $query->createNamedParameter(false, IQueryBuilder::PARAM_BOOL))->set('updated_at', $query->createNamedParameter(date('c')))
-				->where($query->expr()->in('article_number', $query->createNamedParameter(self::LEGACY_SAMPLE_NUMBERS, IQueryBuilder::PARAM_STR_ARRAY)))
-				->andWhere($query->expr()->eq('active', $query->createNamedParameter(true, IQueryBuilder::PARAM_BOOL)))->executeStatement();
-		}
-		$this->config->deleteAppValue(Application::APP_ID, 'catalog_sample_pending');
-		return ['created' => $created, 'deactivated' => $deactivated];
-	}
-
 	/** CSV-Export des Leistungskatalogs; Spalten wie beim Import, Werte im Klartext (Excel-tauglich). */
 	public function exportCsv(): string {
-		$headers = ['Artikelnummer', 'Suchbegriff', 'Kurztext', 'Verkaufstext', 'Interner Hinweis', 'Warengruppe', 'Artikelart', 'Steuerklasse', 'Einheit', 'Nachkommastellen', 'VK', 'Preis gültig ab', 'Preis im Fall', 'Richtwert', 'EK', 'Standardlieferant', 'Aktiv', 'Preisfindung', 'Stückliste', 'Löschen'];
+		$headers = ['Artikelnummer', 'Suchbegriff', 'Kurztext', 'Verkaufstext', 'Interner Hinweis', 'Warengruppe', 'Artikelart', 'Steuerklasse', 'Einheit', 'Nachkommastellen', 'VK', 'Preis gültig ab', 'Preis im Fall', 'Richtwert', 'Preisart', 'EK', 'Standardlieferant', 'Aktiv', 'Preisfindung', 'Stückliste', 'Löschen'];
 		$rows = [];
 		foreach ($this->articles() as $article) {
 			$bom = is_array($article['bom'] ?? null) ? $article['bom'] : null;
-			$components = implode('|', array_map(static fn(array $item): string => rtrim(implode(':', [(string)$item['articleNumber'], str_replace('.', ',', (string)(float)$item['quantity']), (string)$item['itemType'], (string)($item['altGroup'] ?? ''), !empty($item['isDefault']) ? '*' : '', (int)($item['creditCents'] ?? 0) > 0 ? CsvTools::money((int)$item['creditCents']) : '']), ':'), $bom['items'] ?? []));
+			$components = implode('|', array_map(static fn (array $item): string => rtrim(implode(':', [(string)$item['articleNumber'], str_replace('.', ',', (string)(float)$item['quantity']), (string)$item['itemType'], (string)($item['altGroup'] ?? ''), !empty($item['isDefault']) ? '*' : '', (int)($item['creditCents'] ?? 0) > 0 ? CsvTools::money((int)$item['creditCents']) : '']), ':'), $bom['items'] ?? []));
 			$hasPrice = !empty($article['hasPrice']);
 			$rows[] = [
 				$article['articleNumber'], $article['searchTerm'] ?? '', $article['shortName'], $article['longText'] ?? '', $article['internalNote'] ?? '',
 				$article['articleGroup'], $article['articleType'], $article['taxClass'], $article['unit'], (string)(int)$article['quantityDecimals'],
 				$hasPrice ? CsvTools::money((int)$article['salesPriceCents']) : '', $hasPrice ? (string)($article['priceValidFrom'] ?? '') : '',
 				!empty($article['priceOnEntry']) ? 'ja' : 'nein', CsvTools::money(isset($article['guidePriceCents']) ? (int)$article['guidePriceCents'] : null),
+				CatalogRules::PRICE_BASES[(string)($article['priceBasis'] ?? 'FIXED')] ?? 'Festpreis',
 				CsvTools::money((int)($article['purchasePriceCents'] ?? 0)), $article['supplierContact'] ?? '', !empty($article['active']) ? 'ja' : 'nein',
 				$bom['pricing'] ?? '', $components, '',
 			];
@@ -250,58 +225,85 @@ class ArticleService {
 	public function importCsv(string $content): array {
 		$rows = [];
 		$lines = [];
-		foreach (CsvTools::read($content, fn(string $header): string => $this->normalizeHeader($header)) as $entry) { $rows[] = $entry['values']; $lines[] = $entry['line']; }
-		if ($rows !== [] && !array_key_exists('articleNumber', $rows[0])) throw new \InvalidArgumentException('Die CSV-Datei enthält keine Spalte „Artikelnummer“. Bitte die Datei aus „Leistungskatalog als CSV herunterladen“ als Vorlage verwenden.');
+		foreach (CsvTools::read($content, fn (string $header): string => $this->normalizeHeader($header)) as $entry) {
+			$rows[] = $entry['values'];
+			$lines[] = $entry['line'];
+		}
+		if ($rows !== [] && !array_key_exists('articleNumber', $rows[0])) {
+			throw new \InvalidArgumentException('Die CSV-Datei enthält keine Spalte „Artikelnummer“. Bitte die Datei aus „Leistungskatalog als CSV herunterladen“ als Vorlage verwenden.');
+		}
 		$today = date('Y-m-d');
 
-		$imported = 0; $deleted = 0;
+		$imported = 0;
+		$deleted = 0;
 		$bomDefinitions = [];
 		// Alles oder nichts: bei einer fehlerhaften Zeile bleibt der Katalog unverändert.
 		$this->db->beginTransaction();
 		try {
-		foreach ($rows as $index => $row) {
-			$articleNumber = trim((string)($row['articleNumber'] ?? ''));
-			$id = $this->findIdByNumber($articleNumber);
-			try {
-				if (CsvTools::flag($row['delete'] ?? '')) { if ($id) { $this->delete($id); $deleted++; } continue; }
-				$row['priceValidFrom'] = CsvTools::date($row['priceValidFrom'] ?? '', 'Preis gültig ab');
-				// Ein geänderter VK mit unverändertem „gültig ab“ aus dem Export gilt ab heute und überschreibt nicht rückwirkend den bisherigen Preis.
-				if ($id && trim((string)($row['salesPrice'] ?? '')) !== '') {
-					$current = $this->priceLists->prices('', $today)[$id] ?? null;
-					if ($current !== null && CsvTools::cents($row['salesPrice']) !== (int)$current['cents'] && ($row['priceValidFrom'] === '' || $row['priceValidFrom'] <= (string)$current['validFrom'])) $row['priceValidFrom'] = $today;
+			foreach ($rows as $index => $row) {
+				$articleNumber = trim((string)($row['articleNumber'] ?? ''));
+				$id = $this->findIdByNumber($articleNumber);
+				try {
+					if (CsvTools::flag($row['delete'] ?? '')) {
+						if ($id) {
+							$this->delete($id);
+							$deleted++;
+						} continue;
+					}
+					$row['priceValidFrom'] = CsvTools::date($row['priceValidFrom'] ?? '', 'Preis gültig ab');
+					// Ein geänderter VK mit unverändertem „gültig ab“ aus dem Export gilt ab heute und überschreibt nicht rückwirkend den bisherigen Preis.
+					if ($id && trim((string)($row['salesPrice'] ?? '')) !== '') {
+						$current = $this->priceLists->prices('', $today)[$id] ?? null;
+						if ($current !== null && CsvTools::cents($row['salesPrice']) !== (int)$current['cents'] && ($row['priceValidFrom'] === '' || $row['priceValidFrom'] <= (string)$current['validFrom'])) {
+							$row['priceValidFrom'] = $today;
+						}
+					}
+					$article = $this->save($row, [], $id ?: null);
+				} catch (\InvalidArgumentException $error) {
+					throw new \InvalidArgumentException('CSV-Zeile ' . $lines[$index] . ' (' . $articleNumber . '): ' . $error->getMessage());
 				}
-				$article = $this->save($row, [], $id ?: null);
-			} catch (\InvalidArgumentException $error) {
-				throw new \InvalidArgumentException('CSV-Zeile ' . $lines[$index] . ' (' . $articleNumber . '): ' . $error->getMessage());
+				if (($article['articleType'] ?? '') === 'PAKET' && trim((string)($row['components'] ?? '')) !== '') {
+					$bomDefinitions[(int)$article['id']] = [trim((string)$row['components']), strtoupper(trim((string)($row['packagePricing'] ?? ''))) ?: 'ITEMS'];
+				}
+				$imported++;
 			}
-			if (($article['articleType'] ?? '') === 'PAKET' && trim((string)($row['components'] ?? '')) !== '') $bomDefinitions[(int)$article['id']] = [trim((string)$row['components']), strtoupper(trim((string)($row['packagePricing'] ?? ''))) ?: 'ITEMS'];
-			$imported++;
-		}
-		foreach ($bomDefinitions as $packageId => [$definition, $pricing]) {
-			// Format: Nummer:Menge[:Art[:Alternativgruppe[:*[:Minderpreis]]]] – „*“ markiert den Standard einer Alternativgruppe.
-			// Vorhandene Positionen behalten Positionsnummer, ID (Bezug laufender Fälle), Minderpreis und die Druckart des Pakets.
-			$existing = $this->boms->forPackage($packageId);
-			$oldItems = $existing['items'] ?? [];
-			$usedOld = [];
-			$items = [];
-			$nextNo = 10;
-			foreach (preg_split('/[|]/', $definition) ?: [] as $index => $part) {
-				$fields = array_map('trim', explode(':', $part));
-				$articleId = $this->findIdByNumber($fields[0] ?? '');
-				if (!$articleId) throw new \InvalidArgumentException('Stückliste von Paket ' . (string)($this->article($packageId)['articleNumber'] ?? '') . ': Artikelnummer „' . ($fields[0] ?? '') . '“ ist nicht im Leistungskatalog.');
-				$match = null;
-				foreach ($oldItems as $position => $old) if (!isset($usedOld[$position]) && (int)$old['articleId'] === $articleId) { $match = $old; $usedOld[$position] = true; break; }
-				$type = strtoupper($fields[2] ?? '') ?: 'FIXED';
-				$itemNo = $match !== null ? (int)$match['itemNo'] : $nextNo;
-				$nextNo = max($nextNo, $itemNo) + 10;
-				$items[] = ['itemNo' => $itemNo, 'articleId' => $articleId, 'quantity' => $fields[1] ?? '1', 'itemType' => $type, 'altGroup' => $fields[3] ?? '', 'isDefault' => ($fields[4] ?? '') === '*',
-					'creditCents' => ($fields[5] ?? '') !== '' ? CsvTools::cents($fields[5]) : (int)($match['creditCents'] ?? 0)];
+			foreach ($bomDefinitions as $packageId => [$definition, $pricing]) {
+				// Format: Nummer:Menge[:Art[:Alternativgruppe[:*[:Minderpreis]]]] – „*“ markiert den Standard einer Alternativgruppe.
+				// Vorhandene Positionen behalten Positionsnummer, ID (Bezug laufender Fälle), Minderpreis und die Druckart des Pakets.
+				$existing = $this->boms->forPackage($packageId);
+				$oldItems = $existing['items'] ?? [];
+				$usedOld = [];
+				$items = [];
+				$nextNo = 10;
+				foreach (preg_split('/[|]/', $definition) ?: [] as $index => $part) {
+					$fields = array_map('trim', explode(':', $part));
+					$articleId = $this->findIdByNumber($fields[0] ?? '');
+					if (!$articleId) {
+						throw new \InvalidArgumentException('Stückliste von Paket ' . (string)($this->article($packageId)['articleNumber'] ?? '') . ': Artikelnummer „' . ($fields[0] ?? '') . '“ ist nicht im Leistungskatalog.');
+					}
+					$match = null;
+					foreach ($oldItems as $position => $old) {
+						if (!isset($usedOld[$position]) && (int)$old['articleId'] === $articleId) {
+							$match = $old;
+							$usedOld[$position] = true;
+							break;
+						}
+					}
+					$type = strtoupper($fields[2] ?? '') ?: 'FIXED';
+					$itemNo = $match !== null ? (int)$match['itemNo'] : $nextNo;
+					$nextNo = max($nextNo, $itemNo) + 10;
+					$items[] = ['itemNo' => $itemNo, 'articleId' => $articleId, 'quantity' => $fields[1] ?? '1', 'itemType' => $type, 'altGroup' => $fields[3] ?? '', 'isDefault' => ($fields[4] ?? '') === '*',
+						'creditCents' => ($fields[5] ?? '') !== '' ? CsvTools::cents($fields[5]) : (int)($match['creditCents'] ?? 0)];
+				}
+				if ($items === []) {
+					continue;
+				}
+				$signature = static fn (array $list): array => array_map(static fn (array $item): string => implode('|', [(int)$item['itemNo'], (int)$item['articleId'], (int)round((float)str_replace(',', '.', (string)($item['quantity'] ?? 1)) * 1000), strtoupper((string)$item['itemType']), strtoupper((string)($item['altGroup'] ?? '')), !empty($item['isDefault']) ? 1 : 0, (int)($item['creditCents'] ?? 0)]), $list);
+				if ($existing !== null && $existing['pricing'] === $pricing && $signature($items) === $signature(array_map(static fn (array $old): array => $old + ['quantity' => $old['quantityMilli'] / 1000], $oldItems))) {
+					continue;
+				}
+				$this->boms->save($packageId, ['pricing' => $pricing, 'printMode' => $existing['printMode'] ?? 'ITEMS_NO_PRICES', 'items' => $items], $this->articles());
 			}
-			if ($items === []) continue;
-			$signature = static fn(array $list): array => array_map(static fn(array $item): string => implode('|', [(int)$item['itemNo'], (int)$item['articleId'], (int)round((float)str_replace(',', '.', (string)($item['quantity'] ?? 1)) * 1000), strtoupper((string)$item['itemType']), strtoupper((string)($item['altGroup'] ?? '')), !empty($item['isDefault']) ? 1 : 0, (int)($item['creditCents'] ?? 0)]), $list);
-			if ($existing !== null && $existing['pricing'] === $pricing && $signature($items) === $signature(array_map(static fn(array $old): array => $old + ['quantity' => $old['quantityMilli'] / 1000], $oldItems))) continue;
-			$this->boms->save($packageId, ['pricing' => $pricing, 'printMode' => $existing['printMode'] ?? 'ITEMS_NO_PRICES', 'items' => $items], $this->articles());
-		}
 			$this->db->commit();
 		} catch (\Throwable $error) {
 			$this->db->rollBack();
@@ -316,16 +318,22 @@ class ArticleService {
 		if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_file((string)($upload['tmp_name'] ?? ''))) {
 			throw new \InvalidArgumentException('Es wurde kein gültiges Bild hochgeladen.');
 		}
-		if ((int)($upload['size'] ?? 0) > 5 * 1024 * 1024) throw new \InvalidArgumentException('Das Bild darf höchstens 5 MB groß sein.');
+		if ((int)($upload['size'] ?? 0) > 5 * 1024 * 1024) {
+			throw new \InvalidArgumentException('Das Bild darf höchstens 5 MB groß sein.');
+		}
 		// Anhand der tatsächlichen Bilddaten (Magic Bytes) statt nur der Dateiendung prüfen.
 		$imageInfo = @getimagesize((string)$upload['tmp_name']);
 		$extensionByImageType = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'];
 		$extension = $imageInfo !== false ? ($extensionByImageType[$imageInfo[2]] ?? null) : null;
-		if ($extension === null) throw new \InvalidArgumentException('Die Datei ist kein gültiges JPG-, PNG- oder WebP-Bild.');
+		if ($extension === null) {
+			throw new \InvalidArgumentException('Die Datei ist kein gültiges JPG-, PNG- oder WebP-Bild.');
+		}
 		$folder = $this->installationConfig->ensurePath($this->storage->baseFolder(), $this->installationConfig->articleImagesPath());
 		$fileName = preg_replace('/[^A-Za-z0-9._-]/', '_', $article['articleNumber']) . '.' . $extension;
 		$existing = $folder->nodeExists($fileName) ? $folder->get($fileName) : null;
-		if ($existing !== null && !$existing instanceof File) throw new \RuntimeException('Im Ordner für Artikelbilder liegt unter dem Namen „' . $fileName . '“ ein Ordner. Bitte diesen umbenennen oder entfernen.');
+		if ($existing !== null && !$existing instanceof File) {
+			throw new \RuntimeException('Im Ordner für Artikelbilder liegt unter dem Namen „' . $fileName . '“ ein Ordner. Bitte diesen umbenennen oder entfernen.');
+		}
 		$file = $existing ?? $folder->newFile($fileName);
 		$file->putContent((string)file_get_contents((string)$upload['tmp_name']));
 		$path = $this->installationConfig->storageRoot() . '/' . $this->installationConfig->articleImagesFolder() . '/' . $fileName;
@@ -343,9 +351,9 @@ class ArticleService {
 			->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))
 			->andWhere($sideOrderId === null ? $query->expr()->isNull('side_order_id') : $query->expr()->eq('side_order_id', $query->createNamedParameter($sideOrderId)))
 			->orderBy('sort_order', 'ASC')->addOrderBy('sub_position', 'ASC')->addOrderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
-		$items = array_map(fn(array $row): array => $this->mapCaseService($row), $rows);
+		$items = array_map(fn (array $row): array => $this->mapCaseService($row), $rows);
 		$items = $this->linkPackages($items);
-		$billable = array_values(array_filter($items, static fn(array $item): bool => ($item['serviceStatus'] ?? '') !== 'STORNIERT' && !$item['isPackageHeader']));
+		$billable = array_values(array_filter($items, static fn (array $item): bool => ($item['serviceStatus'] ?? '') !== 'STORNIERT' && !$item['isPackageHeader']));
 		$context = $this->caseContext($caseId);
 		return [
 			'items' => $items,
@@ -356,7 +364,7 @@ class ArticleService {
 			'contractProtection' => $this->contractProtection($caseId, $sideOrderId),
 			'branch' => $context['branch'],
 			// Verkaufspreise der Niederlassung zum heutigen Tag (für die Anzeige neuer Positionen).
-			'prices' => array_map(static fn(array $price): int => $price['cents'], $this->priceLists->prices($context['branch'])),
+			'prices' => array_map(static fn (array $price): int => $price['cents'], $this->priceLists->prices($context['branch'])),
 		];
 	}
 
@@ -366,12 +374,10 @@ class ArticleService {
 	 * @return array{branch:string,country:string,articles:array<int,array>,groups:array,prices:array<int,int>}
 	 */
 	public function orderFormContext(int $caseId): array {
-		$this->structure->ensureSeedData();
-		$this->ensureSeedData();
 		$context = $this->caseContext($caseId);
 		return [
 			'branch' => $context['branch'], 'country' => $context['country'], 'articles' => $this->articles(), 'groups' => $this->structure->groupMap(),
-			'prices' => array_map(static fn(array $price): int => (int)$price['cents'], $this->priceLists->prices($context['branch'])),
+			'prices' => array_map(static fn (array $price): int => (int)$price['cents'], $this->priceLists->prices($context['branch'])),
 		];
 	}
 
@@ -385,7 +391,9 @@ class ArticleService {
 	public function saveCaseServices(int $caseId, array $selections, string $amendmentReason = '', ?int $sideOrderId = null): array {
 		$before = $this->caseServices($caseId, $sideOrderId);
 		$beforeById = [];
-		foreach ($before['items'] as $item) $beforeById[(int)$item['id']] = $item;
+		foreach ($before['items'] as $item) {
+			$beforeById[(int)$item['id']] = $item;
+		}
 		$articles = $this->articles();
 		$context = $this->caseContext($caseId);
 		$prices = $this->priceLists->prices($context['branch']);
@@ -395,14 +403,20 @@ class ArticleService {
 		foreach ($selections as $selection) {
 			$articleId = (int)($selection['articleId'] ?? 0);
 			$existing = $beforeById[(int)($selection['serviceId'] ?? 0)] ?? null;
-			if ($existing !== null && (($existing['serviceStatus'] ?? '') === 'STORNIERT' || ($existing['origin'] ?? '') === 'INCOMING_INVOICE' || $existing['parentServiceId'] !== null)) $existing = null;
+			if ($existing !== null && (($existing['serviceStatus'] ?? '') === 'STORNIERT' || ($existing['origin'] ?? '') === 'INCOMING_INVOICE' || $existing['parentServiceId'] !== null)) {
+				$existing = null;
+			}
 			if ($articleId === 0) {
 				$specs[] = $this->freeTextSpec($selection, $existing && (int)$existing['articleId'] === 0 && !$existing['isPackageHeader'] ? $existing : null);
 				continue;
 			}
 			$article = $articles[$articleId] ?? null;
-			if ($article === null) continue;
-			if ($existing !== null && (int)$existing['articleId'] !== $articleId) $existing = null;
+			if ($article === null) {
+				continue;
+			}
+			if ($existing !== null && (int)$existing['articleId'] !== $articleId) {
+				$existing = null;
+			}
 			if (($article['articleType'] ?? '') === 'PAKET') {
 				$specs[] = $this->packageSpec($article, $selection, $existing !== null && $existing['isPackageHeader'] ? $existing : null, $articles, $prices, $groups, $context, $before['items']);
 				continue;
@@ -415,46 +429,84 @@ class ArticleService {
 		$matched = [];
 		$contractChanged = false;
 		$flat = [];
-		foreach ($specs as $spec) { $flat[] = $spec; foreach ($spec['children'] ?? [] as $child) $flat[] = $child; }
+		foreach ($specs as $spec) {
+			$flat[] = $spec;
+			foreach ($spec['children'] ?? [] as $child) {
+				$flat[] = $child;
+			}
+		}
 		foreach ($flat as $spec) {
 			$current = $spec['existing'];
-			if ($current === null) { $contractChanged = true; continue; }
+			if ($current === null) {
+				$contractChanged = true;
+				continue;
+			}
 			$matched[(int)$current['id']] = true;
-			if ($this->contractValuesDiffer($current, $spec['line'])) $contractChanged = true;
+			if ($this->contractValuesDiffer($current, $spec['line'])) {
+				$contractChanged = true;
+			}
 		}
 		$removed = [];
 		foreach ($before['items'] as $item) {
-			if (($item['origin'] ?? '') === 'INCOMING_INVOICE' || ($item['serviceStatus'] ?? '') === 'STORNIERT' || isset($matched[(int)$item['id']])) continue;
+			if (($item['origin'] ?? '') === 'INCOMING_INVOICE' || ($item['serviceStatus'] ?? '') === 'STORNIERT' || isset($matched[(int)$item['id']])) {
+				continue;
+			}
 			$removed[] = $item;
 			$contractChanged = true;
 		}
 		$contractProtection = $this->contractProtection($caseId, $sideOrderId);
 		$amendmentReason = trim($amendmentReason);
 		if ($contractProtection['active'] && $contractChanged) {
-			if (!$contractProtection['amendmentsAllowed']) throw new \InvalidArgumentException('Die Vertragspositionen können nicht mehr geändert werden, weil bereits eine aktive Schlussrechnung angelegt wurde. Korrekturen müssen über den vorgesehenen Rechnungsprozess erfolgen.');
-			if (mb_strlen($amendmentReason) < 5) throw new \InvalidArgumentException('Nach Festschreibung des KVA oder Auftrags ist eine Änderung nur als begründeter Vertragsnachtrag möglich.');
+			if (!$contractProtection['amendmentsAllowed']) {
+				throw new \InvalidArgumentException('Die Vertragspositionen können nicht mehr geändert werden, weil bereits eine aktive Schlussrechnung angelegt wurde. Korrekturen müssen über den vorgesehenen Rechnungsprozess erfolgen.');
+			}
+			if (mb_strlen($amendmentReason) < 5) {
+				throw new \InvalidArgumentException('Nach Festschreibung des KVA oder Auftrags ist eine Änderung nur als begründeter Vertragsnachtrag möglich.');
+			}
 		}
 		foreach ($flat as $spec) {
 			$current = $spec['existing'];
-			if ($current !== null && (int)$current['invoicedQuantityMilli'] > 0 && $this->contractValuesDiffer($current, $spec['line'])) throw new \InvalidArgumentException('Bereits fakturierte Leistungen dürfen in Menge oder Preis sowie weiteren Vertragsdaten nicht mehr geändert werden („' . $current['title'] . '“).');
+			if ($current !== null && (int)$current['invoicedQuantityMilli'] > 0 && $this->contractValuesDiffer($current, $spec['line'])) {
+				throw new \InvalidArgumentException('Bereits fakturierte Leistungen dürfen in Menge oder Preis sowie weiteren Vertragsdaten nicht mehr geändert werden („' . $current['title'] . '“).');
+			}
 		}
-		foreach ($removed as $item) if ((int)$item['invoicedQuantityMilli'] > 0) throw new \InvalidArgumentException('Bereits fakturierte Leistungen dürfen nicht entfernt werden („' . $item['title'] . '“).');
+		foreach ($removed as $item) {
+			if ((int)$item['invoicedQuantityMilli'] > 0) {
+				throw new \InvalidArgumentException('Bereits fakturierte Leistungen dürfen nicht entfernt werden („' . $item['title'] . '“).');
+			}
+		}
 
 		// Positionsnummern: bis zur ersten Festschreibung fortlaufend, danach stabil.
 		$stable = (bool)$contractProtection['active'];
 		$maxPosition = 0;
-		foreach ($before['items'] as $item) if (($item['origin'] ?? '') !== 'INCOMING_INVOICE') $maxPosition = max($maxPosition, (int)$item['position']);
+		foreach ($before['items'] as $item) {
+			if (($item['origin'] ?? '') !== 'INCOMING_INVOICE') {
+				$maxPosition = max($maxPosition, (int)$item['position']);
+			}
+		}
 		$next = $stable ? $maxPosition : 0;
 		foreach ($specs as &$spec) {
-			if ($stable && $spec['existing'] !== null && (int)$spec['existing']['position'] > 0) $spec['position'] = (int)$spec['existing']['position'];
-			else { $next += 10; $spec['position'] = $next; }
+			if ($stable && $spec['existing'] !== null && (int)$spec['existing']['position'] > 0) {
+				$spec['position'] = (int)$spec['existing']['position'];
+			} else {
+				$next += 10;
+				$spec['position'] = $next;
+			}
 			$maxSub = 0;
-			foreach ($spec['children'] ?? [] as $child) if ($stable && $child['existing'] !== null) $maxSub = max($maxSub, (int)$child['existing']['subPosition']);
+			foreach ($spec['children'] ?? [] as $child) {
+				if ($stable && $child['existing'] !== null) {
+					$maxSub = max($maxSub, (int)$child['existing']['subPosition']);
+				}
+			}
 			$sub = 0;
 			foreach ($spec['children'] ?? [] as $index => $child) {
-				if ($stable && $child['existing'] !== null && (int)$child['existing']['subPosition'] > 0) $spec['children'][$index]['subPosition'] = (int)$child['existing']['subPosition'];
-				elseif ($stable) $spec['children'][$index]['subPosition'] = ++$maxSub;
-				else $spec['children'][$index]['subPosition'] = ++$sub;
+				if ($stable && $child['existing'] !== null && (int)$child['existing']['subPosition'] > 0) {
+					$spec['children'][$index]['subPosition'] = (int)$child['existing']['subPosition'];
+				} elseif ($stable) {
+					$spec['children'][$index]['subPosition'] = ++$maxSub;
+				} else {
+					$spec['children'][$index]['subPosition'] = ++$sub;
+				}
 			}
 		}
 		unset($spec);
@@ -464,7 +516,9 @@ class ArticleService {
 		try {
 			foreach ($specs as $spec) {
 				$parentId = $this->persistLine($caseId, $sideOrderId, $spec['line'], $spec['existing'], (int)$spec['position'], 0, null, $markNew);
-				foreach ($spec['children'] ?? [] as $child) $this->persistLine($caseId, $sideOrderId, $child['line'], $child['existing'], (int)$spec['position'], (int)$child['subPosition'], $parentId, $markNew);
+				foreach ($spec['children'] ?? [] as $child) {
+					$this->persistLine($caseId, $sideOrderId, $child['line'], $child['existing'], (int)$spec['position'], (int)$child['subPosition'], $parentId, $markNew);
+				}
 			}
 			foreach ($removed as $item) {
 				$query = $this->db->getQueryBuilder();
@@ -490,16 +544,24 @@ class ArticleService {
 		$groups = $this->structure->groupMap();
 		$byGroup = [];
 		foreach ($items as $item) {
-			if (($item['serviceStatus'] ?? '') === 'STORNIERT' || !empty($item['isPackageHeader']) || (int)($item['articleId'] ?? 0) === 0) continue;
+			if (($item['serviceStatus'] ?? '') === 'STORNIERT' || !empty($item['isPackageHeader']) || (int)($item['articleId'] ?? 0) === 0) {
+				continue;
+			}
 			$key = (string)($item['articleGroupKey'] ?? '');
-			if ($key === '') continue;
+			if ($key === '') {
+				continue;
+			}
 			$byGroup[$key][(int)$item['articleId']] = (string)$item['title'];
 		}
 		$messages = [];
 		foreach ($groups as $key => $group) {
 			$entries = $byGroup[$key] ?? [];
-			if (in_array($group['selectionRule'], ['MAX_ONE', 'EXACTLY_ONE'], true) && count($entries) > 1) $messages[] = ['groupKey' => (string)$key, 'type' => 'TOO_MANY', 'message' => 'In der Warengruppe „' . $group['name'] . '“ ist nur eine Position zulässig. Enthalten: ' . implode(', ', array_values($entries)) . '.'];
-			if ($includeMandatory && $group['selectionRule'] === 'EXACTLY_ONE' && $group['active'] && $entries === []) $messages[] = ['groupKey' => (string)$key, 'type' => 'MISSING', 'message' => 'Aus der Warengruppe „' . $group['name'] . '“ muss genau eine Position gewählt sein.'];
+			if (in_array($group['selectionRule'], ['MAX_ONE', 'EXACTLY_ONE'], true) && count($entries) > 1) {
+				$messages[] = ['groupKey' => (string)$key, 'type' => 'TOO_MANY', 'message' => 'In der Warengruppe „' . $group['name'] . '“ ist nur eine Position zulässig. Enthalten: ' . implode(', ', array_values($entries)) . '.'];
+			}
+			if ($includeMandatory && $group['selectionRule'] === 'EXACTLY_ONE' && $group['active'] && $entries === []) {
+				$messages[] = ['groupKey' => (string)$key, 'type' => 'MISSING', 'message' => 'Aus der Warengruppe „' . $group['name'] . '“ muss genau eine Position gewählt sein.'];
+			}
 		}
 		return $messages;
 	}
@@ -507,24 +569,40 @@ class ArticleService {
 	private function assertSelectionRules(array $specs, array $groups): void {
 		$items = [];
 		foreach ($specs as $spec) {
-			if (($spec['line']['itemCategory'] ?? 'NORMAL') !== 'PACKAGE') $items[] = $spec['line'] + ['serviceStatus' => 'BEAUFTRAGT'];
-			foreach ($spec['children'] ?? [] as $child) $items[] = $child['line'] + ['serviceStatus' => 'BEAUFTRAGT'];
+			if (($spec['line']['itemCategory'] ?? 'NORMAL') !== 'PACKAGE') {
+				$items[] = $spec['line'] + ['serviceStatus' => 'BEAUFTRAGT'];
+			}
+			foreach ($spec['children'] ?? [] as $child) {
+				$items[] = $child['line'] + ['serviceStatus' => 'BEAUFTRAGT'];
+			}
 		}
-		$violations = array_filter($this->selectionRuleViolations($items, false), static fn(array $entry): bool => $entry['type'] === 'TOO_MANY');
-		if ($violations !== []) throw new \InvalidArgumentException(implode(' ', array_column($violations, 'message')));
+		$violations = array_filter($this->selectionRuleViolations($items, false), static fn (array $entry): bool => $entry['type'] === 'TOO_MANY');
+		if ($violations !== []) {
+			throw new \InvalidArgumentException(implode(' ', array_column($violations, 'message')));
+		}
 	}
 
 	private function freeTextSpec(array $selection, ?array $existing): array {
 		$title = trim((string)($selection['title'] ?? ''));
-		if ($title === '') throw new \InvalidArgumentException('Eine Freitextposition benötigt eine Bezeichnung.');
+		if ($title === '') {
+			throw new \InvalidArgumentException('Eine Freitextposition benötigt eine Bezeichnung.');
+		}
 		$quantityMilli = $this->quantityToMilli($selection['quantity'] ?? 1);
-		if ($quantityMilli <= 0) throw new \InvalidArgumentException('Die Positionsmenge muss größer als null sein.');
+		if ($quantityMilli <= 0) {
+			throw new \InvalidArgumentException('Die Positionsmenge muss größer als null sein.');
+		}
 		$positionType = strtoupper(trim((string)($selection['positionType'] ?? 'EL')));
-		if (!in_array($positionType, ['EL', 'FK', 'DP'], true)) throw new \InvalidArgumentException('Ungültiger Positionstyp.');
+		if (!in_array($positionType, ['EL', 'FK', 'DP'], true)) {
+			throw new \InvalidArgumentException('Ungültiger Positionstyp.');
+		}
 		$unitPriceCents = (int)($selection['unitPriceCents'] ?? 0);
-		if ($unitPriceCents <= 0) throw new \InvalidArgumentException('Eine Freitextposition benötigt einen Preis größer als 0,00 Euro.');
+		if ($unitPriceCents <= 0) {
+			throw new \InvalidArgumentException('Eine Freitextposition benötigt einen Preis größer als 0,00 Euro.');
+		}
 		$vatRate = $positionType === 'DP' ? 0 : (int)($selection['vatRate'] ?? 19);
-		if (!in_array($vatRate, $this->countryConfiguration->allowedVatRates(), true)) throw new \InvalidArgumentException('Der Mehrwertsteuersatz der Freitextposition ist nicht zulässig.');
+		if (!in_array($vatRate, $this->countryConfiguration->allowedVatRates(), true)) {
+			throw new \InvalidArgumentException('Der Mehrwertsteuersatz der Freitextposition ist nicht zulässig.');
+		}
 		return ['existing' => $existing, 'line' => $this->line([
 			'articleId' => 0, 'articleNumber' => '', 'title' => $title, 'longText' => trim((string)($selection['longText'] ?? '')), 'note' => trim((string)($selection['note'] ?? '')),
 			'category' => 'Freitext', 'articleGroup' => 'Freitext', 'articleGroupKey' => null, 'articleType' => null,
@@ -532,23 +610,32 @@ class ArticleService {
 			'taxClass' => CatalogRules::taxClassForRate($vatRate, $positionType), 'quantityMilli' => $quantityMilli, 'unitPriceCents' => $unitPriceCents, 'listPriceCents' => $unitPriceCents,
 			'vatRate' => $vatRate, 'unit' => $this->validatedUnit((string)($selection['unit'] ?? 'STK')), 'quantityDecimals' => 3, 'positionType' => $positionType,
 			'origin' => $existing['origin'] ?? 'FREE_TEXT',
+			'priceBasis' => CatalogRules::priceBasis($selection['priceBasis'] ?? null) ?? ($existing['priceBasis'] ?? null),
 		])];
 	}
 
 	private function catalogSpec(array $article, array $selection, ?array $existing, array $prices, array $groups, array $context): array {
 		$quantityMilli = $this->quantityToMilli($selection['quantity'] ?? ($existing['quantity'] ?? 1));
-		if ($quantityMilli <= 0) throw new \InvalidArgumentException('Die beauftragte Menge muss größer als null sein.');
+		if ($quantityMilli <= 0) {
+			throw new \InvalidArgumentException('Die beauftragte Menge muss größer als null sein.');
+		}
 		$positionType = strtoupper(trim((string)($selection['positionType'] ?? ($existing['positionType'] ?? CatalogRules::positionType((string)$article['articleType'])))));
-		if (!in_array($positionType, ['EL', 'FK', 'DP'], true)) throw new \InvalidArgumentException('Ungültiger Positionstyp. Zulässig sind EL, FK und DP.');
+		if (!in_array($positionType, ['EL', 'FK', 'DP'], true)) {
+			throw new \InvalidArgumentException('Ungültiger Positionstyp. Zulässig sind EL, FK und DP.');
+		}
 		if ($existing !== null) {
 			$decimals = (int)$existing['quantityDecimals'];
 			$this->validateQuantityPrecision($quantityMilli, $decimals, (string)$existing['unit']);
 			$taxClass = (string)($existing['taxClass'] ?: CatalogRules::taxClassForRate((int)$existing['vatRate'], (string)$existing['positionType']));
 			// Echte Auslage (DP) ist immer ohne Umsatzsteuer; beim Wechsel zurück gilt die Steuerklasse des Snapshots.
 			$vatRate = $positionType === (string)$existing['positionType'] ? (int)$existing['vatRate'] : ($positionType === 'DP' ? 0 : CatalogRules::taxRate($taxClass === 'A' ? 'V' : $taxClass, $context['country']));
-			if ($positionType === 'DP') $vatRate = 0;
+			if ($positionType === 'DP') {
+				$vatRate = 0;
+			}
 			$price = array_key_exists('unitPriceCents', $selection) ? max(0, (int)$selection['unitPriceCents']) : (int)$existing['unitPriceCents'];
-			if ($existing['sourcePackageId'] !== null) $price = (int)$existing['unitPriceCents'];
+			if ($existing['sourcePackageId'] !== null) {
+				$price = (int)$existing['unitPriceCents'];
+			}
 			return ['existing' => $existing, 'line' => $this->line([
 				'articleId' => (int)$article['id'], 'articleNumber' => $existing['articleNumber'], 'title' => $existing['title'], 'longText' => $existing['longText'],
 				'note' => trim((string)($selection['note'] ?? $existing['note'])), 'category' => $existing['category'], 'articleGroup' => $existing['articleGroup'],
@@ -557,11 +644,15 @@ class ArticleService {
 				'unit' => $this->validatedUnit((string)($selection['unit'] ?? $existing['unit'])), 'quantityDecimals' => $decimals, 'positionType' => $positionType,
 				'origin' => (string)$existing['origin'], 'priceOnEntry' => (bool)$existing['priceOnEntry'], 'guidePriceCents' => $existing['guidePriceCents'],
 				'sourcePackageId' => $existing['sourcePackageId'], 'sourcePackageName' => $existing['sourcePackageName'],
+				'priceBasis' => CatalogRules::priceBasis($selection['priceBasis'] ?? null) ?? ($existing['priceBasis'] ?? null),
 			])];
 		}
 		$this->validateQuantityPrecision($quantityMilli, (int)$article['quantityDecimals'], (string)$article['unit']);
 		$listPrice = $prices[(int)$article['id']]['cents'] ?? 0;
-		$price = !empty($selection['priceEdited']) ? max(0, (int)($selection['unitPriceCents'] ?? 0)) : ($article['priceOnEntry'] ? 0 : $listPrice);
+		$basis = CatalogRules::priceBasis($selection['priceBasis'] ?? null) ?? (string)($article['priceBasis'] ?? CatalogRules::defaultPriceBasis((string)$article['articleType'], (bool)$article['priceOnEntry'], $article['guidePriceCents'] ?? null));
+		// 0.89.5: Bei „Preis im Fall erfassen“ mit Schätzbetrag ist der Richtwert der Erfahrungswert und wird vorbelegt.
+		$guess = $basis === 'ESTIMATE' && (int)($article['guidePriceCents'] ?? 0) > 0 ? (int)$article['guidePriceCents'] : 0;
+		$price = !empty($selection['priceEdited']) ? max(0, (int)($selection['unitPriceCents'] ?? 0)) : ($article['priceOnEntry'] ? $guess : $listPrice);
 		$taxClass = (string)$article['taxClass'];
 		return ['existing' => null, 'line' => $this->line([
 			'articleId' => (int)$article['id'], 'articleNumber' => $article['articleNumber'], 'title' => $article['shortName'], 'longText' => $article['longText'],
@@ -570,7 +661,7 @@ class ArticleService {
 			'quantityMilli' => $quantityMilli, 'unitPriceCents' => $price, 'listPriceCents' => $listPrice,
 			'vatRate' => $positionType === 'DP' ? 0 : CatalogRules::taxRate($taxClass, $context['country']),
 			'unit' => $this->validatedUnit((string)($selection['unit'] ?? $article['unit'])), 'quantityDecimals' => (int)$article['quantityDecimals'], 'positionType' => $positionType,
-			'origin' => 'ORDER', 'priceOnEntry' => (bool)$article['priceOnEntry'], 'guidePriceCents' => $article['guidePriceCents'],
+			'origin' => 'ORDER', 'priceOnEntry' => (bool)$article['priceOnEntry'], 'guidePriceCents' => $article['guidePriceCents'], 'priceBasis' => $basis,
 		])];
 	}
 
@@ -581,48 +672,85 @@ class ArticleService {
 	 */
 	private function packageSpec(array $package, array $selection, ?array $header, array $articles, array $prices, array $groups, array $context, array $allItems): array {
 		$bom = $package['bom'] ?? null;
-		if (!is_array($bom) || ($bom['items'] ?? []) === []) throw new \InvalidArgumentException('Das Paket „' . $package['shortName'] . '“ hat noch keine Stückliste.');
+		if (!is_array($bom) || ($bom['items'] ?? []) === []) {
+			throw new \InvalidArgumentException('Das Paket „' . $package['shortName'] . '“ hat noch keine Stückliste.');
+		}
 		$existingChildren = [];
 		if ($header !== null) {
-			foreach ($allItems as $item) if ((int)($item['parentServiceId'] ?? 0) === (int)$header['id'] && ($item['serviceStatus'] ?? '') !== 'STORNIERT') $existingChildren[(int)($item['bomItemId'] ?? 0)] = $item;
+			foreach ($allItems as $item) {
+				if ((int)($item['parentServiceId'] ?? 0) === (int)$header['id'] && ($item['serviceStatus'] ?? '') !== 'STORNIERT') {
+					$existingChildren[(int)($item['bomItemId'] ?? 0)] = $item;
+				}
+			}
 		}
 		$bomItems = [];
-		foreach ($bom['items'] as $item) $bomItems[(int)$item['id']] = $item;
+		foreach ($bom['items'] as $item) {
+			$bomItems[(int)$item['id']] = $item;
+		}
 		// Auswahl: gesendete Konfiguration, sonst die bestehenden Unterpositionen, sonst der Stücklisten-Standard.
 		$requested = null;
-		if (is_array($selection['packageConfig']['selected'] ?? null)) $requested = array_map('intval', $selection['packageConfig']['selected']);
-		elseif ($header !== null) $requested = array_keys($existingChildren);
+		if (is_array($selection['packageConfig']['selected'] ?? null)) {
+			$requested = array_map('intval', $selection['packageConfig']['selected']);
+		} elseif ($header !== null) {
+			$requested = array_keys($existingChildren);
+		}
 		$selected = [];
 		$alternativeChosen = [];
 		foreach ($bomItems as $id => $item) {
-			if ($item['itemType'] === 'FIXED') $selected[$id] = true;
-			elseif ($item['itemType'] === 'OPTIONAL') { if ($requested === null || in_array($id, $requested, true)) $selected[$id] = true; }
-			elseif ($requested !== null && in_array($id, $requested, true) && !isset($alternativeChosen[$item['altGroup']])) { $selected[$id] = true; $alternativeChosen[$item['altGroup']] = $id; }
+			if ($item['itemType'] === 'FIXED') {
+				$selected[$id] = true;
+			} elseif ($item['itemType'] === 'OPTIONAL') {
+				if ($requested === null || in_array($id, $requested, true)) {
+					$selected[$id] = true;
+				}
+			} elseif ($requested !== null && in_array($id, $requested, true) && !isset($alternativeChosen[$item['altGroup']])) {
+				$selected[$id] = true;
+				$alternativeChosen[$item['altGroup']] = $id;
+			}
 		}
 		foreach ($bomItems as $id => $item) {
-			if ($item['itemType'] !== 'ALTERNATIVE' || isset($alternativeChosen[$item['altGroup']]) || !$item['isDefault']) continue;
-			$selected[$id] = true; $alternativeChosen[$item['altGroup']] = $id;
+			if ($item['itemType'] !== 'ALTERNATIVE' || isset($alternativeChosen[$item['altGroup']]) || !$item['isDefault']) {
+				continue;
+			}
+			$selected[$id] = true;
+			$alternativeChosen[$item['altGroup']] = $id;
 		}
 		// Unterpositionen, deren Stücklistenposition inzwischen entfernt wurde, bleiben als Snapshot erhalten.
-		foreach ($existingChildren as $bomItemId => $child) if (!isset($bomItems[$bomItemId]) && ($requested === null || in_array($bomItemId, $requested, true))) $selected[$bomItemId] = true;
+		foreach ($existingChildren as $bomItemId => $child) {
+			if (!isset($bomItems[$bomItemId]) && ($requested === null || in_array($bomItemId, $requested, true))) {
+				$selected[$bomItemId] = true;
+			}
+		}
 
 		$pricing = (string)($header['packagePricing'] ?? $bom['pricing']);
-		$selectedIds = array_keys($selected); sort($selectedIds);
-		$existingIds = array_keys($existingChildren); sort($existingIds);
+		$selectedIds = array_keys($selected);
+		sort($selectedIds);
+		$existingIds = array_keys($existingChildren);
+		sort($existingIds);
 		$configChanged = $header === null || $selectedIds !== $existingIds;
 		$listPrice = $header !== null ? (int)$header['listPriceCents'] : ($prices[(int)$package['id']]['cents'] ?? 0);
 		$packagePrice = array_key_exists('packagePriceCents', $selection) && $selection['packagePriceCents'] !== null && $selection['packagePriceCents'] !== '' ? max(0, (int)$selection['packagePriceCents']) : ($header !== null ? (int)$header['packagePriceCents'] : $listPrice);
 		$printMode = strtoupper((string)($selection['printMode'] ?? ($header['printMode'] ?? $bom['printMode'])));
-		if (!isset(CatalogRules::PRINT_MODES[$printMode])) $printMode = (string)$bom['printMode'];
+		if (!isset(CatalogRules::PRINT_MODES[$printMode])) {
+			$printMode = (string)$bom['printMode'];
+		}
 		$credit = 0;
 		if ($configChanged) {
-			foreach ($bomItems as $id => $item) if ($item['itemType'] === 'OPTIONAL' && !isset($selected[$id])) $credit += (int)$item['creditCents'];
+			foreach ($bomItems as $id => $item) {
+				if ($item['itemType'] === 'OPTIONAL' && !isset($selected[$id])) {
+					$credit += (int)$item['creditCents'];
+				}
+			}
 		}
 		$headerSurcharge = $configChanged ? -$credit : (int)($header['surchargeCents'] ?? 0);
 
 		$children = [];
 		$defaults = [];
-		foreach ($bomItems as $item) if ($item['itemType'] === 'ALTERNATIVE' && $item['isDefault']) $defaults[$item['altGroup']] = $item;
+		foreach ($bomItems as $item) {
+			if ($item['itemType'] === 'ALTERNATIVE' && $item['isDefault']) {
+				$defaults[$item['altGroup']] = $item;
+			}
+		}
 		foreach (array_keys($selected) as $bomItemId) {
 			$existing = $existingChildren[$bomItemId] ?? null;
 			if ($existing !== null) {
@@ -632,13 +760,15 @@ class ArticleService {
 					'costType' => $existing['costType'], 'taxClass' => $existing['taxClass'], 'quantityMilli' => (int)$existing['orderedQuantityMilli'], 'unitPriceCents' => (int)$existing['unitPriceCents'],
 					'listPriceCents' => (int)$existing['listPriceCents'], 'surchargeCents' => (int)$existing['surchargeCents'], 'vatRate' => (int)$existing['vatRate'], 'unit' => $existing['unit'],
 					'quantityDecimals' => (int)$existing['quantityDecimals'], 'positionType' => $existing['positionType'], 'origin' => (string)$existing['origin'],
-					'itemCategory' => 'BOM_ITEM', 'bomItemId' => $bomItemId,
+					'itemCategory' => 'BOM_ITEM', 'bomItemId' => $bomItemId, 'priceBasis' => $existing['priceBasis'] ?? null,
 				])];
 				continue;
 			}
 			$item = $bomItems[$bomItemId];
 			$component = $articles[(int)$item['articleId']] ?? null;
-			if ($component === null) continue;
+			if ($component === null) {
+				continue;
+			}
 			$componentList = $prices[(int)$component['id']]['cents'] ?? 0;
 			$surcharge = 0;
 			if ($pricing === 'HEADER' && $item['itemType'] === 'ALTERNATIVE' && isset($defaults[$item['altGroup']]) && (int)$defaults[$item['altGroup']]['id'] !== $bomItemId) {
@@ -654,16 +784,20 @@ class ArticleService {
 				'unitPriceCents' => $componentList, 'listPriceCents' => $componentList, 'surchargeCents' => $surcharge,
 				'vatRate' => $positionType === 'DP' ? 0 : CatalogRules::taxRate($taxClass, $context['country']), 'unit' => (string)$component['unit'],
 				'quantityDecimals' => (int)$component['quantityDecimals'], 'positionType' => $positionType, 'origin' => 'ORDER', 'itemCategory' => 'BOM_ITEM', 'bomItemId' => $bomItemId,
+				// 0.89.5: Bestandteile eines Festpreis-Pakets sind Festpreis, sonst gilt die Preisart des Artikels.
+				'priceBasis' => $pricing === 'HEADER' ? 'FIXED' : (string)($component['priceBasis'] ?? 'FIXED'),
 			])];
 		}
-		usort($children, static fn(array $left, array $right): int => $left['bomItemNo'] <=> $right['bomItemNo']);
+		usort($children, static fn (array $left, array $right): int => $left['bomItemNo'] <=> $right['bomItemNo']);
 		if ($pricing === 'HEADER') {
-			$target = $packagePrice + $headerSurcharge + array_sum(array_map(static fn(array $child): int => (int)$child['line']['surchargeCents'], $children));
-			$allocation = CatalogRules::allocate($target, array_combine(array_keys($children), array_map(static fn(array $child): array => [
+			$target = $packagePrice + $headerSurcharge + array_sum(array_map(static fn (array $child): int => (int)$child['line']['surchargeCents'], $children));
+			$allocation = CatalogRules::allocate($target, array_combine(array_keys($children), array_map(static fn (array $child): array => [
 				'listLineCents' => (int)round((int)$child['line']['quantityMilli'] * (int)$child['line']['listPriceCents'] / 1000),
 				'quantityMilli' => (int)$child['line']['quantityMilli'], 'anchor' => (bool)$child['anchor'],
 			], $children)) ?: []);
-			foreach ($allocation as $index => $unitPrice) $children[$index]['line']['unitPriceCents'] = $unitPrice;
+			foreach ($allocation as $index => $unitPrice) {
+				$children[$index]['line']['unitPriceCents'] = $unitPrice;
+			}
 		}
 		return ['existing' => $header, 'children' => $children, 'line' => $this->line([
 			'articleId' => (int)$package['id'], 'articleNumber' => $header['articleNumber'] ?? $package['articleNumber'], 'title' => $header['title'] ?? $package['shortName'],
@@ -671,7 +805,7 @@ class ArticleService {
 			'category' => $header['category'] ?? $package['articleTypeLabel'], 'articleGroup' => $header['articleGroup'] ?? (string)($groups[$package['articleGroup']]['name'] ?? $package['articleGroup']),
 			'articleGroupKey' => $header['articleGroupKey'] ?? $package['articleGroup'], 'articleType' => 'PAKET', 'costType' => 'INTERNAL', 'taxClass' => 'V',
 			'quantityMilli' => 1000, 'unitPriceCents' => 0, 'listPriceCents' => $listPrice, 'surchargeCents' => $headerSurcharge, 'vatRate' => 0, 'unit' => 'PAUSCHAL', 'quantityDecimals' => 0,
-			'positionType' => 'EL', 'origin' => (string)($header['origin'] ?? 'ORDER'), 'itemCategory' => 'PACKAGE', 'packagePricing' => $pricing,
+			'positionType' => 'EL', 'origin' => (string)($header['origin'] ?? 'ORDER'), 'itemCategory' => 'PACKAGE', 'packagePricing' => $pricing, 'priceBasis' => 'FIXED',
 			'packagePriceCents' => $pricing === 'HEADER' ? $packagePrice : null, 'printMode' => $printMode,
 		])];
 	}
@@ -680,6 +814,7 @@ class ArticleService {
 		return $values + [
 			'note' => '', 'longText' => '', 'surchargeCents' => 0, 'itemCategory' => 'NORMAL', 'bomItemId' => null, 'packagePricing' => null, 'packagePriceCents' => null,
 			'printMode' => null, 'priceOnEntry' => false, 'guidePriceCents' => null, 'sourcePackageId' => null, 'sourcePackageName' => '', 'listPriceCents' => 0,
+			'priceBasis' => null,
 		];
 	}
 
@@ -690,7 +825,8 @@ class ArticleService {
 			|| (string)($current['positionType'] ?? 'EL') !== (string)$line['positionType']
 			|| (string)($current['title'] ?? '') !== (string)$line['title']
 			|| (int)($current['vatRate'] ?? 0) !== (int)$line['vatRate']
-			|| (int)($current['packagePriceCents'] ?? 0) !== (int)($line['packagePriceCents'] ?? 0);
+			|| (int)($current['packagePriceCents'] ?? 0) !== (int)($line['packagePriceCents'] ?? 0)
+			|| ($line['priceBasis'] !== null && (string)($current['priceBasis'] ?? '') !== (string)$line['priceBasis']);
 	}
 
 	private function persistLine(int $caseId, ?int $sideOrderId, array $line, ?array $existing, int $position, int $subPosition, ?int $parentId, bool $markNew): int {
@@ -705,11 +841,14 @@ class ArticleService {
 			'quantity_decimals' => $line['quantityDecimals'], 'sort_order' => $position, 'sub_position' => $subPosition, 'parent_service_id' => $parentId,
 			'item_category' => $line['itemCategory'], 'bom_item_id' => $line['bomItemId'], 'package_pricing' => $line['packagePricing'],
 			'package_price_cents' => $line['packagePriceCents'], 'print_mode' => $line['printMode'], 'guide_price_cents' => $line['guidePriceCents'],
+			'price_basis' => CatalogRules::priceBasis($line['priceBasis'] ?? null) ?? CatalogRules::defaultPriceBasisForPosition((string)$line['positionType'], (bool)$line['priceOnEntry'], (int)$line['unitPriceCents']),
 		];
 		$query = $this->db->getQueryBuilder();
 		if ($existing !== null) {
 			$query->update('bestatter_case_services');
-			foreach ($values as $column => $value) $query->set($column, $query->createNamedParameter($value));
+			foreach ($values as $column => $value) {
+				$query->set($column, $query->createNamedParameter($value));
+			}
 			$query->set('origin', $query->createNamedParameter($line['origin']))
 				->set('price_on_entry', $query->createNamedParameter((bool)$line['priceOnEntry'], IQueryBuilder::PARAM_BOOL))
 				->set('updated_at', $query->createNamedParameter($now))
@@ -717,7 +856,9 @@ class ArticleService {
 			return (int)$existing['id'];
 		}
 		$insert = ['case_id' => $query->createNamedParameter($caseId), 'side_order_id' => $query->createNamedParameter($sideOrderId)];
-		foreach ($values as $column => $value) $insert[$column] = $query->createNamedParameter($value);
+		foreach ($values as $column => $value) {
+			$insert[$column] = $query->createNamedParameter($value);
+		}
 		$insert += [
 			'origin' => $query->createNamedParameter($markNew ? 'NACHTRAG' : $line['origin']),
 			'price_on_entry' => $query->createNamedParameter((bool)$line['priceOnEntry'], IQueryBuilder::PARAM_BOOL),
@@ -739,7 +880,9 @@ class ArticleService {
 		$query = $this->db->getQueryBuilder();
 		$branch = (string)($query->select('branch')->from('bestatter_cases')->where($query->expr()->eq('id', $query->createNamedParameter($caseId)))->executeQuery()->fetchOne() ?: '');
 		$country = 'DE';
-		if ($branch !== '') $country = (string)($this->configuration->branchByKey($branch)['countryCode'] ?? 'DE');
+		if ($branch !== '') {
+			$country = (string)($this->configuration->branchByKey($branch)['countryCode'] ?? 'DE');
+		}
 		return ['branch' => $branch, 'country' => $country ?: 'DE'];
 	}
 
@@ -784,51 +927,86 @@ class ArticleService {
 			'priceValidFrom' => $prices[$id]['validFrom'] ?? '',
 			'priceOnEntry' => (bool)($row['price_on_entry'] ?? false),
 			'guidePriceCents' => $row['guide_price_cents'] !== null ? (int)$row['guide_price_cents'] : null,
+			'priceBasis' => CatalogRules::priceBasis($row['price_basis'] ?? null) ?? CatalogRules::defaultPriceBasis($type, (bool)($row['price_on_entry'] ?? false), $row['guide_price_cents'] !== null ? (int)$row['guide_price_cents'] : null),
 			'active' => (bool)$row['active'],
 			'createdAt' => $row['created_at'],
 			'updatedAt' => $row['updated_at'],
 			'bom' => $bom,
 			// Kompatibilität: frühere Paketkomponenten entsprechen den Stücklistenpositionen.
-			'components' => array_map(static fn(array $item): array => ['articleId' => $item['articleId'], 'articleNumber' => $item['articleNumber'], 'shortName' => $item['shortName'], 'articleGroup' => $item['articleGroup'], 'quantityMilli' => $item['quantityMilli'], 'quantity' => $item['quantity'], 'itemType' => $item['itemType'], 'altGroup' => $item['altGroup'], 'isDefault' => $item['isDefault']], $bom['items'] ?? []),
+			'components' => array_map(static fn (array $item): array => ['articleId' => $item['articleId'], 'articleNumber' => $item['articleNumber'], 'shortName' => $item['shortName'], 'articleGroup' => $item['articleGroup'], 'quantityMilli' => $item['quantityMilli'], 'quantity' => $item['quantity'], 'itemType' => $item['itemType'], 'altGroup' => $item['altGroup'], 'isDefault' => $item['isDefault']], $bom['items'] ?? []),
 		];
 	}
 
 	private function validateArticle(array $input, ?array $current): array {
 		$articleNumber = trim((string)($input['articleNumber'] ?? $input['article_number'] ?? ''));
 		$shortName = trim((string)($input['shortName'] ?? $input['short_name'] ?? ''));
-		if ($articleNumber === '' || $shortName === '') throw new \InvalidArgumentException('Artikelnummer und Kurztext sind Pflichtfelder.');
-		if (mb_strlen($articleNumber) > 50 || mb_strlen($shortName) > 180) throw new \InvalidArgumentException('Artikelnummer (höchstens 50) oder Kurztext (höchstens 180 Zeichen) ist zu lang.');
-		if ($current !== null && $articleNumber !== $current['articleNumber']) throw new \InvalidArgumentException('Die Artikelnummer ist nach der Anlage schreibgeschützt. Für eine neue Nummer bitte einen neuen Artikel anlegen und den alten deaktivieren.');
+		if ($articleNumber === '' || $shortName === '') {
+			throw new \InvalidArgumentException('Artikelnummer und Kurztext sind Pflichtfelder.');
+		}
+		if (mb_strlen($articleNumber) > 50 || mb_strlen($shortName) > 180) {
+			throw new \InvalidArgumentException('Artikelnummer (höchstens 50) oder Kurztext (höchstens 180 Zeichen) ist zu lang.');
+		}
+		if ($current !== null && $articleNumber !== $current['articleNumber']) {
+			throw new \InvalidArgumentException('Die Artikelnummer ist nach der Anlage schreibgeschützt. Für eine neue Nummer bitte einen neuen Artikel anlegen und den alten deaktivieren.');
+		}
 		$groups = $this->structure->groupMap();
 		$group = trim((string)($input['articleGroup'] ?? $input['article_group'] ?? ($current['articleGroup'] ?? '')));
 		if (!isset($groups[$group])) {
-			foreach ($groups as $key => $candidate) if (mb_strtolower($candidate['name']) === mb_strtolower($group)) { $group = (string)$key; break; }
+			foreach ($groups as $key => $candidate) {
+				if (mb_strtolower($candidate['name']) === mb_strtolower($group)) {
+					$group = (string)$key;
+					break;
+				}
+			}
 		}
 		// „210 · Särge“ bzw. „210 – Särge“ (Auswahlliste der Installations-Checkliste)
-		if (!isset($groups[$group]) && preg_match('/^([0-9A-Z]{1,20})\s*[·\-–:]/u', strtoupper($group), $match) && isset($groups[$match[1]])) $group = $match[1];
-		if (!isset($groups[$group])) throw new \InvalidArgumentException('Bitte eine gültige Warengruppe wählen.');
+		if (!isset($groups[$group]) && preg_match('/^([0-9A-Z]{1,20})\s*[·\-–:]/u', strtoupper($group), $match) && isset($groups[$match[1]])) {
+			$group = $match[1];
+		}
+		if (!isset($groups[$group])) {
+			throw new \InvalidArgumentException('Bitte eine gültige Warengruppe wählen.');
+		}
 		$type = strtoupper(trim((string)($input['articleType'] ?? $input['article_type'] ?? '')));
 		if ($type !== '' && !isset(CatalogRules::ARTICLE_TYPES[$type])) {
-			foreach (CatalogRules::ARTICLE_TYPES as $code => $definition) if (mb_strtolower($definition['label']) === mb_strtolower(trim((string)($input['articleType'] ?? ''))) || ($code === 'PAKET' && $type === 'PAKET (STÜCKLISTE)')) { $type = $code; break; }
-			if ($type === 'AUSLAGE/GEBÜHR' || $type === 'AUSLAGE / GEBÜHR') $type = 'AUSLAGE';
+			foreach (CatalogRules::ARTICLE_TYPES as $code => $definition) {
+				if (mb_strtolower($definition['label']) === mb_strtolower(trim((string)($input['articleType'] ?? ''))) || ($code === 'PAKET' && $type === 'PAKET (STÜCKLISTE)')) {
+					$type = $code;
+					break;
+				}
+			}
+			if ($type === 'AUSLAGE/GEBÜHR' || $type === 'AUSLAGE / GEBÜHR') {
+				$type = 'AUSLAGE';
+			}
 		}
 		if ($type === '') {
 			$legacyType = strtoupper(trim((string)($input['itemType'] ?? $input['item_type'] ?? '')));
 			$legacyCost = strtoupper(trim((string)($input['costType'] ?? $input['cost_type'] ?? '')));
-			$type = $legacyType === 'PACKAGE' ? 'PAKET' : match ($legacyCost) { 'THIRD_PARTY' => 'FREMDLEISTUNG', 'EXPENSE' => 'AUSLAGE', default => (string)($current['articleType'] ?? 'DIENSTLEISTUNG') };
+			$type = $legacyType === 'PACKAGE' ? 'PAKET' : match ($legacyCost) {
+				'THIRD_PARTY' => 'FREMDLEISTUNG', 'EXPENSE' => 'AUSLAGE', default => (string)($current['articleType'] ?? 'DIENSTLEISTUNG')
+			};
 		}
-		if (!isset(CatalogRules::ARTICLE_TYPES[$type])) throw new \InvalidArgumentException('Unbekannte Artikelart.');
+		if (!isset(CatalogRules::ARTICLE_TYPES[$type])) {
+			throw new \InvalidArgumentException('Unbekannte Artikelart.');
+		}
 		$taxClass = strtoupper(trim((string)($input['taxClass'] ?? $input['tax_class'] ?? '')));
-		if (mb_strlen($taxClass) > 1 && isset(CatalogRules::TAX_CLASSES[mb_substr($taxClass, 0, 1)]) && preg_match('/^[VEA](\s|–|-|$)/u', $taxClass)) $taxClass = mb_substr($taxClass, 0, 1);
+		if (mb_strlen($taxClass) > 1 && isset(CatalogRules::TAX_CLASSES[mb_substr($taxClass, 0, 1)]) && preg_match('/^[VEA](\s|–|-|$)/u', $taxClass)) {
+			$taxClass = mb_substr($taxClass, 0, 1);
+		}
 		if ($taxClass === '') {
 			$vat = $input['vatRate'] ?? $input['vat_rate'] ?? null;
 			$taxClass = $vat !== null && $vat !== '' ? CatalogRules::taxClassForRate((int)$vat, $type === 'AUSLAGE' ? 'DP' : 'EL') : (string)($current['taxClass'] ?? ($type === 'AUSLAGE' ? 'A' : 'V'));
 		}
-		if (!isset(CatalogRules::TAX_CLASSES[$taxClass])) throw new \InvalidArgumentException('Unbekannte Steuerklasse.');
-		if ($type === 'PAKET') $taxClass = 'V';
+		if (!isset(CatalogRules::TAX_CLASSES[$taxClass])) {
+			throw new \InvalidArgumentException('Unbekannte Steuerklasse.');
+		}
+		if ($type === 'PAKET') {
+			$taxClass = 'V';
+		}
 		$unit = $this->validatedUnit((string)($input['unit'] ?? ($current['unit'] ?? 'STK')));
 		$searchTerm = strtoupper(trim((string)($input['searchTerm'] ?? $input['search_term'] ?? ($current['searchTerm'] ?? ''))));
-		if (mb_strlen($searchTerm) > 60) throw new \InvalidArgumentException('Der Suchbegriff darf höchstens 60 Zeichen lang sein.');
+		if (mb_strlen($searchTerm) > 60) {
+			throw new \InvalidArgumentException('Der Suchbegriff darf höchstens 60 Zeichen lang sein.');
+		}
 		$priceOnEntry = CsvTools::flag($input['priceOnEntry'] ?? $input['price_on_entry'] ?? null, (bool)($current['priceOnEntry'] ?? false));
 		$guide = $input['guidePrice'] ?? $input['guide_price'] ?? null;
 		$guideCents = isset($input['guidePriceCents']) ? ($input['guidePriceCents'] === null || $input['guidePriceCents'] === '' ? null : max(0, (int)$input['guidePriceCents'])) : ($guide !== null && trim((string)$guide) !== '' ? $this->moneyToCents($guide) : ($current['guidePriceCents'] ?? null));
@@ -853,8 +1031,32 @@ class ArticleService {
 			'priceValidFrom' => $validFrom,
 			'priceOnEntry' => $priceOnEntry,
 			'guidePriceCents' => $guideCents,
+			'priceBasis' => $this->validatedPriceBasis($input['priceBasis'] ?? $input['price_basis'] ?? null, $current, $type, $priceOnEntry, $guideCents),
 			'active' => CsvTools::flag($input['active'] ?? null, (bool)($current['active'] ?? true)),
 		];
+	}
+
+	/** 0.89.5: Preisart aus Code oder Bezeichnung (CSV); ohne Angabe bleibt die bisherige bzw. gilt die Vorbelegung der Artikelart. */
+	private function validatedPriceBasis(mixed $value, ?array $current, string $type, bool $priceOnEntry, ?int $guideCents): string {
+		$text = trim((string)($value ?? ''));
+		if ($text !== '') {
+			$basis = CatalogRules::priceBasis($text);
+			if ($basis === null) {
+				foreach (CatalogRules::PRICE_BASES as $code => $label) {
+					if (mb_strtolower($label) === mb_strtolower($text)) {
+						$basis = $code;
+					}
+				}
+			}
+			if ($basis === null) {
+				throw new \InvalidArgumentException('Unbekannte Preisart „' . $text . '“. Zulässig sind Festpreis, Schätzbetrag und nach Bescheid.');
+			}
+			return $basis;
+		}
+		if ($current !== null && ($current['articleType'] ?? '') === $type && isset($current['priceBasis'])) {
+			return (string)$current['priceBasis'];
+		}
+		return CatalogRules::defaultPriceBasis($type, $priceOnEntry, $guideCents);
 	}
 
 	/** Spiegelt den heute gültigen Standardpreis in die Altspalte (Exporte, ältere Auswertungen). */
@@ -866,28 +1068,38 @@ class ArticleService {
 
 	private function linkPackages(array $items): array {
 		$headers = [];
-		foreach ($items as $item) if ($item['isPackageHeader']) $headers[(int)$item['id']] = $item;
+		foreach ($items as $item) {
+			if ($item['isPackageHeader']) {
+				$headers[(int)$item['id']] = $item;
+			}
+		}
 		$childrenByHeader = [];
 		foreach ($items as $index => $item) {
 			$parent = $item['parentServiceId'] !== null ? ($headers[(int)$item['parentServiceId']] ?? null) : null;
-			if ($parent === null) continue;
+			if ($parent === null) {
+				continue;
+			}
 			$items[$index]['packageServiceId'] = (int)$parent['id'];
 			$items[$index]['packageTitle'] = (string)$parent['title'];
 			$items[$index]['packagePosition'] = (int)$parent['position'];
 			$items[$index]['packagePricingOfParent'] = (string)($parent['packagePricing'] ?? 'ITEMS');
 			$items[$index]['printMode'] = (string)($parent['printMode'] ?? 'ITEMS_NO_PRICES');
-			if (($item['serviceStatus'] ?? '') !== 'STORNIERT') $childrenByHeader[(int)$parent['id']][] = $items[$index];
+			if (($item['serviceStatus'] ?? '') !== 'STORNIERT') {
+				$childrenByHeader[(int)$parent['id']][] = $items[$index];
+			}
 		}
 		foreach ($items as $index => $item) {
-			if (!$item['isPackageHeader']) continue;
+			if (!$item['isPackageHeader']) {
+				continue;
+			}
 			$children = $childrenByHeader[(int)$item['id']] ?? [];
-			$sum = static fn(string $key): int => array_sum(array_map(static fn(array $child): int => (int)$child[$key], $children));
+			$sum = static fn (string $key): int => array_sum(array_map(static fn (array $child): int => (int)$child[$key], $children));
 			$items[$index]['packageNetCents'] = $sum('netCents');
 			$items[$index]['packageVatCents'] = $sum('vatCents');
 			$items[$index]['packageGrossCents'] = $sum('grossCents');
 			$items[$index]['childCount'] = count($children);
 			if (($item['serviceStatus'] ?? '') !== 'STORNIERT') {
-				$items[$index]['serviceStatus'] = CatalogRules::aggregateStatus(array_map(static fn(array $child): string => (string)$child['serviceStatus'], $children));
+				$items[$index]['serviceStatus'] = CatalogRules::aggregateStatus(array_map(static fn (array $child): string => (string)$child['serviceStatus'], $children));
 				$items[$index]['serviceStatusLabel'] = CatalogRules::SERVICE_STATUS_LABELS[$items[$index]['serviceStatus']] ?? $items[$index]['serviceStatus'];
 			}
 		}
@@ -954,6 +1166,7 @@ class ArticleService {
 			'surchargeCents' => (int)($row['surcharge_cents'] ?? 0),
 			'priceOnEntry' => (bool)($row['price_on_entry'] ?? false),
 			'guidePriceCents' => $row['guide_price_cents'] !== null ? (int)$row['guide_price_cents'] : null,
+			'priceBasis' => CatalogRules::priceBasis($row['price_basis'] ?? null) ?? CatalogRules::defaultPriceBasisForPosition((string)($row['position_type'] ?? 'EL'), (bool)($row['price_on_entry'] ?? false), (int)$row['unit_price_cents']),
 			'unit' => (string)($row['unit'] ?? 'STK'), 'quantityDecimals' => (int)($row['quantity_decimals'] ?? 0),
 			'vatRate' => (int)$row['vat_rate'],
 			'netCents' => $netCents,
@@ -964,55 +1177,68 @@ class ArticleService {
 	}
 
 	private function totalsForQuantity(array $items, string $quantityKey): array {
-		$net = 0; $vat = 0;
-		foreach ($items as $item) { $lineNet = (int)round((int)$item[$quantityKey] * (int)$item['unitPriceCents'] / 1000); $net += $lineNet; $vat += (int)round($lineNet * (int)$item['vatRate'] / 100); }
+		$net = 0;
+		$vat = 0;
+		foreach ($items as $item) {
+			$lineNet = (int)round((int)$item[$quantityKey] * (int)$item['unitPriceCents'] / 1000);
+			$net += $lineNet;
+			$vat += (int)round($lineNet * (int)$item['vatRate'] / 100);
+		}
 		return ['netCents' => $net, 'vatCents' => $vat, 'grossCents' => $net + $vat];
 	}
 
 	private function outstandingTotals(array $items): array {
-		$net = 0; $vat = 0;
-		foreach ($items as $item) { $quantity = max(0, (int)$item['performedQuantityMilli'] - (int)$item['invoicedQuantityMilli']); if ($item['billability'] !== 'ABRECHENBAR') $quantity = 0; $lineNet = (int)round($quantity * (int)$item['unitPriceCents'] / 1000); $net += $lineNet; $vat += (int)round($lineNet * (int)$item['vatRate'] / 100); }
+		$net = 0;
+		$vat = 0;
+		foreach ($items as $item) {
+			$quantity = max(0, (int)$item['performedQuantityMilli'] - (int)$item['invoicedQuantityMilli']);
+			if ($item['billability'] !== 'ABRECHENBAR') {
+				$quantity = 0;
+			} $lineNet = (int)round($quantity * (int)$item['unitPriceCents'] / 1000);
+			$net += $lineNet;
+			$vat += (int)round($lineNet * (int)$item['vatRate'] / 100);
+		}
 		return ['netCents' => $net, 'vatCents' => $vat, 'grossCents' => $net + $vat];
 	}
 
 	private function validateQuantityPrecision(int $quantityMilli, int $decimals, string $unit): void {
 		$decimals = max(0, min(3, $decimals));
 		$increment = 10 ** (3 - $decimals);
-		if ($quantityMilli % $increment !== 0) throw new \InvalidArgumentException(sprintf('Für die Einheit %s sind höchstens %d Nachkommastellen zulässig.', $unit, $decimals));
+		if ($quantityMilli % $increment !== 0) {
+			throw new \InvalidArgumentException(sprintf('Für die Einheit %s sind höchstens %d Nachkommastellen zulässig.', $unit, $decimals));
+		}
 	}
 
 	private function validatedUnit(string $unit): string {
 		$unit = strtoupper(trim($unit)) ?: 'STK';
 		$values = $this->customizing->valuesForKey('QUANTITY_UNIT');
 		$allowed = array_column($values, 'value');
-		if ($allowed === []) $allowed = self::FALLBACK_UNITS;
+		if ($allowed === []) {
+			$allowed = self::FALLBACK_UNITS;
+		}
 		// Klartext aus der Werteliste (z. B. „Pauschal“, „Stück“) wird auf den Schlüssel abgebildet.
-		if (!in_array($unit, $allowed, true)) foreach ($values as $entry) if (mb_strtoupper(trim((string)($entry['label'] ?? ''))) === mb_strtoupper(trim($unit))) { $unit = (string)$entry['value']; break; }
-		if (!in_array($unit, $allowed, true)) throw new \InvalidArgumentException('Unbekannte Mengeneinheit „' . $unit . '“. Einheiten werden in der Werteliste „Mengeneinheiten“ gepflegt.');
+		if (!in_array($unit, $allowed, true)) {
+			foreach ($values as $entry) {
+				if (mb_strtoupper(trim((string)($entry['label'] ?? ''))) === mb_strtoupper(trim($unit))) {
+					$unit = (string)$entry['value'];
+					break;
+				}
+			}
+		}
+		if (!in_array($unit, $allowed, true)) {
+			throw new \InvalidArgumentException('Unbekannte Mengeneinheit „' . $unit . '“. Einheiten werden in der Werteliste „Mengeneinheiten“ gepflegt.');
+		}
 		return $unit;
 	}
 
-	private function ensureSeedData(): void {
-		$query = $this->db->getQueryBuilder();
-		$count = (int)$query->select($query->func()->count('*', 'count'))->from('bestatter_articles')->executeQuery()->fetchOne();
-		$pending = $this->config->getAppValue(Application::APP_ID, 'catalog_sample_pending', '') !== '';
-		if ($count > 0 && !$pending) return;
-		if (!is_file(self::SEED_FILE)) return;
-		$this->installSampleCatalog($count > 0);
-	}
-
-	private function seed(): array {
-		if (!is_file(self::SEED_FILE)) return [];
-		$data = json_decode((string)file_get_contents(self::SEED_FILE), true);
-		return is_array($data) ? $data : [];
-	}
-
 	private function options(array $map): array {
-		return array_map(static fn(string $value, string $label): array => ['value' => $value, 'label' => $label], array_keys($map), $map);
+		return array_map(static fn (string $value, string $label): array => ['value' => $value, 'label' => $label], array_keys($map), $map);
 	}
 
 	private function findIdByNumber(string $number): int {
-		if ($number === '') return 0;
+		if ($number === '') {
+			return 0;
+		}
 		$query = $this->db->getQueryBuilder();
 		return (int)$query->select('id')->from('bestatter_articles')->where($query->expr()->eq('article_number', $query->createNamedParameter($number)))->executeQuery()->fetchOne();
 	}
@@ -1033,7 +1259,7 @@ class ArticleService {
 			'einheit' => 'unit', 'unit' => 'unit', 'nachkommastellen' => 'quantityDecimals', 'quantity_decimals' => 'quantityDecimals', 'quantitydecimals' => 'quantityDecimals',
 			'vk_preis' => 'salesPrice', 'vk' => 'salesPrice', 'vk_netto' => 'salesPrice', 'verkaufspreis' => 'salesPrice', 'sales_price' => 'salesPrice', 'salesprice' => 'salesPrice', 'salespricecents' => 'salesPriceCents',
 			'preis_gueltig_ab' => 'priceValidFrom', 'gueltig_ab' => 'priceValidFrom', 'pricevalidfrom' => 'priceValidFrom', 'validfrom' => 'priceValidFrom',
-			'preis_im_fall' => 'priceOnEntry', 'priceonentry' => 'priceOnEntry', 'richtwert' => 'guidePrice', 'guideprice' => 'guidePrice',
+			'preis_im_fall' => 'priceOnEntry', 'priceonentry' => 'priceOnEntry', 'richtwert' => 'guidePrice', 'guideprice' => 'guidePrice', 'preisart' => 'priceBasis', 'pricebasis' => 'priceBasis', 'price_basis' => 'priceBasis',
 			'ek_preis' => 'purchasePrice', 'ek' => 'purchasePrice', 'ek_netto' => 'purchasePrice', 'einkaufspreis' => 'purchasePrice', 'purchase_price' => 'purchasePrice', 'purchaseprice' => 'purchasePrice', 'purchasepricecents' => 'purchasePriceCents',
 			'standardlieferant' => 'supplierContact', 'supplier_contact' => 'supplierContact', 'suppliercontact' => 'supplierContact', 'foto' => 'photoPath', 'photo_path' => 'photoPath',
 			'aktiv' => 'active', 'active' => 'active', 'loeschen' => 'delete', 'delete' => 'delete',

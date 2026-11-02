@@ -12,7 +12,10 @@ use OCP\IConfig;
  * run may do so. Since 0.73.0 the app embeds the XML itself (FacturXPdfService).
  */
 class EInvoiceComplianceService {
-	public function __construct(private IConfig $config) {}
+	public function __construct(
+		private IConfig $config,
+	) {
+	}
 
 	public function status(): array {
 		$jar = trim($this->config->getSystemValueString('bestatter_einvoice_mustang_jar', ''));
@@ -48,9 +51,13 @@ class EInvoiceComplianceService {
 	 */
 	public function validate(string $pdf): array {
 		$status = $this->status();
-		if (!$status['available']) throw new \RuntimeException('Der normative E-Rechnungsvalidator ist nicht eingerichtet oder nicht ausführbar.');
+		if (!$status['available']) {
+			throw new \RuntimeException('Der normative E-Rechnungsvalidator ist nicht eingerichtet oder nicht ausführbar.');
+		}
 		$directory = sys_get_temp_dir() . '/bestatter-einvoice-' . bin2hex(random_bytes(10));
-		if (!mkdir($directory, 0700) && !is_dir($directory)) throw new \RuntimeException('Temporäres Verzeichnis für die E-Rechnung konnte nicht erstellt werden.');
+		if (!mkdir($directory, 0700) && !is_dir($directory)) {
+			throw new \RuntimeException('Temporäres Verzeichnis für die E-Rechnung konnte nicht erstellt werden.');
+		}
 		$source = $directory . '/invoice-zugferd.pdf';
 		try {
 			file_put_contents($source, $pdf);
@@ -58,11 +65,15 @@ class EInvoiceComplianceService {
 			$java = $this->config->getSystemValueString('bestatter_einvoice_java', 'java') ?: 'java';
 			[$exitCode, $stdout, $stderr] = $this->run([$java, '-jar', $jar, '--action', 'validate', '--source', $source]);
 			$report = trim($stdout);
-			if (!str_contains($report, '<summary')) throw new \RuntimeException('Der E-Rechnungsvalidator hat keinen Prüfbericht geliefert: ' . mb_substr(trim($stderr ?: $stdout), 0, 1200));
+			if (!str_contains($report, '<summary')) {
+				throw new \RuntimeException('Der E-Rechnungsvalidator hat keinen Prüfbericht geliefert: ' . mb_substr(trim($stderr ?: $stdout), 0, 1200));
+			}
 			$valid = $exitCode === 0 && preg_match('/<summary[^>]*status\s*=\s*"valid"/i', $report) === 1;
 			return ['valid' => $valid, 'report' => $report];
 		} finally {
-			if (is_file($source)) @unlink($source);
+			if (is_file($source)) {
+				@unlink($source);
+			}
 			@rmdir($directory);
 		}
 	}
@@ -71,9 +82,13 @@ class EInvoiceComplianceService {
 	private function run(array $command): array {
 		$descriptor = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 		$process = proc_open($command, $descriptor, $pipes);
-		if (!is_resource($process)) throw new \RuntimeException('Der E-Rechnungsvalidator konnte nicht gestartet werden.');
-		$stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
-		fclose($pipes[1]); fclose($pipes[2]);
+		if (!is_resource($process)) {
+			throw new \RuntimeException('Der E-Rechnungsvalidator konnte nicht gestartet werden.');
+		}
+		$stdout = stream_get_contents($pipes[1]);
+		$stderr = stream_get_contents($pipes[2]);
+		fclose($pipes[1]);
+		fclose($pipes[2]);
 		return [proc_close($process), (string)$stdout, (string)$stderr];
 	}
 }

@@ -12,14 +12,22 @@ use OCP\IGroupManager;
  * die passende Gruppen-ID vor (nur lesend, keine automatische Übernahme).
  */
 class GroupLookupService {
-	public function __construct(private IGroupManager $groups) {}
+	public function __construct(
+		private IGroupManager $groups,
+	) {
+	}
 
 	/** @return array{name: string, exists: bool, suggestion: string, suggestionName: string} */
 	public function lookup(string $name): array {
 		$name = trim($name);
 		$result = ['name' => $name, 'exists' => false, 'suggestion' => '', 'suggestionName' => ''];
-		if ($name === '') return $result;
-		if ($this->groups->get($name) !== null) { $result['exists'] = true; return $result; }
+		if ($name === '') {
+			return $result;
+		}
+		if ($this->groups->get($name) !== null) {
+			$result['exists'] = true;
+			return $result;
+		}
 		$wanted = mb_strtolower($name);
 		foreach ($this->groups->search($name) as $group) {
 			// Gleicher Anzeigename (umbenannte Gruppe) oder gleiche ID in anderer Schreibweise.
@@ -35,7 +43,9 @@ class GroupLookupService {
 	/** Klartext für eine nicht gefundene Gruppe, leer wenn die Gruppe existiert. */
 	public function missingText(string $name): string {
 		$lookup = $this->lookup($name);
-		if ($lookup['exists'] || $lookup['name'] === '') return '';
+		if ($lookup['exists'] || $lookup['name'] === '') {
+			return '';
+		}
 		$text = 'Nextcloud-Gruppe „' . $lookup['name'] . '“ nicht gefunden';
 		if ($lookup['suggestion'] !== '') {
 			$text .= mb_strtolower($lookup['suggestion']) === mb_strtolower($lookup['name'])

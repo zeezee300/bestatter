@@ -16,15 +16,23 @@ class Version3700Date20260916000000 extends SimpleMigrationStep {
 		$schema = $schemaClosure();
 		if ($schema->hasTable('bestatter_choice_items')) {
 			$items = $schema->getTable('bestatter_choice_items');
-			if (!$items->hasColumn('parent_item_id')) $items->addColumn('parent_item_id', 'integer', ['unsigned' => true, 'notnull' => false]);
-			if (!$items->hasColumn('metadata')) $items->addColumn('metadata', 'text', ['notnull' => false]);
-			if (!$items->hasIndex('bestatter_choice_parent')) $items->addIndex(['parent_item_id'], 'bestatter_choice_parent');
+			if (!$items->hasColumn('parent_item_id')) {
+				$items->addColumn('parent_item_id', 'integer', ['unsigned' => true, 'notnull' => false]);
+			}
+			if (!$items->hasColumn('metadata')) {
+				$items->addColumn('metadata', 'text', ['notnull' => false]);
+			}
+			if (!$items->hasIndex('bestatter_choice_parent')) {
+				$items->addIndex(['parent_item_id'], 'bestatter_choice_parent');
+			}
 			// Keep this relationship application-validated: a self-FK is not reliably prefix-aware on MariaDB migrations.
 		}
 		if ($schema->hasTable('bestatter_cases')) {
 			$cases = $schema->getTable('bestatter_cases');
 			foreach (['burial_variant_code' => ['string', ['length' => 120, 'notnull' => false]], 'with_funeral_ceremony' => ['boolean', ['notnull' => false]], 'pickup_time' => ['string', ['length' => 40, 'notnull' => false]], 'body_height_cm' => ['integer', ['notnull' => false]], 'body_weight_kg' => ['integer', ['notnull' => false]]] as $name => [$type, $settings]) {
-				if (!$cases->hasColumn($name)) $cases->addColumn($name, $type, $settings);
+				if (!$cases->hasColumn($name)) {
+					$cases->addColumn($name, $type, $settings);
+				}
 			}
 		}
 		if (!$schema->hasTable('bestatter_surcharge_rules')) {

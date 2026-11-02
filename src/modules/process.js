@@ -1,4 +1,6 @@
+import { handbookMoreLink } from './handbook.js'
 import { PHASES, DEFAULT_META, stepSentence, clientWarnings, simulate, phaseProgress, processStateCounts, processCountsText, euroToCents, centsToEuro, presetLabel, DOCUMENT_TRIGGERS, DEREGISTRATION_TRIGGERS, LABEL_TRIGGERS } from './process-logic.js'
+import { CASE_KINDS, CASE_KIND_PLURALS } from './case-kinds.js'
 
 /**
  * Ablaufvorlagen in 7 Phasen (0.66.0): Fallcockpit (Phasenleiste, nächste Schritte, Fallmerkmale,
@@ -415,24 +417,31 @@ export function createProcessModule(ctx) {
 		if (!state.processDraft || state.processDraft.key !== state.processAdminKey) resetDraft()
 		const draft = state.processDraft
 		const nav = (admin.templates || []).map((template) => `<button type="button" class="${template.key === state.processAdminKey ? 'active' : ''}" data-process-template="${esc(template.key)}"><span>${esc(template.name)}</span><small>${template.active ? 'aktiv' : 'deaktiviert'} · ${template.steps.filter((step) => !step.archived).length} Schritte${template.origin === 'BUNDLED' ? ' · mitgeliefert' : ''}</small></button>`).join('')
+		// 0.89.7: Ablaufvorlagen kommen seit 0.89.5 nur über das Einrichtungspaket. Fehlt eine Vorlage für Aufträge oder
+		// Vorsorgen (z. B. nach dem Update ohne neues Paket), sagt der Hinweis, woher sie kommt.
+		const coveredKinds = new Set((admin.templates || []).flatMap((template) => template.caseKinds || ['STERBEFALL']))
+		const missingKinds = [['AUFTRAG', 'Aufträge'], ['VORSORGE', 'Vorsorgen']].filter(([kind]) => !coveredKinds.has(kind)).map(([, label]) => label)
+		const kindHint = missingKinds.length ? `<p class="bp-warning" data-process-kind-hint>Für ${esc(missingKinds.join(' und '))} gibt es noch keine Ablaufvorlage. Die Vorlagen „Auftrag ohne Sterbefall“, „Bestattungsvorsorge“ und „Sterbefall aus Vorsorge“ enthält das Standard-Einrichtungspaket ab Version 0.89.7 (Administration → Einrichtungspaket; vorhandene Inhalte bleiben unverändert, wenn Sie sie überspringen). Alternativ legen Sie eine eigene Vorlage an und wählen unter „Gilt für“ die Vorgangsart.</p>` : ''
 		let editor = '<p class="bp-empty">Keine Ablaufvorlage ausgewählt.</p>'
 		if (draft) {
 			const steps = draft.steps.filter((step) => !step.archived)
 			const warnings = [...new Set([...(state.processDraftDirty ? [] : draft.warnings || []), ...clientWarnings(steps)])]
 			const roleInfo = (m.roles || []).map((role) => `<li><b>${esc(role.label)}</b>: ${role.group ? `Gruppe „${esc(role.group)}“ – ${role.groupExists ? (role.members.length ? esc(role.members.join(', ')) : 'noch keine Mitglieder') : `<span class="bp-warning-text">${esc(role.groupHint || 'Gruppe existiert noch nicht')}</span>`}` : 'nicht belegt'}</li>`).join('')
-			const phases = Object.entries(m.phases || PHASES).map(([number, label]) => {
+			// 0.89.7: Gilt die Vorlage nur für Aufträge oder nur für Vorsorgen, tragen die Phasen deren Bezeichnung.
+			const onlyKinds = (draft.caseKinds || ['STERBEFALL']); const kindPhases = onlyKinds.length === 1 && onlyKinds[0] !== 'STERBEFALL' ? m.phaseLabelsByKind?.[onlyKinds[0]] : null
+			const phases = Object.entries(kindPhases || m.phases || PHASES).map(([number, label]) => {
 				const phaseSteps = steps.map((step, index) => ({ step, index })).filter(({ step }) => Number(step.phase) === Number(number))
 				return `<section class="bp-process-phase-column" data-phase-drop="${number}"><h4><span class="bp-phase-number">${number}</span> ${esc(label)} <small>${phaseSteps.length}</small></h4>${phaseSteps.map(({ step, index }) => stepCard(step, index, steps, m)).join('') || '<p class="bp-empty bp-drop-hint">Schritte hierher ziehen oder hinzufügen.</p>'}<button type="button" class="bp-secondary bp-add-step" data-add-step="${number}">+ Schritt</button></section>`
 			}).join('')
 			editor = `<form id="process-template-form" class="bp-process-editor"><div class="bp-panel-head"><div><p class="bp-eyebrow">${draft.origin === 'BUNDLED' ? 'Mitgelieferte Ablaufvorlage' : 'Eigene Ablaufvorlage'}</p><h3>${esc(draft.name)}</h3></div><label class="bp-inline-check bp-toggle-active"><input type="checkbox" name="active" ${draft.active ? 'checked' : ''}> Aktiv – gilt für alle ab jetzt begonnenen Fälle</label></div>
-				<div class="bp-form-grid bp-process-header"><label><span>Name</span><input name="name" value="${esc(draft.name)}" required></label><label class="bp-span-2"><span>Beschreibung</span><textarea name="description" rows="2">${esc(draft.description || '')}</textarea></label></div>
-				<div class="bp-process-toolbar"><button class="bp-primary" id="save-process-template" ${state.processDraftDirty ? '' : 'disabled'}>Speichern</button><button type="button" class="bp-secondary" id="discard-process-template" ${state.processDraftDirty ? '' : 'disabled'}>Änderungen verwerfen</button><button type="button" class="bp-secondary" id="simulate-process">Probelauf</button><button type="button" class="bp-secondary" id="export-process">CSV exportieren</button><label class="bp-secondary bp-file-button">CSV importieren<input type="file" id="import-process" accept=".csv,text/csv" hidden></label><button type="button" class="bp-secondary" id="export-process-json" title="Vollständige Vorlage mit allen Knöpfen – für Einrichtungspakete und die Übertragung in eine andere Installation">JSON exportieren</button><label class="bp-secondary bp-file-button" title="Ersetzt die Schrittliste dieser Vorlage verlustfrei, einschließlich Knöpfen">JSON importieren<input type="file" id="import-process-json" accept=".json,application/json" hidden></label><button type="button" class="bp-secondary" id="copy-process">Als Kopie anlegen</button>${draft.origin === 'BUNDLED' ? '<button type="button" class="bp-secondary" id="restore-process">Auslieferungsstand wiederherstellen</button>' : '<button type="button" class="bp-danger" id="delete-process">Löschen</button>'}${state.processDraftDirty ? '<span class="bp-status">Ungespeicherte Änderungen</span>' : ''}</div>
+				<div class="bp-form-grid bp-process-header"><label><span>Name</span><input name="name" value="${esc(draft.name)}" required></label><label class="bp-span-2"><span>Beschreibung</span><textarea name="description" rows="2">${esc(draft.description || '')}</textarea></label><fieldset class="bp-process-kinds"><legend>Gilt für</legend>${CASE_KINDS.map((kind) => `<label class="bp-checkbox"><input type="checkbox" name="caseKinds" value="${kind}" ${(draft.caseKinds || ['STERBEFALL']).includes(kind) ? 'checked' : ''}> ${esc(CASE_KIND_PLURALS[kind])}</label>`).join('')}<small class="bp-muted">Schritte dieses Ablaufs entstehen nur in Akten der gewählten Arten.</small></fieldset></div>
+				<div class="bp-process-toolbar"><button class="bp-primary" id="save-process-template" ${state.processDraftDirty ? '' : 'disabled'}>Speichern</button><button type="button" class="bp-secondary" id="discard-process-template" ${state.processDraftDirty ? '' : 'disabled'}>Änderungen verwerfen</button><button type="button" class="bp-secondary" id="simulate-process">Probelauf</button><button type="button" class="bp-secondary" id="export-process">CSV exportieren</button><label class="bp-secondary bp-file-button">CSV importieren<input type="file" id="import-process" accept=".csv,text/csv" hidden></label><button type="button" class="bp-secondary" id="export-process-json" title="Vollständige Vorlage mit allen Knöpfen – für Einrichtungspakete und die Übertragung in eine andere Installation">JSON exportieren</button><label class="bp-secondary bp-file-button" title="Ersetzt die Schrittliste dieser Vorlage verlustfrei, einschließlich Knöpfen">JSON importieren<input type="file" id="import-process-json" accept=".json,application/json" hidden></label><button type="button" class="bp-secondary" id="copy-process">Als Kopie anlegen</button>${draft.origin === 'BUNDLED' ? '' : '<button type="button" class="bp-danger" id="delete-process">Löschen</button>'}${state.processDraftDirty ? '<span class="bp-status">Ungespeicherte Änderungen</span>' : ''}</div>
 				${warnings.length ? `<aside class="bp-compliance-note"><b>Prüfhinweise</b><ul>${warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul></aside>` : ''}
 				${(m.unusedPresets || []).length ? `<p class="bp-muted bp-process-info">Hinweis: Auf die Terminart(en) ${esc(m.unusedPresets.join(', '))} reagiert noch kein aktiver Schritt.</p>` : ''}
 				<details class="bp-process-roles"><summary>Rollen und zuständige Nextcloud-Gruppen</summary><ul>${roleInfo}</ul><p class="bp-muted">Die Gruppen werden unter Administration → Systemprüfung → Installationsparameter zugeordnet. Mitglieder einer Rolle sehen die Aufgaben ihrer Rolle.</p></details>
 				<div class="bp-process-phase-board">${phases}</div></form>`
 		}
-		return `<section class="bp-panel bp-custom-table bp-process-admin"><div class="bp-panel-head"><div><h3>Abläufe</h3><p class="bp-muted">Ein Ablauf beschreibt je Schritt in Klartext: wann er entsteht, für welche Fälle er gilt, wer zuständig ist, bis wann er fällig ist und welche Knöpfe er anbietet. Schritte lassen sich per Ziehen zwischen den Phasen verschieben. <b>Bestandsschutz:</b> Neue oder neu aktivierte Schritte entstehen nur in Fällen, deren Ablauf danach beginnt; laufende Fälle können sie gezielt über „Schritt hinzufügen“ übernehmen.</p></div><div class="bp-head-actions"><button class="bp-primary" id="new-process-template">+ Ablaufvorlage</button></div></div><div class="bp-value-list-workspace bp-process-workspace"><nav class="bp-value-list-nav" aria-label="Ablaufvorlagen">${nav}</nav><div class="bp-value-list-editor">${editor}</div></div></section>`
+		return `<section class="bp-panel bp-custom-table bp-process-admin"><div class="bp-panel-head"><div><h3>Abläufe</h3><p class="bp-muted">Ein Ablauf beschreibt je Schritt in Klartext: wann er entsteht, für welche Fälle er gilt, wer zuständig ist, bis wann er fällig ist und welche Knöpfe er anbietet. Schritte lassen sich per Ziehen zwischen den Phasen verschieben. <b>Bestandsschutz:</b> Neue oder neu aktivierte Schritte entstehen nur in Fällen, deren Ablauf danach beginnt; laufende Fälle können sie gezielt über „Schritt hinzufügen“ übernehmen.${handbookMoreLink('customizing-ablaeufe', esc)}</p></div><div class="bp-head-actions"><button class="bp-primary" id="new-process-template">+ Ablaufvorlage</button></div></div>${kindHint}<div class="bp-value-list-workspace bp-process-workspace"><nav class="bp-value-list-nav" aria-label="Ablaufvorlagen">${nav}</nav><div class="bp-value-list-editor">${editor}</div></div></section>`
 	}
 
 	function stepCard(step, index, steps, m) {
@@ -701,15 +710,17 @@ export function createProcessModule(ctx) {
 		})
 		const form = root.querySelector('#process-template-form')
 		if (!form) return
-		const markDirty = () => { state.processDraft.name = form.elements.name.value; state.processDraft.description = form.elements.description.value; state.processDraft.active = form.elements.active.checked; if (!state.processDraftDirty) { state.processDraftDirty = true; render() } }
+		const checkedKinds = () => [...form.querySelectorAll('input[name="caseKinds"]:checked')].map((input) => input.value)
+		const markDirty = () => { state.processDraft.name = form.elements.name.value; state.processDraft.description = form.elements.description.value; state.processDraft.active = form.elements.active.checked; state.processDraft.caseKinds = checkedKinds(); if (!state.processDraftDirty) { state.processDraftDirty = true; render() } }
 		form.elements.name.addEventListener('change', markDirty)
 		form.elements.description.addEventListener('change', markDirty)
 		form.elements.active.addEventListener('change', markDirty)
+		form.querySelectorAll('input[name="caseKinds"]').forEach((input) => input.addEventListener('change', markDirty))
 		form.onsubmit = async (event) => {
 			event.preventDefault()
 			const draft = state.processDraft
 			try {
-				await api(`${templatesUrl()}/${encodeURIComponent(draft.key)}`, { method: 'PUT', body: new URLSearchParams({ template: JSON.stringify({ name: form.elements.name.value, description: form.elements.description.value, active: form.elements.active.checked, steps: draft.steps.filter((step) => !step.archived) }) }) })
+				await api(`${templatesUrl()}/${encodeURIComponent(draft.key)}`, { method: 'PUT', body: new URLSearchParams({ template: JSON.stringify({ name: form.elements.name.value, description: form.elements.description.value, active: form.elements.active.checked, caseKinds: checkedKinds(), steps: draft.steps.filter((step) => !step.archived) }) }) })
 				state.processDraftDirty = false
 				await loadProcessAdmin(); resetDraft(); render()
 			} catch (error) { notifyError(error.message) }
@@ -746,10 +757,6 @@ export function createProcessModule(ctx) {
 			const name = await promptAction('Name der Kopie', `${state.processDraft.name} (Kopie)`, { title: 'Als Kopie anlegen', label: 'Name' })
 			if (!name) return
 			try { const created = await api(templatesUrl(), { method: 'POST', body: new URLSearchParams({ name, copyFrom: state.processDraft.key }) }); state.processAdminKey = created.key; state.processDraftDirty = false; await loadProcessAdmin(); resetDraft(); render() } catch (error) { notifyError(error.message) }
-		})
-		root.querySelector('#restore-process')?.addEventListener('click', async () => {
-			if (!await confirmAction('Auslieferungsstand wiederherstellen? Eigene Änderungen an dieser Vorlage gehen verloren; laufende Fälle behalten ihre Aufgaben.', { title: 'Auslieferungsstand', confirmLabel: 'Wiederherstellen', danger: true })) return
-			try { await api(`${templatesUrl()}/${encodeURIComponent(state.processDraft.key)}/restore`, { method: 'POST' }); state.processDraftDirty = false; await loadProcessAdmin(); resetDraft(); render() } catch (error) { notifyError(error.message) }
 		})
 		root.querySelector('#delete-process')?.addEventListener('click', async () => {
 			if (!await confirmAction(`Ablaufvorlage „${state.processDraft.name}“ löschen?`, { title: 'Ablaufvorlage löschen', confirmLabel: 'Löschen', danger: true })) return

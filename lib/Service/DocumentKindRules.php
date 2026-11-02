@@ -27,7 +27,8 @@ final class DocumentKindRules {
 		'CONTENT_NUMBER' => 'Fallnummer im Text',
 		'NAME_DATE' => 'Name und Sterbe- oder Geburtsdatum im Text',
 	];
-	public const CASE_NUMBER_PATTERN = '/(?<![0-9])(20[0-9]{2}-[0-9]{4})(?![0-9])/';
+	/** 0.89.7: auch Nummern von Aufträgen („A-2026-0001“) und Vorsorgen („V-2026-0001“), siehe CaseKinds::NUMBER_PATTERN. */
+	public const CASE_NUMBER_PATTERN = CaseKinds::NUMBER_PATTERN;
 
 	public static function keyFromName(string $name): string {
 		return LabelRules::keyFromName($name);
@@ -40,29 +41,57 @@ final class DocumentKindRules {
 	 */
 	public static function normalizeDefinition(array $input, array $folderKeys, ?array $existing = null): array {
 		$name = trim(preg_replace('/\s+/u', ' ', (string)($input['name'] ?? '')) ?? '');
-		if ($name === '') throw new \InvalidArgumentException('Die Dokumentart braucht einen Namen.');
-		if (mb_strlen($name) > 100) throw new \InvalidArgumentException('Der Name einer Dokumentart darf höchstens 100 Zeichen lang sein.');
+		if ($name === '') {
+			throw new \InvalidArgumentException('Die Dokumentart braucht einen Namen.');
+		}
+		if (mb_strlen($name) > 100) {
+			throw new \InvalidArgumentException('Der Name einer Dokumentart darf höchstens 100 Zeichen lang sein.');
+		}
 		$key = $existing !== null ? (string)$existing['key'] : strtoupper(trim((string)($input['key'] ?? '')));
-		if ($key === '') $key = self::keyFromName($name);
-		if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) throw new \InvalidArgumentException('Der technische Schlüssel der Dokumentart ist ungültig (Großbuchstaben, Ziffern und _; beginnt mit einem Buchstaben).');
+		if ($key === '') {
+			$key = self::keyFromName($name);
+		}
+		if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) {
+			throw new \InvalidArgumentException('Der technische Schlüssel der Dokumentart ist ungültig (Großbuchstaben, Ziffern und _; beginnt mit einem Buchstaben).');
+		}
 		$description = trim((string)($input['description'] ?? ''));
 		$hint = trim((string)($input['hint'] ?? ''));
-		if (mb_strlen($description) > 500 || mb_strlen($hint) > 500) throw new \InvalidArgumentException('Beschreibung und Hinweis dürfen höchstens 500 Zeichen lang sein.');
+		if (mb_strlen($description) > 500 || mb_strlen($hint) > 500) {
+			throw new \InvalidArgumentException('Beschreibung und Hinweis dürfen höchstens 500 Zeichen lang sein.');
+		}
 		$folderKey = strtoupper(trim((string)($input['folderKey'] ?? '')));
-		if (!in_array($folderKey, $folderKeys, true)) throw new \InvalidArgumentException('Bitte einen Ablageordner aus dem Ordnerplan wählen.');
+		if (!in_array($folderKey, $folderKeys, true)) {
+			throw new \InvalidArgumentException('Bitte einen Ablageordner aus dem Ordnerplan wählen.');
+		}
 		$category = trim((string)($input['category'] ?? ''));
-		if (!in_array($category, CaseFileService::DOCUMENT_TYPES, true)) throw new \InvalidArgumentException('Bitte eine Kategorie aus der Dokumentliste wählen.');
+		if (!in_array($category, CaseFileService::DOCUMENT_TYPES, true)) {
+			throw new \InvalidArgumentException('Bitte eine Kategorie aus der Dokumentliste wählen.');
+		}
 		$effect = strtoupper(trim((string)($input['effect'] ?? 'FILE')));
-		if (!isset(self::EFFECTS[$effect])) throw new \InvalidArgumentException('Unbekannte Wirkung der Dokumentart.');
+		if (!isset(self::EFFECTS[$effect])) {
+			throw new \InvalidArgumentException('Unbekannte Wirkung der Dokumentart.');
+		}
 		$classification = strtoupper(trim((string)($input['classification'] ?? '')));
 		if ($effect === 'INCOMING_INVOICE') {
-			if ($classification === '') $classification = 'CLASSIFICATION_PENDING';
-			if (!in_array($classification, IncomingInvoiceService::CLASSIFICATIONS, true)) throw new \InvalidArgumentException('Unbekannte Einordnung der Rechnungsposition.');
-			if ($category !== 'Rechnung') throw new \InvalidArgumentException('Eine Dokumentart mit Eingangsrechnung gehört zur Kategorie „Rechnung“.');
-		} else $classification = '';
+			if ($classification === '') {
+				$classification = 'CLASSIFICATION_PENDING';
+			}
+			if (!in_array($classification, IncomingInvoiceService::CLASSIFICATIONS, true)) {
+				throw new \InvalidArgumentException('Unbekannte Einordnung der Rechnungsposition.');
+			}
+			if ($category !== 'Rechnung') {
+				throw new \InvalidArgumentException('Eine Dokumentart mit Eingangsrechnung gehört zur Kategorie „Rechnung“.');
+			}
+		} else {
+			$classification = '';
+		}
 		$countLabel = trim((string)($input['countLabel'] ?? ''));
-		if (mb_strlen($countLabel) > 60) throw new \InvalidArgumentException('Die Bezeichnung der Anzahl darf höchstens 60 Zeichen lang sein.');
-		if ($effect !== 'FILE') $countLabel = '';
+		if (mb_strlen($countLabel) > 60) {
+			throw new \InvalidArgumentException('Die Bezeichnung der Anzahl darf höchstens 60 Zeichen lang sein.');
+		}
+		if ($effect !== 'FILE') {
+			$countLabel = '';
+		}
 		$typeId = $input['paperlessTypeId'] ?? null;
 		$typeId = $typeId === null || $typeId === '' || (int)$typeId <= 0 ? null : (int)$typeId;
 		return ['key' => $key, 'name' => $name, 'description' => $description, 'hint' => $hint, 'paperlessTypeId' => $typeId, 'folderKey' => $folderKey,
@@ -74,28 +103,39 @@ final class DocumentKindRules {
 		$seen = [];
 		foreach ($definitions as $definition) {
 			$typeId = (int)($definition['paperlessTypeId'] ?? 0);
-			if ($typeId <= 0 || empty($definition['active'])) continue;
-			if (isset($seen[$typeId])) throw new \InvalidArgumentException(sprintf('Der Paperless-Dokumenttyp %d ist bereits der Dokumentart „%s“ zugeordnet.', $typeId, $seen[$typeId]));
+			if ($typeId <= 0 || empty($definition['active'])) {
+				continue;
+			}
+			if (isset($seen[$typeId])) {
+				throw new \InvalidArgumentException(sprintf('Der Paperless-Dokumenttyp %d ist bereits der Dokumentart „%s“ zugeordnet.', $typeId, $seen[$typeId]));
+			}
 			$seen[$typeId] = (string)$definition['name'];
 		}
 	}
 
 	/** Art zu einem Paperless-Dokumenttyp (nur aktive Arten); sonst null. */
 	public static function kindForPaperlessType(?int $typeId, array $definitions): ?array {
-		if ($typeId === null || $typeId <= 0) return null;
-		foreach ($definitions as $definition) if (!empty($definition['active']) && (int)($definition['paperlessTypeId'] ?? 0) === $typeId) return $definition;
+		if ($typeId === null || $typeId <= 0) {
+			return null;
+		}
+		foreach ($definitions as $definition) {
+			if (!empty($definition['active']) && (int)($definition['paperlessTypeId'] ?? 0) === $typeId) {
+				return $definition;
+			}
+		}
 		return null;
 	}
 
 	/** Fallnummern im Text (in Reihenfolge, ohne Dubletten). */
 	public static function caseNumbersInText(string $text): array {
-		preg_match_all(self::CASE_NUMBER_PATTERN, $text, $matches);
-		return array_values(array_unique($matches[1] ?? []));
+		return CaseKinds::numbersInText($text);
 	}
 
-	/** Wert eines benutzerdefinierten Paperless-Felds als Fallnummer (z. B. „2026-0042“, „ 2026-0042 “). */
+	/** Wert eines benutzerdefinierten Paperless-Felds als Fallnummer (z. B. „2026-0042“, „ 2026-0042 “, „V-2026-0003“). */
 	public static function caseNumberFromField(mixed $value): string {
-		if (!is_scalar($value)) return '';
+		if (!is_scalar($value)) {
+			return '';
+		}
 		$numbers = self::caseNumbersInText(trim((string)$value));
 		return count($numbers) === 1 ? $numbers[0] : '';
 	}
@@ -107,18 +147,31 @@ final class DocumentKindRules {
 	 */
 	public static function casesByNameAndDate(string $text, array $cases): array {
 		$haystack = mb_strtolower($text);
-		if (trim($haystack) === '') return [];
+		if (trim($haystack) === '') {
+			return [];
+		}
 		$hits = [];
 		foreach ($cases as $case) {
 			$last = mb_strtolower(trim((string)($case['lastName'] ?? '')));
-			if (mb_strlen($last) < 3 || !self::containsWord($haystack, $last)) continue;
+			if (mb_strlen($last) < 3 || !self::containsWord($haystack, $last)) {
+				continue;
+			}
 			$first = mb_strtolower(trim((string)($case['firstName'] ?? '')));
 			$confirm = ($first !== '' && mb_strlen($first) >= 2 && self::containsWord($haystack, $first));
 			foreach (['dateOfDeath', 'dateOfBirth'] as $field) {
-				if ($confirm) break;
-				foreach (self::dateVariants((string)($case[$field] ?? '')) as $variant) if (str_contains($haystack, $variant)) { $confirm = true; break; }
+				if ($confirm) {
+					break;
+				}
+				foreach (self::dateVariants((string)($case[$field] ?? '')) as $variant) {
+					if (str_contains($haystack, $variant)) {
+						$confirm = true;
+						break;
+					}
+				}
 			}
-			if ($confirm) $hits[] = (int)$case['id'];
+			if ($confirm) {
+				$hits[] = (int)$case['id'];
+			}
 		}
 		return array_values(array_unique($hits));
 	}
@@ -133,7 +186,11 @@ final class DocumentKindRules {
 	public static function suggest(array $document, array $definitions, callable $findCase, array $openCases): array {
 		$kind = self::kindForPaperlessType($document['documentTypeId'] ?? null, $definitions);
 		$fallback = null;
-		foreach ($definitions as $definition) if (!empty($definition['active']) && $definition['key'] === self::FALLBACK_KIND) $fallback = $definition;
+		foreach ($definitions as $definition) {
+			if (!empty($definition['active']) && $definition['key'] === self::FALLBACK_KIND) {
+				$fallback = $definition;
+			}
+		}
 		$result = ['kindKey' => (string)($kind['key'] ?? $fallback['key'] ?? ''), 'kindSource' => $kind !== null ? 'PAPERLESS_TYPE' : 'DEFAULT', 'caseId' => null, 'caseNumber' => '', 'caseReason' => '', 'caseCandidates' => 0, 'autoFile' => false];
 		$fieldNumber = self::caseNumberFromField($document['caseNumberField'] ?? '');
 		if ($fieldNumber !== '' && ($case = $findCase($fieldNumber)) !== null) {
@@ -144,15 +201,21 @@ final class DocumentKindRules {
 		}
 		$content = (string)($document['content'] ?? '');
 		$found = [];
-		foreach (self::caseNumbersInText($content) as $number) if (($case = $findCase($number)) !== null) $found[(int)$case['id']] = $case;
+		foreach (self::caseNumbersInText($content) as $number) {
+			if (($case = $findCase($number)) !== null) {
+				$found[(int)$case['id']] = $case;
+			}
+		}
 		if (count($found) === 1) {
 			$case = array_values($found)[0];
 			return array_replace($result, ['caseId' => (int)$case['id'], 'caseNumber' => (string)$case['caseNumber'], 'caseReason' => 'CONTENT_NUMBER', 'caseCandidates' => 1]);
 		}
-		if (count($found) > 1) return array_replace($result, ['caseCandidates' => count($found)]);
+		if (count($found) > 1) {
+			return array_replace($result, ['caseCandidates' => count($found)]);
+		}
 		$byName = self::casesByNameAndDate($content, $openCases);
 		if (count($byName) === 1) {
-			$case = array_values(array_filter($openCases, static fn(array $item): bool => (int)$item['id'] === $byName[0]))[0];
+			$case = array_values(array_filter($openCases, static fn (array $item): bool => (int)$item['id'] === $byName[0]))[0];
 			return array_replace($result, ['caseId' => (int)$case['id'], 'caseNumber' => (string)($case['caseNumber'] ?? ''), 'caseReason' => 'NAME_DATE', 'caseCandidates' => 1]);
 		}
 		return array_replace($result, ['caseCandidates' => count($byName)]);
@@ -160,7 +223,9 @@ final class DocumentKindRules {
 
 	/** „2026-03-05“ → [„05.03.2026“, „5.3.2026“]; leer bei ungültigem Datum. */
 	public static function dateVariants(string $isoDate): array {
-		if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})/', trim($isoDate), $m)) return [];
+		if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})/', trim($isoDate), $m)) {
+			return [];
+		}
 		return array_values(array_unique([sprintf('%s.%s.%s', $m[3], $m[2], $m[1]), sprintf('%d.%d.%s', (int)$m[3], (int)$m[2], $m[1])]));
 	}
 

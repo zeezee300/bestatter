@@ -1,11 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
-use OCP\Files\Folder;
 use OCP\Files\Conversion\IConversionManager;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\IUserSession;
 
@@ -19,9 +21,12 @@ class DocumentService {
 	public const REPLACEABLE_STANDARD_TEMPLATE_HASHES = [
 		// 0.88.0: Die bisherige Standardvorlage (Kostenvoranschlag/Auftrag, 5b8c72…) wird durch „Bestattungsauftrag und Vollmacht“
 		// ersetzt; ihr Layout lebt als KOSTENVORANSCHLAG.docx weiter.
-		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad', '5b8c7241cecb29aad903d4342faaa18bf06a10139168e8015f75f2df899cab80'],
+		// 0.89.0: Die Fassung 0.88.0 (7a27d8…) erhält Felder für die Unterschrift am Tablet und wird unverändert ersetzt.
+		// 0.89.5: Die Fassung 0.89.0 (09643f…) erhält in Abschnitt 2 den Hinweis zu Schätzbeträgen ({{order.price_terms}}).
+		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad', '5b8c7241cecb29aad903d4342faaa18bf06a10139168e8015f75f2df899cab80', '7a27d84e99e08c1b235f34c5299bf4c97b881a922b9894b12d519a8079e1b21b', '09643f89e6174279cf79c0167885e067f2cb6d79a6a2e7b0c3ea71ff15a963b6'],
 		// Package version 0.58.0. Individually changed invoice templates remain untouched.
-		'RECHNUNG.docx' => ['94695c36a21897c5b60ac269830ceaad3af40f1dcd327b4bfe07540859582f41'],
+		'RECHNUNG.docx' => ['94695c36a21897c5b60ac269830ceaad3af40f1dcd327b4bfe07540859582f41', '0866b50e2f279c1e75fb672b512157920ce3017b59ff1db877b60e358be920ec'],
+		'KORREKTUR.docx' => ['363560163ee34e23b7fb795b3f5ec81830ec3c632fa627101323c78bae22a62f'],
 		// 0.81.0: Abmelde- und Mitteilungsschreiben nennen „Unser Zeichen“ (Fallnummer). Unveränderte Vorgängerfassungen werden ersetzt.
 		'RUNDFUNKBEITRAG_ABMELDUNG.docx' => ['cfdd239c992aa737db4428cc7d1179d7bcb6ddd42d7d55a5ee557b6bfceb6c7b'],
 		'VERTRAGSABMELDUNG_STANDARD.docx' => ['791adeb37e5bdbb73d4a54420978f5937856eb37bc1d007af6979c6621f0de23'],
@@ -49,43 +54,153 @@ class DocumentService {
 		private ?BranchLogoService $logos = null,
 		private ?LabelService $labels = null,
 		private ?CustomizingService $customizing = null,
-	) {}
+		private ?OrderChoiceService $orderChoices = null,
+		private ?IConfig $config = null,
+		private ?PrecareService $precare = null,
+	) {
+	}
+
+	/**
+	 * 0.89.7: eigene Vorlage für das Auftragsdokument je Vorgangsart (Schlüssel und Ablage bleiben BESTATTUNGSAUFTRAG, damit
+	 * Unterschrift am Tablet, Papiervertrag, Abläufe und Versand unverändert greifen). Ist sie nicht aktiv, gilt die Vorlage
+	 * des Sterbefalls.
+	 */
+	public const KIND_ORDER_TEMPLATES = [CaseKinds::ORDER => 'AUFTRAG', CaseKinds::PRECARE => 'VORSORGEVERTRAG'];
+
+	/** 0.89.7: Bezeichnung des Auftragsdokuments je Vorgangsart und Modus (KVA / Auftrag). */
+	public static function orderDocumentTitle(string $kind, bool $isEstimate): string {
+		return match ($kind) {
+			CaseKinds::PRECARE => $isEstimate ? 'Angebot Bestattungsvorsorge' : 'Bestattungsvorsorgevertrag',
+			CaseKinds::ORDER => $isEstimate ? 'Kostenvoranschlag' : 'Auftrag',
+			default => $isEstimate ? 'Kostenvoranschlag' : 'Bestattungsauftrag',
+		};
+	}
 
 	/** 0.88.0: Platzhalter, an dem die zusammengefasste Vorlage „Bestattungsauftrag und Vollmacht“ erkannt wird. */
 	public const COMBINED_ORDER_MARKER = '{{order.poa_registry}}';
+	/** 0.89.0: Feld für die am Tablet geleistete Unterschrift im Bestattungsauftrag (wird durch das Unterschriftsbild ersetzt). */
+	public const CLIENT_SIGNATURE_PLACEHOLDER = '{{order.client_signature}}';
+	/** Erklärungen zum Leistungsbeginn (Abschnitt 4) – im Dokument und in der Unterschriftsansicht wortgleich. */
+	public const WITHDRAWAL_REQUEST_TEXT = 'Ich verlange ausdrücklich, dass das Bestattungsunternehmen vor Ablauf der Widerrufsfrist mit den beauftragten Dienstleistungen beginnt.';
+	public const WITHDRAWAL_ACK_TEXT = 'Mir ist bekannt, dass ich bei einem Widerruf einen angemessenen Betrag für die bis dahin erbrachten Dienstleistungen zu zahlen habe und dass mein Widerrufsrecht bei vollständiger Erbringung der Dienstleistungen erlischt.';
+	private const SIGNATURE_MARKER = 'BESTATTER-UNTERSCHRIFTSBILD';
+	private const SIGNATURE_REL_ID = 'rIdBestatterUnterschrift';
+	private const SIGNATURE_MEDIA = 'word/media/bestatter-unterschrift.png';
 	/** 0.88.0: Vertragsschluss im Auftrag (order_contract_conclusion); außerhalb und Fernabsatz → Widerrufsbelehrung. */
 	public const CONTRACT_CONCLUSIONS = ['GESCHAEFTSRAEUME' => 'in den Geschäftsräumen', 'AUSSERHALB' => 'außerhalb der Geschäftsräume (z. B. Hausbesuch, Klinik, Heim)', 'FERNABSATZ' => 'im Fernabsatz (Telefon, E-Mail, online)'];
 	private ?bool $combinedOrderTemplateCache = null;
 
 	/** 0.73.0: set only while the binding invoice document is rendered; asks the converter for PDF/A first. */
 	private bool $preferPdfA = false;
+	/** 0.89.0: Unterschriftsbild für genau eine Ausgabe des unterschriebenen Bestattungsauftrags. @var array{png:string,width:int,height:int}|null */
+	private ?array $orderSignature = null;
+	/** @var array<string,string> */
+	private array $templateTextCache = [];
 
 	public function generateOrderDocuments(array $case, string $status = 'ENTWURF', bool $createPdf = true): array {
 		$keys = $this->orderDocumentKeys($case);
-		return array_map(fn(string $key): array => $this->generateTemplate($case, $key, $status, $createPdf), $keys);
+		return array_map(fn (string $key): array => $this->generateTemplate($case, $key, $status, $createPdf), $keys);
 	}
 
 	/** @return list<string> */
 	public function orderDocumentKeys(array $case): array {
-		if (strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA') return ['BESTATTUNGSAUFTRAG'];
+		if (strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA') {
+			return ['BESTATTUNGSAUFTRAG'];
+		}
+		// 0.89.7: Aufträge ohne Sterbefall und Vorsorgen ohne Bestattungsvollmacht; Widerrufsbelehrung wie beim Sterbefall.
+		if (($case['caseKind'] ?? CaseKinds::DEATH) !== CaseKinds::DEATH) {
+			$keys = ['BESTATTUNGSAUFTRAG'];
+			if (self::withdrawalApplies($case['masterData'] ?? []) && $this->templateActive('WIDERRUFSBELEHRUNG')) {
+				$keys[] = 'WIDERRUFSBELEHRUNG';
+			}
+			return $keys;
+		}
 		// 0.88.0: Die Standardvorlage enthält die Vollmacht. Eine eigene, ältere Auftragsvorlage ohne Vollmachtsteil erhält
 		// weiterhin die gesonderte Bestattungsvollmacht. Die Widerrufsbelehrung kommt nur bei Vertragsschluss außerhalb der
 		// Geschäftsräume oder im Fernabsatz hinzu.
 		$keys = ['BESTATTUNGSAUFTRAG'];
-		if (!$this->combinedOrderTemplate() && $this->templateActive('BESTATTUNGSVOLLMACHT')) $keys[] = 'BESTATTUNGSVOLLMACHT';
-		if (self::withdrawalApplies($case['masterData'] ?? []) && $this->templateActive('WIDERRUFSBELEHRUNG')) $keys[] = 'WIDERRUFSBELEHRUNG';
+		if (!$this->combinedOrderTemplate() && $this->templateActive('BESTATTUNGSVOLLMACHT')) {
+			$keys[] = 'BESTATTUNGSVOLLMACHT';
+		}
+		if (self::withdrawalApplies($case['masterData'] ?? []) && $this->templateActive('WIDERRUFSBELEHRUNG')) {
+			$keys[] = 'WIDERRUFSBELEHRUNG';
+		}
 		return $keys;
 	}
 
 	/** 0.88.0: Dokumente des Auftragspakets mit Bezeichnung (für Vorschau und Entwurfspaket in der Oberfläche). */
 	public function orderDocumentList(array $case): array {
 		$isEstimate = strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA';
-		return array_map(fn(string $key): array => ['key' => $key, 'title' => match ($key) {
-			'BESTATTUNGSAUFTRAG' => $isEstimate ? 'Kostenvoranschlag' : ($this->combinedOrderTemplate() ? 'Bestattungsauftrag und Vollmacht' : 'Bestattungsauftrag'),
+		$kind = (string)($case['caseKind'] ?? CaseKinds::DEATH);
+		return array_map(fn (string $key): array => ['key' => $key, 'title' => match ($key) {
+			'BESTATTUNGSAUFTRAG' => $kind !== CaseKinds::DEATH ? self::orderDocumentTitle($kind, $isEstimate) : ($isEstimate ? 'Kostenvoranschlag' : ($this->combinedOrderTemplate() ? 'Bestattungsauftrag und Vollmacht' : 'Bestattungsauftrag')),
 			'BESTATTUNGSVOLLMACHT' => 'Bestattungsvollmacht',
 			'WIDERRUFSBELEHRUNG' => 'Widerrufsbelehrung',
 			default => $key,
 		}], $this->orderDocumentKeys($case));
+	}
+
+	/**
+	 * 0.88.3/0.89.3: Ankreuzfelder in „Bestattungsauftrag und Vollmacht“ – seit 0.89.3 unter Customizing pflegbar
+	 * (OrderChoiceService). Vorbelegung aus Leistungen und Bestattungsart; im Auftrag gewählte Werte (JA/NEIN) haben Vorrang.
+	 * Für Auftrag-Reiter und Unterschriftsansicht nur aktive Felder, die in der wirksamen Vorlage stehen (inTemplate).
+	 */
+	public function orderSelections(array $case, ?array $costing = null): array {
+		$costing ??= $this->articles->caseServices((int)$case['id']);
+		return $this->orderChoiceService()->selections($case, (array)($case['masterData'] ?? []), $costing, $this->orderTemplateText($case));
+	}
+
+	/** Alle Felder (auch inaktive) für die Dokumentausgabe. */
+	private function computeOrderSelections(array $case, array $m, array $costing): array {
+		return $this->orderChoiceService()->selections($case, $m, $costing, null, true);
+	}
+
+	private function orderChoiceService(): OrderChoiceService {
+		return $this->orderChoices ??= new OrderChoiceService(null, null, $this->customizing ?? null);
+	}
+
+	/** 0.89.3: Text der wirksamen Auftragsvorlage (Platzhalter-Prüfung); null, wenn sie nicht gelesen werden kann. */
+	public function orderTemplateText(array $case): ?string {
+		try {
+			$definition = $this->definition('BESTATTUNGSAUFTRAG', $case);
+			$templateFolder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath());
+			$template = $this->template($templateFolder, $definition['fileName'], (string)($definition['templateNamespace'] ?? ''), (bool)($definition['regionalTemplateRequired'] ?? false));
+			$content = (string)$template->getContent();
+			$hash = hash('sha256', $content);
+			return $this->templateTextCache[$hash] ??= self::docxText($content);
+		} catch (\Throwable) {
+			return null;
+		}
+	}
+
+	/** Sichtbarer Text eines DOCX (Haupttext, Kopf- und Fußzeilen). */
+	public static function docxText(string $docx): string {
+		$temp = tempnam(sys_get_temp_dir(), 'bestatter-docx-');
+		if ($temp === false) {
+			return '';
+		}
+		try {
+			file_put_contents($temp, $docx);
+			$zip = new \ZipArchive();
+			if ($zip->open($temp) !== true) {
+				return '';
+			}
+			$text = '';
+			for ($index = 0; $index < $zip->numFiles; $index++) {
+				$name = (string)$zip->getNameIndex($index);
+				if (!preg_match('#^word/(document|header[0-9]*|footer[0-9]*)\.xml$#i', $name)) {
+					continue;
+				}
+				$xml = $zip->getFromIndex($index);
+				if (is_string($xml)) {
+					$text .= html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8') . "\n";
+				}
+			}
+			$zip->close();
+			return $text;
+		} finally {
+			@unlink($temp);
+		}
 	}
 
 	public static function withdrawalApplies(array $master): bool {
@@ -93,17 +208,29 @@ class DocumentService {
 	}
 
 	private function templateActive(string $key): bool {
-		foreach ($this->configuration->documents() as $template) if ($template['key'] === $key) return (bool)$template['active'];
+		foreach ($this->configuration->documents() as $template) {
+			if ($template['key'] === $key) {
+				return (bool)$template['active'];
+			}
+		}
 		return false;
 	}
 
 	/** Enthält die eingerichtete Auftragsvorlage den Vollmachtsteil (Standardvorlage ab 0.88.0)? */
 	public function combinedOrderTemplate(): bool {
-		if ($this->combinedOrderTemplateCache !== null) return $this->combinedOrderTemplateCache;
+		if ($this->combinedOrderTemplateCache !== null) {
+			return $this->combinedOrderTemplateCache;
+		}
 		try {
 			$fileName = '';
-			foreach ($this->configuration->documents() as $template) if ($template['key'] === 'BESTATTUNGSAUFTRAG') $fileName = $this->resolveConfiguredTemplateName((string)$template['fileName']);
-			if ($fileName === '') return $this->combinedOrderTemplateCache = false;
+			foreach ($this->configuration->documents() as $template) {
+				if ($template['key'] === 'BESTATTUNGSAUFTRAG') {
+					$fileName = $this->resolveConfiguredTemplateName((string)$template['fileName']);
+				}
+			}
+			if ($fileName === '') {
+				return $this->combinedOrderTemplateCache = false;
+			}
 			$folder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath());
 			$content = (string)$this->template($folder, $fileName)->getContent();
 			return $this->combinedOrderTemplateCache = self::docxContainsText($content, self::COMBINED_ORDER_MARKER);
@@ -114,11 +241,15 @@ class DocumentService {
 
 	public static function docxContainsText(string $docx, string $needle): bool {
 		$temp = tempnam(sys_get_temp_dir(), 'bestatter-docx-');
-		if ($temp === false) return false;
+		if ($temp === false) {
+			return false;
+		}
 		try {
 			file_put_contents($temp, $docx);
 			$zip = new \ZipArchive();
-			if ($zip->open($temp) !== true) return false;
+			if ($zip->open($temp) !== true) {
+				return false;
+			}
 			$xml = (string)$zip->getFromName('word/document.xml');
 			$zip->close();
 			return str_contains(html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8'), $needle);
@@ -139,7 +270,9 @@ class DocumentService {
 		if (!in_array($templateKey, $this->orderDocumentKeys($case), true)) {
 			throw new \InvalidArgumentException('Die angeforderte Vorlage gehört nicht zum aktuellen KVA-/Auftragspaket.');
 		}
-		if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		}
 		$definition = $this->definition($templateKey, $case);
 		if (!$definition['supportsPdf'] || !$this->pdfAvailable()) {
 			throw new \RuntimeException('Für diese Dokumentvorschau ist derzeit keine PDF-Konvertierung verfügbar.');
@@ -166,7 +299,9 @@ class DocumentService {
 				try {
 					$path = $this->conversionManager->convert($temp, 'application/pdf');
 					$converted = $this->rootFolder->get($path);
-					if ($converted instanceof \OCP\Files\File) $pdfContent = (string)$converted->getContent();
+					if ($converted instanceof \OCP\Files\File) {
+						$pdfContent = (string)$converted->getContent();
+					}
 				} catch (\Throwable $error) {
 					$providerError = $error;
 				}
@@ -175,7 +310,9 @@ class DocumentService {
 				$pdfContent = $this->euroOffice->convert($temp);
 			}
 			if ($pdfContent === null || !str_starts_with($pdfContent, '%PDF-')) {
-				if ($providerError !== null) throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				if ($providerError !== null) {
+					throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				}
 				throw new \RuntimeException('Weder Nextcloud noch EuroOffice stellen eine automatische PDF-Konvertierung bereit.');
 			}
 			return [
@@ -186,9 +323,15 @@ class DocumentService {
 			];
 		} finally {
 			if ($converted instanceof \OCP\Files\File && $converted->getId() !== $temp->getId()) {
-				try { $converted->delete(); } catch (\Throwable) {}
+				try {
+					$converted->delete();
+				} catch (\Throwable) {
+				}
 			}
-			try { $temp->delete(); } catch (\Throwable) {}
+			try {
+				$temp->delete();
+			} catch (\Throwable) {
+			}
 		}
 	}
 
@@ -209,9 +352,15 @@ class DocumentService {
 	 */
 	public function previewTemplateFilePdf(string $fileName): array {
 		$fileName = basename(trim($fileName));
-		if ($fileName === '' || !preg_match('/\.docx$/i', $fileName)) throw new \InvalidArgumentException('Bitte eine DOCX-Datei angeben.');
-		if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
-		if (!$this->pdfAvailable()) throw new \RuntimeException('Für diese Dokumentvorschau ist derzeit keine PDF-Konvertierung verfügbar.');
+		if ($fileName === '' || !preg_match('/\.docx$/i', $fileName)) {
+			throw new \InvalidArgumentException('Bitte eine DOCX-Datei angeben.');
+		}
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		}
+		if (!$this->pdfAvailable()) {
+			throw new \RuntimeException('Für diese Dokumentvorschau ist derzeit keine PDF-Konvertierung verfügbar.');
+		}
 		$userFolder = $this->folders->baseFolder();
 		$templateFolder = $this->installationConfig->ensurePath($userFolder, $this->installationConfig->templatesPath());
 		$resolvedFileName = $this->resolveConfiguredTemplateName($fileName);
@@ -232,7 +381,9 @@ class DocumentService {
 				try {
 					$path = $this->conversionManager->convert($temp, 'application/pdf');
 					$converted = $this->rootFolder->get($path);
-					if ($converted instanceof \OCP\Files\File) $pdfContent = (string)$converted->getContent();
+					if ($converted instanceof \OCP\Files\File) {
+						$pdfContent = (string)$converted->getContent();
+					}
 				} catch (\Throwable $error) {
 					$providerError = $error;
 				}
@@ -241,7 +392,9 @@ class DocumentService {
 				$pdfContent = $this->euroOffice->convert($temp);
 			}
 			if ($pdfContent === null || !str_starts_with($pdfContent, '%PDF-')) {
-				if ($providerError !== null) throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				if ($providerError !== null) {
+					throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				}
 				throw new \RuntimeException('Weder Nextcloud noch EuroOffice stellen eine automatische PDF-Konvertierung bereit.');
 			}
 			return [
@@ -252,9 +405,15 @@ class DocumentService {
 			];
 		} finally {
 			if ($converted instanceof \OCP\Files\File && $converted->getId() !== $temp->getId()) {
-				try { $converted->delete(); } catch (\Throwable) {}
+				try {
+					$converted->delete();
+				} catch (\Throwable) {
+				}
 			}
-			try { $temp->delete(); } catch (\Throwable) {}
+			try {
+				$temp->delete();
+			} catch (\Throwable) {
+			}
 		}
 	}
 
@@ -274,7 +433,10 @@ class DocumentService {
 	private function dummyPreviewData(): array {
 		$branchKey = '';
 		foreach ($this->configuration->branches() as $branch) {
-			if (!empty($branch['active'])) { $branchKey = (string)$branch['key']; break; }
+			if (!empty($branch['active'])) {
+				$branchKey = (string)$branch['key'];
+				break;
+			}
 		}
 		$masterData = [
 			'additional_first_names' => 'Elisabeth Johanna',
@@ -477,7 +639,9 @@ class DocumentService {
 				$files[] = $file;
 			}
 		} catch (\Throwable $error) {
-			foreach ($files as $file) $this->discardGeneratedOutput($file);
+			foreach ($files as $file) {
+				$this->discardGeneratedOutput($file);
+			}
 			throw new \RuntimeException('Das Entwurfspaket konnte nicht vollständig erzeugt werden: ' . $error->getMessage(), 0, $error);
 		}
 		return ['packageId' => $packageId, 'files' => $files];
@@ -487,13 +651,23 @@ class DocumentService {
 	public function cleanupSupersededOrderDrafts(array $case, array $keepFiles): array {
 		$keepIds = [];
 		foreach ($keepFiles as $file) {
-			foreach ([(int)($file['fileId'] ?? 0), (int)($file['pdf']['fileId'] ?? 0)] as $id) if ($id > 0) $keepIds[$id] = true;
+			foreach ([(int)($file['fileId'] ?? 0), (int)($file['pdf']['fileId'] ?? 0)] as $id) {
+				if ($id > 0) {
+					$keepIds[$id] = true;
+				}
+			}
 		}
 		$warnings = [];
 		foreach ($this->orderOutputNodes($case) as $node) {
 			$name = $node->getName();
-			if (isset($keepIds[(int)$node->getId()]) || !str_contains($name, ' - Entwurf')) continue;
-			try { $node->delete(); } catch (\Throwable $error) { $warnings[] = $name . ': ' . $error->getMessage(); }
+			if (isset($keepIds[(int)$node->getId()]) || !str_contains($name, ' - Entwurf')) {
+				continue;
+			}
+			try {
+				$node->delete();
+			} catch (\Throwable $error) {
+				$warnings[] = $name . ': ' . $error->getMessage();
+			}
 		}
 		return $warnings;
 	}
@@ -514,7 +688,11 @@ class DocumentService {
 			$definition = $this->definition($key, $case);
 			$folder = $this->folders->caseSubfolder((string)$case['caseNumber'], $definition['subfolder']);
 			$prefix = sprintf('%s - %s - ', $this->safeOutputTitle((string)$definition['title']), $case['caseNumber']);
-			foreach ($folder->getDirectoryListing() as $node) if (str_starts_with($node->getName(), $prefix)) $nodes[(int)$node->getId()] = $node;
+			foreach ($folder->getDirectoryListing() as $node) {
+				if (str_starts_with($node->getName(), $prefix)) {
+					$nodes[(int)$node->getId()] = $node;
+				}
+			}
 		}
 		return array_values($nodes);
 	}
@@ -530,11 +708,17 @@ class DocumentService {
 			? strtoupper(trim((string)($snapshot['qrStandard'] ?? 'NONE')))
 			: (($settings['qrEnabled'] ?? false) && $branchStandard === 'EPC069-12' ? 'EPC069-12' : 'NONE');
 		$paymentBranch = $branch;
-		if ($hasSnapshot) foreach (['accountHolder', 'bankName', 'iban', 'bic', 'creditorId', 'paymentTermDays'] as $field) $paymentBranch[$field] = $snapshot[$field] ?? $paymentBranch[$field] ?? '';
+		if ($hasSnapshot) {
+			foreach (['accountHolder', 'bankName', 'iban', 'bic', 'creditorId', 'paymentTermDays'] as $field) {
+				$paymentBranch[$field] = $snapshot[$field] ?? $paymentBranch[$field] ?? '';
+			}
+		}
 		$invoiceDate = substr((string)($invoice['createdAt'] ?? date('c')), 0, 10);
 		$dueDate = date('Y-m-d', strtotime($invoiceDate . ' +' . (int)($paymentBranch['paymentTermDays'] ?? 14) . ' days'));
 		$method = strtoupper(trim((string)($hasSnapshot ? ($snapshot['method'] ?? 'TRANSFER') : ($master['payment_method'] ?? 'TRANSFER'))));
-		if (!in_array($method, ['TRANSFER', 'SEPA_DIRECT_DEBIT'], true)) $method = 'TRANSFER';
+		if (!in_array($method, ['TRANSFER', 'SEPA_DIRECT_DEBIT'], true)) {
+			$method = 'TRANSFER';
+		}
 		$reference = trim((string)($hasSnapshot ? ($snapshot['mandateReference'] ?? '') : ($master['sepa_mandate_reference'] ?? '')));
 		$collectionDate = trim((string)($hasSnapshot ? ($snapshot['collectionDate'] ?? '') : ($master['sepa_collection_date'] ?? ''))) ?: $dueDate;
 		$instruction = $method === 'SEPA_DIRECT_DEBIT'
@@ -550,11 +734,15 @@ class DocumentService {
 			$result = ['method' => 'REFUND', 'methodLabel' => 'Erstattung / Verrechnung', 'dueDate' => $invoiceDate, 'collectionDate' => '',
 				'instruction' => (($invoice['documentKind'] ?? '') === 'CANCELLATION' ? 'Diese Stornorechnung hebt die Rechnung ' . (string)($invoice['referenceInvoiceNumber'] ?? '') . ' vollständig auf.' : 'Diese Gutschrift mindert die Rechnung ' . (string)($invoice['referenceInvoiceNumber'] ?? '') . ' (Rechnungskorrektur des leistenden Unternehmers, keine Gutschrift im Sinne des § 14 Abs. 2 Satz 2 UStG).') . ' Bereits gezahlte Beträge erstatten wir auf das uns bekannte Konto oder verrechnen sie mit offenen Forderungen.',
 				'qrPayload' => '', 'qrRequired' => false, 'qrStandard' => 'NONE', 'qrReason' => 'CORRECTION', 'snapshotUsed' => $hasSnapshot];
-			if ($includeInternal) $result['paymentBranch'] = $paymentBranch;
+			if ($includeInternal) {
+				$result['paymentBranch'] = $paymentBranch;
+			}
 			return $result;
 		}
 		$qrPayload = $method === 'TRANSFER' && $paymentQrStandard === 'EPC069-12' ? $this->eInvoices->epcPayload($invoice + ['dueDate' => $dueDate], $paymentBranch) : '';
-		if ($method === 'TRANSFER' && $paymentQrStandard === 'EPC069-12' && $qrPayload === '') throw new \InvalidArgumentException('Der aktivierte EPC-SEPA-Zahlcode kann ohne gültige Bankverbindung nicht erzeugt werden. Die Rechnung wurde nicht ohne QR-Code ausgegeben.');
+		if ($method === 'TRANSFER' && $paymentQrStandard === 'EPC069-12' && $qrPayload === '') {
+			throw new \InvalidArgumentException('Der aktivierte EPC-SEPA-Zahlcode kann ohne gültige Bankverbindung nicht erzeugt werden. Die Rechnung wurde nicht ohne QR-Code ausgegeben.');
+		}
 		$qrReason = $qrPayload !== '' ? 'INCLUDED' : ($method === 'SEPA_DIRECT_DEBIT' ? 'DIRECT_DEBIT' : 'DISABLED');
 		$result = [
 			'method' => $method,
@@ -568,7 +756,9 @@ class DocumentService {
 			'qrReason' => $qrReason,
 			'snapshotUsed' => $hasSnapshot,
 		];
-		if ($includeInternal) $result['paymentBranch'] = $paymentBranch;
+		if ($includeInternal) {
+			$result['paymentBranch'] = $paymentBranch;
+		}
 		return $result;
 	}
 
@@ -591,13 +781,29 @@ class DocumentService {
 		$branch = array_merge($branch, array_intersect_key($paymentBranch, array_flip(['accountHolder', 'bankName', 'iban', 'bic', 'creditorId', 'paymentTermDays'])));
 		$requiredBranch = ['name' => 'Niederlassungsname', 'street' => 'Absenderstraße', 'postalCode' => 'Absender-PLZ', 'city' => 'Absenderort', 'accountHolder' => 'Kontoinhaber', 'bankName' => 'Bankname', 'iban' => 'IBAN', 'bic' => 'BIC'];
 		$missingBranch = [];
-		foreach ($requiredBranch as $field => $label) if (trim((string)($branch[$field] ?? '')) === '') $missingBranch[] = $label;
-		if (trim((string)($branch['taxNumber'] ?? '')) === '' && trim((string)($branch['vatId'] ?? '')) === '') $missingBranch[] = 'Steuernummer oder USt-IdNr.';
-		if ($missingBranch !== []) throw new \InvalidArgumentException('Die Rechnung kann erst nach Pflege der Niederlassungs- und Bankdaten erzeugt werden: ' . implode(', ', $missingBranch));
+		foreach ($requiredBranch as $field => $label) {
+			if (trim((string)($branch[$field] ?? '')) === '') {
+				$missingBranch[] = $label;
+			}
+		}
+		if (trim((string)($branch['taxNumber'] ?? '')) === '' && trim((string)($branch['vatId'] ?? '')) === '') {
+			$missingBranch[] = 'Steuernummer oder USt-IdNr.';
+		}
+		if ($missingBranch !== []) {
+			throw new \InvalidArgumentException('Die Rechnung kann erst nach Pflege der Niederlassungs- und Bankdaten erzeugt werden: ' . implode(', ', $missingBranch));
+		}
 		$missingRecipient = [];
-		foreach (['name' => 'Name', 'street' => 'Straße', 'postalCode' => 'Postleitzahl', 'city' => 'Ort'] as $field => $label) if (trim((string)($recipient[$field] ?? '')) === '') $missingRecipient[] = $label;
-		if ($missingRecipient !== []) throw new \InvalidArgumentException('Die Rechnung kann erst mit vollständigem Rechnungsempfänger erzeugt werden: ' . implode(', ', $missingRecipient));
-		if (trim((string)($invoice['servicePeriodFrom'] ?? '')) === '' || trim((string)($invoice['servicePeriodTo'] ?? '')) === '') throw new \InvalidArgumentException('Für eine gesetzeskonforme Rechnung muss der vollständige Leistungszeitraum angegeben werden.');
+		foreach (['name' => 'Name', 'street' => 'Straße', 'postalCode' => 'Postleitzahl', 'city' => 'Ort'] as $field => $label) {
+			if (trim((string)($recipient[$field] ?? '')) === '') {
+				$missingRecipient[] = $label;
+			}
+		}
+		if ($missingRecipient !== []) {
+			throw new \InvalidArgumentException('Die Rechnung kann erst mit vollständigem Rechnungsempfänger erzeugt werden: ' . implode(', ', $missingRecipient));
+		}
+		if (trim((string)($invoice['servicePeriodFrom'] ?? '')) === '' || trim((string)($invoice['servicePeriodTo'] ?? '')) === '') {
+			throw new \InvalidArgumentException('Für eine gesetzeskonforme Rechnung muss der vollständige Leistungszeitraum angegeben werden.');
+		}
 		$invoiceDate = substr((string)$invoice['createdAt'], 0, 10);
 		$dueDate = (string)$payment['dueDate'];
 		$invoice['dueDate'] = $dueDate;
@@ -624,9 +830,13 @@ class DocumentService {
 			'invoice_service_period_to' => $this->formatDocumentDate((string)($invoice['servicePeriodTo'] ?? '')),
 			'invoice_service_period' => $this->servicePeriodLabel((string)($invoice['servicePeriodFrom'] ?? ''), (string)($invoice['servicePeriodTo'] ?? '')),
 			'invoice_recipient_name' => (string)($recipient['name'] ?? ''),
-			'invoice_recipient_address' => trim(implode(', ', array_filter([(string)($recipient['street'] ?? ''), trim((string)($recipient['postalCode'] ?? '') . ' ' . (string)($recipient['city'] ?? ''))]))),
+			// 0.89.7: bei Firmenkunden mit „z. Hd.“ und USt-IdNr. des Empfängers (erscheint so auch in vorhandenen Rechnungsvorlagen)
+			'invoice_recipient_address' => trim(implode(', ', array_filter([trim((string)($recipient['attention'] ?? '')) !== '' ? 'z. Hd. ' . trim((string)$recipient['attention']) : '', (string)($recipient['street'] ?? ''), trim((string)($recipient['postalCode'] ?? '') . ' ' . (string)($recipient['city'] ?? '')), trim((string)($recipient['vatId'] ?? '')) !== '' ? 'USt-IdNr. ' . trim((string)$recipient['vatId']) : '']))),
+			// 0.89.7: Firmenkunden (Person „z. Hd.“, USt-IdNr. des Empfängers)
+			'invoice_recipient_attention' => trim((string)($recipient['attention'] ?? '')) !== '' ? 'z. Hd. ' . trim((string)$recipient['attention']) : '',
+			'invoice_recipient_vat_id' => trim((string)($recipient['vatId'] ?? '')) !== '' ? 'USt-IdNr. ' . trim((string)$recipient['vatId']) : '',
 			'invoice_due_date' => $this->formatDocumentDate($dueDate), 'invoice_payment_reference' => 'Rechnung ' . (string)$invoice['invoiceNumber'], 'invoice_qr_payload' => $qrPayload,
-			'invoice_payment_method' => (string)$payment['methodLabel'], 'invoice_payment_instruction' => (string)$payment['instruction'],
+			'invoice_payment_method' => (string)$payment['methodLabel'], 'invoice_payment_instruction' => trim((string)$payment['instruction'] . ' ' . $this->precarePaymentNote($case)),
 			'invoice_payment_qr_label' => $qrPayload !== '' ? 'SEPA-ZAHLCODE' : ($payment['method'] === 'SEPA_DIRECT_DEBIT' ? 'SEPA-LASTSCHRIFT' : 'KEIN ZAHLUNGS-QR'),
 			'sepa_mandate_reference' => (string)($case['masterData']['sepa_mandate_reference'] ?? ''), 'sepa_collection_date' => $this->formatDocumentDate((string)$payment['collectionDate']),
 			'branch_creditor_id' => (string)($branch['creditorId'] ?? ''),
@@ -644,11 +854,13 @@ class DocumentService {
 			'invoice_correction_amount' => $this->money(abs((int)($invoice['totals']['grossCents'] ?? 0))),
 			'invoice_reference_label' => trim((string)($invoice['referenceInvoiceNumber'] ?? '') . (($invoice['referenceInvoiceDate'] ?? '') !== '' ? ' vom ' . $this->formatDocumentDate((string)$invoice['referenceInvoiceDate']) : '')),
 		]);
-		if (($invoice['documentKind'] ?? 'INVOICE') !== 'INVOICE') $case['masterData'] = array_merge($case['masterData'], [
-			'invoice_payment_qr_label' => '', 'invoice_has_prior' => '0',
-			'invoice_payment_reference' => (string)$invoice['invoiceNumber'] . ' zu Rechnung ' . (string)($invoice['referenceInvoiceNumber'] ?? ''),
-		]);
-		$items = array_map(static fn(array $item): array => [
+		if (($invoice['documentKind'] ?? 'INVOICE') !== 'INVOICE') {
+			$case['masterData'] = array_merge($case['masterData'], [
+				'invoice_payment_qr_label' => '', 'invoice_has_prior' => '0',
+				'invoice_payment_reference' => (string)$invoice['invoiceNumber'] . ' zu Rechnung ' . (string)($invoice['referenceInvoiceNumber'] ?? ''),
+			]);
+		}
+		$items = array_map(static fn (array $item): array => [
 			'articleNumber' => (string)$item['position'], 'title' => (string)$item['description'], 'quantity' => (float)$item['quantity'],
 			'unit' => (string)($item['unit'] ?? 'STK'),
 			'unitPriceCents' => (int)$item['unitPriceCents'], 'vatRate' => (int)$item['vatRate'], 'netCents' => (int)$item['netCents'],
@@ -656,8 +868,8 @@ class DocumentService {
 			'position' => (int)$item['position'], 'positionLabel' => (string)($item['positionLabel'] ?? $item['position']),
 			'packageServiceId' => $item['packageServiceId'] ?? null, 'packageTitle' => (string)($item['packageTitle'] ?? ''), 'packagePosition' => $item['packagePosition'] ?? null, 'printMode' => (string)($item['printMode'] ?? ''),
 		], $invoice['items'] ?? []);
-		$taxableNet = array_sum(array_map(static fn(array $item): int => ($item['positionType'] ?? 'EL') === 'DP' ? 0 : (int)$item['netCents'], $items));
-		$passThrough = array_sum(array_map(static fn(array $item): int => ($item['positionType'] ?? 'EL') === 'DP' ? (int)$item['grossCents'] : 0, $items));
+		$taxableNet = array_sum(array_map(static fn (array $item): int => ($item['positionType'] ?? 'EL') === 'DP' ? 0 : (int)$item['netCents'], $items));
+		$passThrough = array_sum(array_map(static fn (array $item): int => ($item['positionType'] ?? 'EL') === 'DP' ? (int)$item['grossCents'] : 0, $items));
 		$documentStatus = in_array((string)($invoice['status'] ?? ''), ['PRUEFUNG', 'FREIGEGEBEN', 'VERSENDET', 'TEILBEZAHLT', 'BEZAHLT'], true)
 			? 'FINAL'
 			: 'ENTWURF';
@@ -687,22 +899,22 @@ class DocumentService {
 		$isCorrection = ($invoice['documentKind'] ?? 'INVOICE') !== 'INVOICE';
 		$this->preferPdfA = $invoiceProfile === 'ZUGFERD' && $createPdf;
 		try {
-		$result = $this->generateTemplate(
-			$case,
-			$isCorrection ? 'KORREKTUR' : 'RECHNUNG',
-			$documentStatus,
-			$createPdf,
-			false,
-			['items' => $items, 'totals' => $invoice['totals'], 'invoiceTaxableNetCents' => $taxableNet, 'invoicePassThroughCents' => $passThrough],
-			0,
-			$qrPayload !== '' ? $paymentQrPng : '',
-			$isReviewDocument ? 'Prüfung' : null,
-			$isReviewDocument,
-			true,
-			// 0.70.0: Belegnummer im Dateinamen, damit Teil-/Schlussrechnung, Storno und Gutschrift eines Falls
-			// einander nicht überschreiben (bisher „Rechnung - <Fall> - Prüfung.pdf“ für alle).
-			($isCorrection ? (($invoice['documentKind'] ?? '') === 'CANCELLATION' ? 'Stornorechnung ' : 'Gutschrift ') : 'Rechnung ') . (string)$invoice['invoiceNumber'],
-		);
+			$result = $this->generateTemplate(
+				$case,
+				$isCorrection ? 'KORREKTUR' : 'RECHNUNG',
+				$documentStatus,
+				$createPdf,
+				false,
+				['items' => $items, 'totals' => $invoice['totals'], 'invoiceTaxableNetCents' => $taxableNet, 'invoicePassThroughCents' => $passThrough],
+				0,
+				$qrPayload !== '' ? $paymentQrPng : '',
+				$isReviewDocument ? 'Prüfung' : null,
+				$isReviewDocument,
+				true,
+				// 0.70.0: Belegnummer im Dateinamen, damit Teil-/Schlussrechnung, Storno und Gutschrift eines Falls
+				// einander nicht überschreiben (bisher „Rechnung - <Fall> - Prüfung.pdf“ für alle).
+				($isCorrection ? (($invoice['documentKind'] ?? '') === 'CANCELLATION' ? 'Stornorechnung ' : 'Gutschrift ') : 'Rechnung ') . (string)$invoice['invoiceNumber'],
+			);
 		} finally {
 			$this->preferPdfA = false;
 		}
@@ -712,7 +924,9 @@ class DocumentService {
 		if ($invoiceProfile === 'ZUGFERD') {
 			$xml = $this->eInvoices->createXml($case, $invoice, $branch, $settings);
 			$validation = $this->eInvoices->validateXml($xml, 'ZUGFERD');
-			if (!$validation['valid']) throw new \InvalidArgumentException('Die E-Rechnung (ZUGFeRD) kann so nicht erzeugt werden: ' . implode(' ', $validation['errors']));
+			if (!$validation['valid']) {
+				throw new \InvalidArgumentException('Die E-Rechnung (ZUGFeRD) kann so nicht erzeugt werden: ' . implode(' ', $validation['errors']));
+			}
 			$result['eInvoice'] = $this->zugferdOutput($target, $result, $xml, $validation, $invoice, $settings);
 			$electronicOutputs[] = ['standard' => 'ZUGFeRD', 'fileId' => $result['eInvoice']['fileId'], 'sha256' => hash('sha256', $xml), 'validation' => $result['eInvoice']['validationStatus'], 'embedded' => $result['eInvoice']['embedded'], 'pdfa' => $result['eInvoice']['pdfa']];
 		}
@@ -721,23 +935,68 @@ class DocumentService {
 			$xInvoice['recipient']['electronicAddress'] = (string)($case['masterData']['invoice_electronic_address'] ?? $case['masterData']['order_client_email'] ?? '');
 			$xml = $this->eInvoices->createXml($case, $xInvoice, $branch, $settings, 'XRECHNUNG');
 			$validation = $this->eInvoices->validateXml($xml, 'XRECHNUNG');
-			if (!$validation['valid']) throw new \InvalidArgumentException('Die XRechnung kann noch nicht erzeugt werden: ' . implode(' ', $validation['errors']));
+			if (!$validation['valid']) {
+				throw new \InvalidArgumentException('Die XRechnung kann noch nicht erzeugt werden: ' . implode(' ', $validation['errors']));
+			}
 			$name = pathinfo(basename((string)$result['path']), PATHINFO_FILENAME) . ' - XRechnung.xml';
-			if ($target->nodeExists($name)) $target->get($name)->delete();
-			$file = $target->newFile($name); $file->putContent($xml);
+			if ($target->nodeExists($name)) {
+				$target->get($name)->delete();
+			}
+			$file = $target->newFile($name);
+			$file->putContent($xml);
 			$result['xInvoice'] = ['standard' => 'XRechnung', 'version' => '3.0.x', 'syntax' => 'CII', 'fileId' => $file->getId(), 'path' => dirname((string)$result['path']) . '/' . $name, 'validationStatus' => 'STRUCTURE_VALIDATED', 'complianceNote' => 'Vor Versand ist die Datei mit der jeweils aktuellen KoSIT-Konfiguration normativ zu validieren.'];
 			$electronicOutputs[] = ['standard' => 'XRechnung', 'fileId' => $file->getId(), 'sha256' => hash('sha256', $xml), 'validation' => 'STRUCTURE_VALIDATED'];
 		}
 		$manifest = ['schema' => 'bestatter-invoice-closure/1', 'invoiceId' => (int)$invoice['id'], 'invoiceNumber' => (string)$invoice['invoiceNumber'], 'invoiceType' => (string)$invoice['invoiceType'], 'caseNumber' => (string)$case['caseNumber'], 'createdAt' => date('c'), 'createdBy' => $this->userSession->getUser()?->getUID() ?? 'system', 'totals' => $invoice['totals'], 'outputs' => $electronicOutputs];
-		if (is_array($result['pdf'])) { $pdfNode = $target->get((string)$result['pdf']['fileName']); if (!$pdfNode instanceof \OCP\Files\File) throw new \RuntimeException('Die Rechnungs-PDF „' . $result['pdf']['fileName'] . '“ wurde nicht als Datei gefunden.'); $manifest['pdfSha256'] = hash('sha256', (string)$pdfNode->getContent()); $manifest['pdfFileId'] = $pdfNode->getId(); }
+		if (is_array($result['pdf'])) {
+			$pdfNode = $target->get((string)$result['pdf']['fileName']);
+			if (!$pdfNode instanceof \OCP\Files\File) {
+				throw new \RuntimeException('Die Rechnungs-PDF „' . $result['pdf']['fileName'] . '“ wurde nicht als Datei gefunden.');
+			} $manifest['pdfSha256'] = hash('sha256', (string)$pdfNode->getContent());
+			$manifest['pdfFileId'] = $pdfNode->getId();
+		}
 		$manifestName = pathinfo(basename((string)$result['path']), PATHINFO_FILENAME) . ' - Abschlussnachweis.json';
-		if ($target->nodeExists($manifestName)) $target->get($manifestName)->delete();
-		$manifestFile = $target->newFile($manifestName); $manifestFile->putContent(json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+		if ($target->nodeExists($manifestName)) {
+			$target->get($manifestName)->delete();
+		}
+		$manifestFile = $target->newFile($manifestName);
+		$manifestFile->putContent(json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		$result['closureManifest'] = $manifest + ['fileId' => $manifestFile->getId(), 'path' => dirname((string)$result['path']) . '/' . $manifestName];
 		$result['payment'] = $payment;
 		$result['invoiceProfile'] = $invoiceProfile;
 		$result['paymentQr'] = ['format' => (string)$payment['qrStandard'], 'payload' => $qrPayload, 'structuredReference' => $qrPayload !== '' ? explode("\n", $qrPayload)[9] : '', 'printReady' => $qrPayload !== '' && $paymentQrPng !== null, 'snapshotUsed' => (bool)($payment['snapshotUsed'] ?? false), 'rendering' => $qrPayload !== '' ? 'SERVER_RENDERED_PNG' : ($payment['method'] === 'SEPA_DIRECT_DEBIT' ? 'SUPPRESSED_FOR_DIRECT_DEBIT' : 'DISABLED_BY_CONFIGURATION')];
 		return $result;
+	}
+
+	/**
+	 * 0.89.10: Mit der Freigabe verliert die Rechnungs-PDF den Zusatz „ - Prüfung“ im Dateinamen
+	 * („Rechnung RE-… - <Fall>.pdf“). Inhalt und Prüfsumme bleiben unverändert; der Abschlussnachweis
+	 * verweist über die Datei-ID weiter auf dieselbe Datei.
+	 *
+	 * @return array{from:string,to:string}|null alter und neuer Dateiname, null ohne Umbenennung
+	 */
+	public function releaseInvoiceFileName(array $case, array $invoice): ?array {
+		$fileId = (int)($invoice['closureManifest']['pdfFileId'] ?? 0);
+		if ($fileId <= 0) {
+			return null;
+		}
+		$target = $this->folders->caseSubfolder((string)$case['caseNumber'], $this->installationConfig->billingFolder());
+		$node = $target->getById($fileId)[0] ?? null;
+		if (!$node instanceof \OCP\Files\File) {
+			return null;
+		}
+		$name = $node->getName();
+		$suffix = ' - Prüfung.pdf';
+		if (!str_ends_with($name, $suffix)) {
+			return null;
+		}
+		$newName = substr($name, 0, -strlen($suffix)) . '.pdf';
+		$parent = $node->getParent();
+		if ($parent->nodeExists($newName)) {
+			return null;
+		}
+		$node->move($parent->getPath() . '/' . $newName);
+		return ['from' => $name, 'to' => $newName];
 	}
 
 	/**
@@ -761,7 +1020,12 @@ class DocumentService {
 		$pdfNode = null;
 		// Pflicht zur normativen Prüfung nicht erfüllt: kein ungeprüftes Rechnungs-PDF im Fallordner zurücklassen.
 		$fail = function (string $message, ?\Throwable $previous = null) use (&$pdfNode): never {
-			if ($pdfNode !== null) { try { $pdfNode->delete(); } catch (\Throwable) {} }
+			if ($pdfNode !== null) {
+				try {
+					$pdfNode->delete();
+				} catch (\Throwable) {
+				}
+			}
 			throw new \InvalidArgumentException($message, 0, $previous);
 		};
 		$candidate = is_array($result['pdf'] ?? null) && $target->nodeExists((string)$result['pdf']['fileName']) ? $target->get((string)$result['pdf']['fileName']) : null;
@@ -771,44 +1035,68 @@ class DocumentService {
 				$title = (($invoice['documentKind'] ?? 'INVOICE') === 'CANCELLATION' ? 'Stornorechnung ' : ((($invoice['documentKind'] ?? 'INVOICE') === 'CREDIT_NOTE') ? 'Gutschrift ' : 'Rechnung ')) . (string)$invoice['invoiceNumber'];
 				$embedded = $this->facturX->embed((string)$pdfNode->getContent(), $xml, ['title' => $title, 'subject' => 'E-Rechnung ZUGFeRD 2.5.2 (EN 16931)']);
 				$check = $this->facturX->inspect($embedded['pdf']);
-				if ($check['xml'] !== $xml || $check['problems'] !== []) throw new \RuntimeException('Kontrolle der eingebetteten Daten fehlgeschlagen: ' . implode(' ', $check['problems'] ?: ['XML weicht ab.']));
+				if ($check['xml'] !== $xml || $check['problems'] !== []) {
+					throw new \RuntimeException('Kontrolle der eingebetteten Daten fehlgeschlagen: ' . implode(' ', $check['problems'] ?: ['XML weicht ab.']));
+				}
 				$pdfNode->putContent($embedded['pdf']);
-				$output['embedded'] = true; $output['hybridEmbedded'] = true;
+				$output['embedded'] = true;
+				$output['hybridEmbedded'] = true;
 				$output['pdfa'] = $embedded['pdfaPart'] !== null ? $embedded['pdfaPart'] . $embedded['pdfaConformance'] : null;
 				$output['sourcePdfa'] = $embedded['sourcePdfa'] !== null ? $embedded['sourcePdfa']['part'] . $embedded['sourcePdfa']['conformance'] : null;
-				$output['fileId'] = $pdfNode->getId(); $output['path'] = (string)$result['pdf']['path'];
+				$output['fileId'] = $pdfNode->getId();
+				$output['path'] = (string)$result['pdf']['path'];
 				// A separate XML would be a second invoice document; remove leftovers from earlier review runs.
-				if ($target->nodeExists($xmlName)) $target->get($xmlName)->delete();
+				if ($target->nodeExists($xmlName)) {
+					$target->get($xmlName)->delete();
+				}
 			} catch (\Throwable $error) {
 				$output['embedError'] = $error->getMessage();
-				if ($required) $fail('Die ZUGFeRD-Rechnung konnte nicht erzeugt werden (Einbettung der XML in das PDF): ' . $error->getMessage(), $error);
+				if ($required) {
+					$fail('Die ZUGFeRD-Rechnung konnte nicht erzeugt werden (Einbettung der XML in das PDF): ' . $error->getMessage(), $error);
+				}
 			}
 		} elseif ($required) {
 			$fail('Für eine normativ geprüfte ZUGFeRD-Rechnung ist ein PDF erforderlich; die PDF-Konvertierung steht nicht zur Verfügung.');
 		}
 		if (!$output['embedded']) {
-			if ($target->nodeExists($xmlName)) $target->get($xmlName)->delete();
-			$file = $target->newFile($xmlName); $file->putContent($xml);
-			$output['fileId'] = $file->getId(); $output['path'] = dirname((string)$result['path']) . '/' . $xmlName;
+			if ($target->nodeExists($xmlName)) {
+				$target->get($xmlName)->delete();
+			}
+			$file = $target->newFile($xmlName);
+			$file->putContent($xml);
+			$output['fileId'] = $file->getId();
+			$output['path'] = dirname((string)$result['path']) . '/' . $xmlName;
 		}
-		if ($target->nodeExists($reportName)) $target->get($reportName)->delete();
+		if ($target->nodeExists($reportName)) {
+			$target->get($reportName)->delete();
+		}
 		if ($output['embedded'] && $compliance['available'] && $pdfNode !== null) {
 			try {
 				$check = $this->eInvoiceCompliance->validate((string)$pdfNode->getContent());
-				$report = $target->newFile($reportName); $report->putContent($check['report']);
+				$report = $target->newFile($reportName);
+				$report->putContent($check['report']);
 				$output['validationReportFileId'] = $report->getId();
 				$output['normativeValidation'] = $check['valid'] ? 'VALID' : 'INVALID';
-				if ($check['valid']) { $output['validationStatus'] = 'NORMATIV_VALIDATED'; $output['validationLevel'] = 'MUSTANG_EN16931_PDFA3'; }
+				if ($check['valid']) {
+					$output['validationStatus'] = 'NORMATIV_VALIDATED';
+					$output['validationLevel'] = 'MUSTANG_EN16931_PDFA3';
+				}
 			} catch (\RuntimeException $error) {
 				$output['normativeValidation'] = 'ERROR';
 				$output['normativeError'] = $error->getMessage();
 			}
-			if ($required && $output['normativeValidation'] === 'INVALID') $fail('Die normative E-Rechnungsprüfung (Mustang) hat Fehler gemeldet; die Rechnung wurde nicht ausgegeben. Details im Prüfbericht „' . $reportName . '“ im Abrechnungsordner.');
-			if ($required && $output['normativeValidation'] === 'ERROR') $fail('Die verpflichtende normative E-Rechnungsprüfung konnte nicht ausgeführt werden: ' . (string)$output['normativeError']);
+			if ($required && $output['normativeValidation'] === 'INVALID') {
+				$fail('Die normative E-Rechnungsprüfung (Mustang) hat Fehler gemeldet; die Rechnung wurde nicht ausgegeben. Details im Prüfbericht „' . $reportName . '“ im Abrechnungsordner.');
+			}
+			if ($required && $output['normativeValidation'] === 'ERROR') {
+				$fail('Die verpflichtende normative E-Rechnungsprüfung konnte nicht ausgeführt werden: ' . (string)$output['normativeError']);
+			}
 		} elseif ($required) {
 			$fail('Die normative E-Rechnungsprüfung ist verpflichtend, aber der Mustang-Validator ist nicht verfügbar.');
 		}
-		if ($output['normativeValidation'] === 'PENDING') $output['normativeValidation'] = 'SKIPPED';
+		if ($output['normativeValidation'] === 'PENDING') {
+			$output['normativeValidation'] = 'SKIPPED';
+		}
 		$output['complianceNote'] = match (true) {
 			$output['validationStatus'] === 'NORMATIV_VALIDATED' => 'ZUGFeRD-PDF (PDF/A-' . (string)$output['pdfa'] . ') mit eingebetteter factur-x.xml; normativ geprüft (Mustang).',
 			$output['embedded'] && $output['pdfa'] !== null => 'ZUGFeRD-PDF (PDF/A-' . (string)$output['pdfa'] . ') mit eingebetteter factur-x.xml. XML intern geprüft (Pflichtangaben, Rechensummen, Steuergruppen)' . match ($output['normativeValidation']) {
@@ -820,8 +1108,12 @@ class DocumentService {
 			$output['embedError'] !== null => 'Die XML konnte nicht in das PDF eingebettet werden und liegt als eigene Datei daneben: ' . $output['embedError'],
 			default => 'Ohne PDF liegt die XML als eigene Datei im Fallordner.',
 		};
-		if ($output['normativeValidation'] === 'INVALID' && !($output['embedded'] && $output['pdfa'] !== null)) $output['complianceNote'] .= ' Achtung: Die normative Prüfung hat Fehler gemeldet (siehe Prüfbericht).';
-		if ($pdfNode !== null) $this->eInvoiceCompliance->recordOutput($output);
+		if ($output['normativeValidation'] === 'INVALID' && !($output['embedded'] && $output['pdfa'] !== null)) {
+			$output['complianceNote'] .= ' Achtung: Die normative Prüfung hat Fehler gemeldet (siehe Prüfbericht).';
+		}
+		if ($pdfNode !== null) {
+			$this->eInvoiceCompliance->recordOutput($output);
+		}
 		return $output;
 	}
 
@@ -837,7 +1129,9 @@ class DocumentService {
 	 * @return array{content:string,fileName:string,title:string,templateKey:string}
 	 */
 	public function previewInvoiceDocumentPdf(array $case, array $invoice): array {
-		if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		}
 		$context = $this->invoiceRenderContext($case, $invoice);
 		$case = $context['case'];
 		$definition = $this->definition(($invoice['documentKind'] ?? 'INVOICE') !== 'INVOICE' ? 'KORREKTUR' : 'RECHNUNG', $case);
@@ -867,7 +1161,9 @@ class DocumentService {
 				try {
 					$path = $this->conversionManager->convert($temp, 'application/pdf');
 					$converted = $this->rootFolder->get($path);
-					if ($converted instanceof \OCP\Files\File) $pdfContent = (string)$converted->getContent();
+					if ($converted instanceof \OCP\Files\File) {
+						$pdfContent = (string)$converted->getContent();
+					}
 				} catch (\Throwable $error) {
 					$providerError = $error;
 				}
@@ -876,7 +1172,9 @@ class DocumentService {
 				$pdfContent = $this->euroOffice->convert($temp);
 			}
 			if ($pdfContent === null || !str_starts_with($pdfContent, '%PDF-')) {
-				if ($providerError !== null) throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				if ($providerError !== null) {
+					throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+				}
 				throw new \RuntimeException('Weder Nextcloud noch EuroOffice stellen eine automatische PDF-Konvertierung bereit.');
 			}
 			return [
@@ -887,16 +1185,25 @@ class DocumentService {
 			];
 		} finally {
 			if ($converted instanceof \OCP\Files\File && $converted->getId() !== $temp->getId()) {
-				try { $converted->delete(); } catch (\Throwable) {}
+				try {
+					$converted->delete();
+				} catch (\Throwable) {
+				}
 			}
-			try { $temp->delete(); } catch (\Throwable) {}
+			try {
+				$temp->delete();
+			} catch (\Throwable) {
+			}
 		}
 	}
 
 	private function servicePeriodLabel(string $from, string $to): string {
-		$from=$this->formatDocumentDate($from);$to=$this->formatDocumentDate($to);
-		if($from!==''&&$to!=='')return $from.' bis '.$to;
-		return $from!==''?$from:$to;
+		$from = $this->formatDocumentDate($from);
+		$to = $this->formatDocumentDate($to);
+		if ($from !== '' && $to !== '') {
+			return $from . ' bis ' . $to;
+		}
+		return $from !== ''?$from:$to;
 	}
 
 	public function preview(array $case, string $templateKey, int $scheduleId = 0): array {
@@ -937,10 +1244,14 @@ class DocumentService {
 	}
 
 	public function generateTemplate(array $case, string $templateKey, string $status = 'ENTWURF', bool $createPdf = true, bool $allowIncomplete = false, ?array $costingOverride = null, int $scheduleId = 0, ?string $embeddedPaymentQr = null, ?string $outputStatusLabel = null, bool $allowImmutableOutputReplacement = false, bool $replaceExistingOutput = true, ?string $outputTitle = null): array {
-		if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
+		}
 		$templateKey = strtoupper(trim($templateKey));
 		$status = strtoupper(trim($status));
-		if (!in_array($status, self::STATUSES, true)) throw new \InvalidArgumentException('Ungültiger Dokumentstatus.');
+		if (!in_array($status, self::STATUSES, true)) {
+			throw new \InvalidArgumentException('Ungültiger Dokumentstatus.');
+		}
 		$definition = $this->definition($templateKey, $case);
 		[$case] = $this->withFuneralEventContext($case, $definition, $scheduleId);
 		$userFolder = $this->folders->baseFolder();
@@ -948,8 +1259,12 @@ class DocumentService {
 		$targetFolder = $this->folders->caseSubfolder((string)$case['caseNumber'], $definition['subfolder']);
 		$costing = $costingOverride ?? $this->articles->caseServices((int)$case['id']);
 		$missing = $this->missingRequiredFields($case, $definition, $costing);
-		if ($missing !== [] && (!$allowIncomplete || $status !== 'ENTWURF')) throw new \InvalidArgumentException('Dokument kann noch nicht erzeugt werden. Bitte ergänzen: ' . implode(', ', $missing));
-		if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true) && (!$createPdf || !$definition['supportsPdf'])) throw new \InvalidArgumentException('Finale Dokumente müssen als nicht bearbeitbare PDF-Ausgabe erzeugt werden.');
+		if ($missing !== [] && (!$allowIncomplete || $status !== 'ENTWURF')) {
+			throw new \InvalidArgumentException('Dokument kann noch nicht erzeugt werden. Bitte ergänzen: ' . implode(', ', $missing));
+		}
+		if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true) && (!$createPdf || !$definition['supportsPdf'])) {
+			throw new \InvalidArgumentException('Finale Dokumente müssen als nicht bearbeitbare PDF-Ausgabe erzeugt werden.');
+		}
 
 		$this->seedEstimateTemplate($templateFolder, $definition);
 		$template = $this->template(
@@ -966,39 +1281,58 @@ class DocumentService {
 		$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$scheduleContextId = (int)($masterData['funeral_event_schedule_id'] ?? 0);
 		$contextLabel = $scheduleContextId > 0
-			? $this->safeOutputTitle('Trauerfeier ' . (string)($masterData['funeral_event_date_iso'] ?? $masterData['funeral_event_date'] ?? $scheduleContextId) . ' ' . str_replace(':', '-', (string)($masterData['funeral_event_time'] ?? '')))
+			? $this->funeralEventFileLabel($masterData, $scheduleContextId)
 			: '';
 		$documentContextKey = $scheduleContextId > 0 ? 'schedule:' . $scheduleContextId : '';
 		$statusLabel = trim((string)$outputStatusLabel);
-		if ($statusLabel === '') $statusLabel = match ($status) { 'FINAL' => 'Final', 'UNTERSCHRIEBEN' => 'Unterschrieben', default => 'Entwurf' };
+		if ($statusLabel === '') {
+			$statusLabel = match ($status) {
+				'FINAL' => 'Final', 'UNTERSCHRIEBEN' => 'Unterschrieben', default => 'Entwurf'
+			};
+		}
 		$statusLabel = $this->safeOutputTitle($statusLabel);
 		$prefix = sprintf('%s - %s%s - ', $safeTitle, $case['caseNumber'], $contextLabel !== '' ? ' - ' . $contextLabel : '');
 		$version = 1;
 		if ($status === 'FINAL' && $templateKey === 'BESTATTUNGSAUFTRAG') {
+			// 0.89.0: Die am Tablet unterschriebene Fassung erhält eigene Revisionen („Unterschrieben - R01“).
+			$label = $this->orderSignature !== null ? 'Unterschrieben' : 'Final';
 			foreach ($targetFolder->getDirectoryListing() as $existing) {
 				$name = $existing->getName();
-				if (!str_starts_with($name, $prefix . 'Final')) continue;
-				if (preg_match('/ - Final - R(\d+)\.pdf$/', $name, $match)) $version = max($version, (int)$match[1] + 1);
-				elseif (str_ends_with($name, ' - Final.pdf')) $version = max($version, 2);
+				if (!str_starts_with($name, $prefix . $label)) {
+					continue;
+				}
+				if (preg_match('/ - ' . $label . ' - R(\d+)\.pdf$/', $name, $match)) {
+					$version = max($version, (int)$match[1] + 1);
+				} elseif (str_ends_with($name, ' - ' . $label . '.pdf')) {
+					$version = max($version, 2);
+				}
 			}
-			$statusLabel = sprintf('Final - R%02d', $version);
+			$statusLabel = sprintf('%s - R%02d', $label, $version);
 			$replaceExistingOutput = false;
 		}
 		if ($replaceExistingOutput) {
-			$existingOutputs = array_values(array_filter($targetFolder->getDirectoryListing(), static fn($existing): bool => str_starts_with($existing->getName(), $prefix)));
+			$existingOutputs = array_values(array_filter($targetFolder->getDirectoryListing(), static fn ($existing): bool => str_starts_with($existing->getName(), $prefix)));
 			foreach ($existingOutputs as $existing) {
 				$name = $existing->getName();
-				if (!$allowImmutableOutputReplacement && (str_contains($name, ' - Final.') || str_contains($name, ' - Unterschrieben.'))) throw new \InvalidArgumentException('Das aktuelle Dokument ist final und kann nicht überschrieben werden.');
+				if (!$allowImmutableOutputReplacement && (str_contains($name, ' - Final.') || str_contains($name, ' - Unterschrieben.'))) {
+					throw new \InvalidArgumentException('Das aktuelle Dokument ist final und kann nicht überschrieben werden.');
+				}
 			}
-			foreach ($existingOutputs as $existing) $existing->delete();
+			foreach ($existingOutputs as $existing) {
+				$existing->delete();
+			}
 		}
 		$baseName = sprintf('%s - %s%s - %s', $safeTitle, $case['caseNumber'], $contextLabel !== '' ? ' - ' . $contextLabel : '', $statusLabel);
 		$docxName = $baseName . '.docx';
 		// A previous interrupted workflow may have written the file before its
 		// database record was committed. Draft outputs are current-state files,
 		// so an orphan with the exact target name must be replaced safely.
-		if ($targetFolder->nodeExists($docxName) && $replaceExistingOutput) $targetFolder->get($docxName)->delete();
-		if ($targetFolder->nodeExists($docxName)) throw new \RuntimeException('Der temporäre Dokumentname ist bereits vorhanden. Bitte erneut versuchen.');
+		if ($targetFolder->nodeExists($docxName) && $replaceExistingOutput) {
+			$targetFolder->get($docxName)->delete();
+		}
+		if ($targetFolder->nodeExists($docxName)) {
+			throw new \RuntimeException('Der temporäre Dokumentname ist bereits vorhanden. Bitte erneut versuchen.');
+		}
 		$file = $targetFolder->newFile($docxName);
 		$file->putContent($content);
 		$basePath = $this->folders->caseRelativePath((string)$case['caseNumber']) . '/' . $definition['subfolder'] . '/';
@@ -1013,11 +1347,18 @@ class DocumentService {
 			try {
 				$result['pdf'] = $this->createPdf($file, $targetFolder, $baseName . '.pdf', $basePath);
 			} catch (\Throwable $error) {
-				if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true)) { $file->delete(); throw $error; }
+				if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true)) {
+					$file->delete();
+					throw $error;
+				}
 				$result['pdfWarning'] = 'Die DOCX-Datei wurde erzeugt; nur die PDF-Ausgabe ist fehlgeschlagen: ' . $error->getMessage();
 			}
 		}
-		if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true) && is_array($result['pdf'])) { $file->delete(); $result['fileId'] = null; $result['path'] = $result['pdf']['path']; }
+		if (in_array($status, ['FINAL', 'UNTERSCHRIEBEN'], true) && is_array($result['pdf'])) {
+			$file->delete();
+			$result['fileId'] = null;
+			$result['path'] = $result['pdf']['path'];
+		}
 		return $result;
 	}
 
@@ -1035,10 +1376,18 @@ class DocumentService {
 				break;
 			}
 		}
-		if ($definition === null) throw new \InvalidArgumentException('Dokumentenvorlage wurde nicht gefunden.');
+		if ($definition === null) {
+			throw new \InvalidArgumentException('Dokumentenvorlage wurde nicht gefunden.');
+		}
 		$uid = trim((string)$userId);
-		if ($uid === '') $uid = (string)($this->userSession->getUser()?->getUID() ?? '');
-		try { $userFolder = $this->folders->baseFolderFor($uid !== '' ? $uid : null); } catch (\RuntimeException) { throw new \RuntimeException('Kein Nextcloud-Benutzer für die Vorlagenprüfung verfügbar.'); }
+		if ($uid === '') {
+			$uid = (string)($this->userSession->getUser()?->getUID() ?? '');
+		}
+		try {
+			$userFolder = $this->folders->baseFolderFor($uid !== '' ? $uid : null);
+		} catch (\RuntimeException) {
+			throw new \RuntimeException('Kein Nextcloud-Benutzer für die Vorlagenprüfung verfügbar.');
+		}
 		$templateFolder = $this->installationConfig->ensurePath($userFolder, $this->installationConfig->templatesPath());
 		$template = $this->template($templateFolder, basename((string)($definition['fileName'] ?? '')));
 		$content = (string)$template->getContent();
@@ -1059,19 +1408,32 @@ class DocumentService {
 	 * exists, the UI must select one explicitly instead of silently guessing.
 	 */
 	private function withFuneralEventContext(array $case, array $definition, int $scheduleId = 0): array {
-		if (!in_array('funeral_event_date', $definition['requiredFields'], true)) return [$case, [], null];
+		if (!in_array('funeral_event_date', $definition['requiredFields'], true)) {
+			return [$case, [], null];
+		}
 		$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
-		if ($scheduleId <= 0 && trim((string)($masterData['funeral_event_date'] ?? '')) !== '') return [$case, [], null];
+		if ($scheduleId <= 0 && trim((string)($masterData['funeral_event_date'] ?? '')) !== '') {
+			return [$case, [], null];
+		}
 
 		$options = $this->funeralEventOptions((int)$case['id']);
 		$selected = null;
 		if ($scheduleId > 0) {
-			foreach ($options as $option) if ((int)$option['id'] === $scheduleId) { $selected = $option; break; }
-			if ($selected === null) throw new \InvalidArgumentException('Die ausgewählte Trauerfeier gehört nicht zu diesem Fall oder ist nicht bestätigt.');
+			foreach ($options as $option) {
+				if ((int)$option['id'] === $scheduleId) {
+					$selected = $option;
+					break;
+				}
+			}
+			if ($selected === null) {
+				throw new \InvalidArgumentException('Die ausgewählte Trauerfeier gehört nicht zu diesem Fall oder ist nicht bestätigt.');
+			}
 		} elseif (count($options) === 1) {
 			$selected = $options[0];
 		}
-		if ($selected === null) return [$case, $options, null];
+		if ($selected === null) {
+			return [$case, $options, null];
+		}
 
 		$date = new \DateTimeImmutable((string)$selected['date'], new \DateTimeZone('Europe/Berlin'));
 		$duration = max(15, (int)($selected['durationMinutes'] ?? 60));
@@ -1108,10 +1470,18 @@ class DocumentService {
 			$presetKey = strtoupper(trim((string)($payload['schedulePresetKey'] ?? '')));
 			$category = trim((string)($payload['appointmentCategory'] ?? ''));
 			$title = trim((string)($row['title'] ?? ''));
-			if (!str_contains($presetKey, 'TRAUERFEIER') && !str_contains(mb_strtolower($category . ' ' . $title), 'trauerfeier')) continue;
+			if (!str_contains($presetKey, 'TRAUERFEIER') && !str_contains(mb_strtolower($category . ' ' . $title), 'trauerfeier')) {
+				continue;
+			}
 			$date = trim((string)($row['record_date'] ?? ''));
-			if ($date === '') continue;
-			try { $dateValue = new \DateTimeImmutable($date, new \DateTimeZone('Europe/Berlin')); } catch (\Throwable) { continue; }
+			if ($date === '') {
+				continue;
+			}
+			try {
+				$dateValue = new \DateTimeImmutable($date, new \DateTimeZone('Europe/Berlin'));
+			} catch (\Throwable) {
+				continue;
+			}
 			$options[] = [
 				'id' => (int)$row['id'], 'title' => $title, 'date' => $date, 'status' => (string)$row['status'],
 				'displayDate' => $dateValue->format('d.m.Y'), 'displayTime' => $dateValue->format('H:i'),
@@ -1124,18 +1494,49 @@ class DocumentService {
 	}
 
 	public function discardGeneratedOutput(array $result): void {
-		try { $userFolder = $this->folders->baseFolder(); } catch (\RuntimeException) { return; }
-		$allowedPrefix = rtrim($userFolder->getPath(), '/') . '/' . $this->installationConfig->casesPath() . '/';
+		try {
+			$userFolder = $this->folders->baseFolder();
+		} catch (\RuntimeException) {
+			return;
+		}
+		// 0.89.7: erzeugte Ausgaben liegen in einem der Oberordner der Vorgangsarten (Fälle, Aufträge, Vorsorgen).
+		$allowedPrefixes = array_map(static fn (string $path): string => rtrim($userFolder->getPath(), '/') . '/' . $path . '/', $this->installationConfig->allCasesPaths());
 		$fileIds = array_values(array_unique(array_filter([
 			(int)($result['fileId'] ?? 0),
 			(int)($result['pdf']['fileId'] ?? 0),
 		])));
 		foreach ($fileIds as $fileId) {
 			foreach ($userFolder->getById($fileId) as $node) {
-				if (!str_starts_with($node->getPath(), $allowedPrefix)) continue;
-				try { $node->delete(); } catch (\Throwable) {}
+				$allowed = false;
+				foreach ($allowedPrefixes as $allowedPrefix) {
+					if (str_starts_with($node->getPath(), $allowedPrefix)) {
+						$allowed = true;
+					}
+				}
+				if (!$allowed) {
+					continue;
+				}
+				try {
+					$node->delete();
+				} catch (\Throwable) {
+				}
 			}
 		}
+	}
+
+	/**
+	 * 0.89.10: Trauerfeier im Dateinamen als „Trauerfeier 04.11.2026 11.00 Uhr“ (bisher „2026 - 11 - 04 11 - 00“,
+	 * weil jeder Bindestrich zum Trenner „ - “ wurde).
+	 */
+	private function funeralEventFileLabel(array $masterData, int $scheduleId): string {
+		$date = (string)($masterData['funeral_event_date_iso'] ?? $masterData['funeral_event_date'] ?? '');
+		$formatted = $date !== '' ? $this->formatDocumentDate($date) : '';
+		$time = trim((string)($masterData['funeral_event_time'] ?? ''));
+		$label = 'Trauerfeier ' . ($formatted !== '' ? $formatted : ($date !== '' ? str_replace('-', '.', $date) : (string)$scheduleId));
+		if (preg_match('/^(\d{1,2})[:.](\d{2})/', $time, $match) === 1) {
+			$label .= ' ' . sprintf('%02d.%s', (int)$match[1], $match[2]) . ' Uhr';
+		}
+		return $this->safeOutputTitle($label, true);
 	}
 
 	private function safeOutputTitle(string $title, bool $keepInnerHyphens = false): string {
@@ -1147,8 +1548,10 @@ class DocumentService {
 		$title = preg_replace('/[\x00-\x1F\x7F]+/u', '', $title) ?? $title;
 		$title = preg_replace('/\s+/u', ' ', $title) ?? $title;
 		$title = preg_replace($keepInnerHyphens ? '/\s+-\s*|\s*-\s+/u' : '/\s*-\s*/u', ' - ', $title) ?? $title;
-		$title = trim($title, " .-");
-		if ($title === '') throw new \InvalidArgumentException('Die Dokumentbezeichnung ergibt keinen gültigen Dateinamen.');
+		$title = trim($title, ' .-');
+		if ($title === '') {
+			throw new \InvalidArgumentException('Die Dokumentbezeichnung ergibt keinen gültigen Dateinamen.');
+		}
 		return $title;
 	}
 
@@ -1156,21 +1559,40 @@ class DocumentService {
 		$isEstimate = strtoupper((string)($case['masterData']['order_mode'] ?? 'A')) === 'KVA';
 		$branch = $this->configuration->branchByKey((string)($case['branch'] ?? $case['masterData']['branch'] ?? '')) ?? ['countryCode' => 'DE'];
 		$templateNamespace = $this->countryConfiguration->templateNamespace($branch);
-		if ($templateNamespace === 'DE') $templateNamespace = '';
+		if ($templateNamespace === 'DE') {
+			$templateNamespace = '';
+		}
 		$templates = $this->configuration->documents();
 		// 0.88.0: Der Kostenvoranschlag hat eine eigene Vorlage (KOSTENVORANSCHLAG); Schlüssel und Ablage bleiben BESTATTUNGSAUFTRAG.
 		$lookup = $key;
-		if ($key === 'BESTATTUNGSAUFTRAG' && $isEstimate) {
-			foreach ($templates as $template) if ($template['key'] === 'KOSTENVORANSCHLAG' && $template['active'] && str_ends_with(strtolower((string)$template['fileName']), '.docx')) $lookup = 'KOSTENVORANSCHLAG';
+		$kind = (string)($case['caseKind'] ?? CaseKinds::DEATH);
+		$kindTemplate = self::KIND_ORDER_TEMPLATES[$kind] ?? '';
+		if ($key === 'BESTATTUNGSAUFTRAG' && $kindTemplate !== '') {
+			foreach ($templates as $template) {
+				if ($template['key'] === $kindTemplate && $template['active'] && str_ends_with(strtolower((string)$template['fileName']), '.docx')) {
+					$lookup = $kindTemplate;
+				}
+			}
+		}
+		if ($key === 'BESTATTUNGSAUFTRAG' && $isEstimate && $lookup === $key) {
+			foreach ($templates as $template) {
+				if ($template['key'] === 'KOSTENVORANSCHLAG' && $template['active'] && str_ends_with(strtolower((string)$template['fileName']), '.docx')) {
+					$lookup = 'KOSTENVORANSCHLAG';
+				}
+			}
 		}
 		foreach ($templates as $template) {
-			if ($template['key'] !== $lookup || !$template['active'] || !str_ends_with(strtolower((string)$template['fileName']), '.docx')) continue;
+			if ($template['key'] !== $lookup || !$template['active'] || !str_ends_with(strtolower((string)$template['fileName']), '.docx')) {
+				continue;
+			}
 			$required = (array)$template['requiredFields'];
-			if ($key === 'BESTATTUNGSAUFTRAG' && !$isEstimate && !in_array('order_contract_conclusion', $required, true)) $required[] = 'order_contract_conclusion';
+			if ($key === 'BESTATTUNGSAUFTRAG' && !$isEstimate && !in_array('order_contract_conclusion', $required, true)) {
+				$required[] = 'order_contract_conclusion';
+			}
 			return [
 				'key' => $key,
 				'fileName' => $this->resolveConfiguredTemplateName((string)$template['fileName']),
-				'title' => $key === 'BESTATTUNGSAUFTRAG' ? ($isEstimate ? 'Kostenvoranschlag' : 'Bestattungsauftrag') : (string)$template['name'],
+				'title' => $key === 'BESTATTUNGSAUFTRAG' ? self::orderDocumentTitle($kind, $isEstimate) : (string)$template['name'],
 				// 0.72.0: Vorlagenziel über den Ordnerplan auflösen (bleibt nach Umbenennung gültig).
 				'subfolder' => ($template['outputSubfolder'] !== '' ? $this->installationConfig->resolveSubfolder((string)$template['outputSubfolder']) : null) ?? ($template['category'] === 'Auftrag' ? $this->installationConfig->orderFolder() : $this->installationConfig->authoritiesFolder()),
 				'supportsPdf' => (bool)$template['supportsPdf'], 'category' => (string)($template['category'] ?? 'Allgemein'),
@@ -1189,24 +1611,46 @@ class DocumentService {
 	 * Unveränderte Standardfassungen und die neue Vorlage „Bestattungsauftrag und Vollmacht“ werden nicht übernommen.
 	 */
 	private function seedEstimateTemplate(Folder $folder, array $definition): void {
-		if (($definition['seedFrom'] ?? '') === '' || $folder->nodeExists((string)$definition['fileName'])) return;
+		if (($definition['seedFrom'] ?? '') === '' || $folder->nodeExists((string)$definition['fileName'])) {
+			return;
+		}
 		$orderFile = '';
-		foreach ($this->configuration->documents() as $template) if ($template['key'] === $definition['seedFrom']) $orderFile = $this->resolveConfiguredTemplateName((string)$template['fileName']);
-		if ($orderFile === '' || !$folder->nodeExists($orderFile)) return;
+		foreach ($this->configuration->documents() as $template) {
+			if ($template['key'] === $definition['seedFrom']) {
+				$orderFile = $this->resolveConfiguredTemplateName((string)$template['fileName']);
+			}
+		}
+		if ($orderFile === '' || !$folder->nodeExists($orderFile)) {
+			return;
+		}
 		$node = $folder->get($orderFile);
-		if (!$node instanceof \OCP\Files\File) return;
+		if (!$node instanceof \OCP\Files\File) {
+			return;
+		}
 		$content = (string)$node->getContent();
-		if (in_array(hash('sha256', $content), self::REPLACEABLE_STANDARD_TEMPLATE_HASHES['BESTATTUNGSAUFTRAG.docx'], true)) return;
-		if (self::docxContainsText($content, self::COMBINED_ORDER_MARKER)) return;
+		if (in_array(hash('sha256', $content), self::REPLACEABLE_STANDARD_TEMPLATE_HASHES['BESTATTUNGSAUFTRAG.docx'], true)) {
+			return;
+		}
+		if (self::docxContainsText($content, self::COMBINED_ORDER_MARKER)) {
+			return;
+		}
 		$folder->newFile((string)$definition['fileName'], $content);
 	}
 
 	private function resolveConfiguredTemplateName(string $configuredName): string {
-		try { $folder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath()); } catch (\RuntimeException) { return $configuredName; }
-		if ($folder->nodeExists($configuredName)) return $configuredName;
+		try {
+			$folder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath());
+		} catch (\RuntimeException) {
+			return $configuredName;
+		}
+		if ($folder->nodeExists($configuredName)) {
+			return $configuredName;
+		}
 		$needle = $this->normalizedTemplateName($configuredName);
 		foreach ($folder->getDirectoryListing() as $node) {
-			if ($this->normalizedTemplateName($node->getName()) === $needle) return $node->getName();
+			if ($this->normalizedTemplateName($node->getName()) === $needle) {
+				return $node->getName();
+			}
 		}
 		return $configuredName;
 	}
@@ -1232,15 +1676,32 @@ class DocumentService {
 				'first_name' => trim((string)$case['firstName']) !== '',
 				'last_name' => trim((string)$case['lastName']) !== '',
 				'date_of_death_or_interval' => trim((string)($m['date_of_death'] ?? $case['dateOfDeath'] ?? '')) !== '' || (trim((string)($m['death_time_from'] ?? '')) !== '' && trim((string)($m['death_time_to'] ?? '')) !== ''),
-				'order_client_name' => trim((string)($m['order_client_name'] ?? '')) !== '',
+				'order_client_name' => trim((string)($m['order_client_name'] ?? '')) !== '' || trim((string)($m['order_client_company'] ?? '')) !== '',
 				'order_client_address' => trim((string)($m['order_client_street'] ?? '')) !== '' && trim((string)($m['order_client_postal_city'] ?? '')) !== '',
 				'order_date' => trim((string)($m[strtoupper((string)($m['order_mode'] ?? 'A')) === 'KVA' ? 'kva_date' : 'order_date'] ?? '')) !== '',
 				'services' => count($costing['items'] ?? []) > 0,
 				default => trim((string)($m[$field] ?? '')) !== '',
 			};
-			if (!$present) $missing[] = $labels[$field] ?? $field;
+			if (!$present) {
+				$missing[] = $labels[$field] ?? self::schemaFieldLabel($field);
+			}
 		}
 		return $missing;
+	}
+
+	/** 0.89.10: Bezeichnung eines Fallfelds aus resources/case-field-schema.json statt des technischen Schlüssels. */
+	private static function schemaFieldLabel(string $field): string {
+		static $labels = null;
+		if ($labels === null) {
+			$labels = [];
+			$schema = json_decode((string)@file_get_contents(__DIR__ . '/../../resources/case-field-schema.json'), true);
+			foreach (is_array($schema) ? $schema : [] as $entry) {
+				if (is_array($entry) && isset($entry['key'], $entry['label'])) {
+					$labels[(string)$entry['key']] = (string)$entry['label'];
+				}
+			}
+		}
+		return $labels[$field] ?? $field;
 	}
 
 	private function createPdf(mixed $docx, Folder $target, string $name, string $basePath): array {
@@ -1251,7 +1712,9 @@ class DocumentService {
 		if ($this->preferPdfA && $this->euroOffice->isAvailable()) {
 			try {
 				$candidate = $this->euroOffice->convert($docx, 'pdfa');
-				if ($this->facturX->sourcePdfa($candidate) !== null) $content = $candidate;
+				if ($this->facturX->sourcePdfa($candidate) !== null) {
+					$content = $candidate;
+				}
 			} catch (\Throwable) {
 				$content = null;
 			}
@@ -1260,7 +1723,9 @@ class DocumentService {
 			try {
 				$path = $this->conversionManager->convert($docx, 'application/pdf');
 				$converted = $this->rootFolder->get($path);
-				if ($converted instanceof \OCP\Files\File) $content = (string)$converted->getContent();
+				if ($converted instanceof \OCP\Files\File) {
+					$content = (string)$converted->getContent();
+				}
 			} catch (\Throwable $error) {
 				$providerError = $error;
 			}
@@ -1269,22 +1734,97 @@ class DocumentService {
 			$content = $this->euroOffice->convert($docx);
 		}
 		if ($content === null || !str_starts_with($content, '%PDF-')) {
-			if ($providerError !== null) throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+			if ($providerError !== null) {
+				throw new \RuntimeException('Die Nextcloud-PDF-Konvertierung ist fehlgeschlagen: ' . $providerError->getMessage(), 0, $providerError);
+			}
 			throw new \RuntimeException('Weder Nextcloud noch EuroOffice stellen eine automatische PDF-Konvertierung bereit.');
 		}
-		if ($target->nodeExists($name)) $target->get($name)->delete();
+		if ($target->nodeExists($name)) {
+			$target->get($name)->delete();
+		}
 		$pdf = $target->newFile($name);
 		$pdf->putContent($content);
-		return ['fileId' => $pdf->getId(), 'path' => $basePath . $name, 'fileName' => $name];
+		return ['fileId' => $pdf->getId(), 'path' => $basePath . $name, 'fileName' => $name, 'sha256' => hash('sha256', $content)];
 	}
 
 	private function pdfAvailable(): bool {
 		return $this->conversionManager->hasProviders() || $this->euroOffice->isAvailable();
 	}
 
+	/** 0.89.0: Ist eine automatische PDF-Umwandlung verfügbar (Voraussetzung für die Unterschrift am Tablet)? */
+	public function pdfConversionAvailable(): bool {
+		return $this->pdfAvailable();
+	}
+
+	/** 0.89.0: Enthält die wirksame Vorlage „Bestattungsauftrag und Vollmacht“ das Feld für die Unterschrift am Tablet? */
+	public function orderTemplateSupportsSignature(array $case): bool {
+		$definition = $this->definition('BESTATTUNGSAUFTRAG', $case);
+		$templateFolder = $this->installationConfig->ensurePath($this->folders->baseFolder(), $this->installationConfig->templatesPath());
+		$template = $this->template($templateFolder, $definition['fileName'], (string)($definition['templateNamespace'] ?? ''), (bool)($definition['regionalTemplateRequired'] ?? false));
+		return self::docxContainsText((string)$template->getContent(), self::CLIENT_SIGNATURE_PLACEHOLDER);
+	}
+
+	/**
+	 * 0.89.0: Erzeugt den am Tablet unterschriebenen Bestattungsauftrag als nicht bearbeitbare PDF („Unterschrieben - R01“).
+	 * Das Unterschriftsbild ersetzt {{order.client_signature}}; Ort, Datum, Erklärungen und Annahme stammen aus den
+	 * Stammdaten des Falls (vorher von OrderSignatureService gesetzt).
+	 */
+	public function generateSignedOrder(array $case, string $signaturePng): array {
+		$size = @getimagesizefromstring($signaturePng);
+		if (!is_array($size) || (int)($size[2] ?? 0) !== IMAGETYPE_PNG || (int)$size[0] <= 0 || (int)$size[1] <= 0) {
+			throw new \InvalidArgumentException('Die Unterschrift wurde nicht als gültiges Bild übermittelt.');
+		}
+		$this->orderSignature = ['png' => $signaturePng, 'width' => (int)$size[0], 'height' => (int)$size[1]];
+		try {
+			$result = $this->generateTemplate($case, 'BESTATTUNGSAUFTRAG', 'FINAL', true, false, null, 0, null, 'Unterschrieben', false, false);
+		} finally {
+			$this->orderSignature = null;
+		}
+		$result['status'] = 'UNTERSCHRIEBEN';
+		return $result;
+	}
+
+	/** 0.89.0: Unterschriftsbild als eingebettetes Bild (Inline-Grafik) an die Stelle des Unterschriftsfelds setzen. */
+	private function embedOrderSignature(\ZipArchive $zip, string $xml): void {
+		$signature = $this->orderSignature;
+		if ($signature === null) {
+			return;
+		}
+		// Höchstens ca. 5,6 cm × 1,55 cm (EMU), Seitenverhältnis bleibt erhalten.
+		[$maxCx, $maxCy] = [2016000, 558000];
+		$ratio = $signature['width'] / $signature['height'];
+		[$cx, $cy] = $maxCx / $maxCy > $ratio ? [(int)round($maxCy * $ratio), $maxCy] : [$maxCx, (int)round($maxCx / $ratio)];
+		$drawing = '<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">'
+			. '<wp:extent cx="' . $cx . '" cy="' . $cy . '"/><wp:docPr id="4711" name="Unterschrift Auftraggeber/in"/>'
+			. '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+			. '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="bestatter-unterschrift.png"/><pic:cNvPicPr/></pic:nvPicPr>'
+			. '<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="' . self::SIGNATURE_REL_ID . '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+			. '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>'
+			. '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+		$count = 0;
+		$xml = (string)preg_replace_callback('#<w:r(?:\s[^>]*)?>(?:(?!</w:r>).)*?' . self::SIGNATURE_MARKER . '(?:(?!</w:r>).)*?</w:r>#s', static fn (): string => $drawing, $xml, -1, $count);
+		if ($count !== 1) {
+			throw new \InvalidArgumentException('Die Vorlage „Bestattungsauftrag und Vollmacht“ enthält kein Feld für die Unterschrift am Tablet (' . self::CLIENT_SIGNATURE_PLACEHOLDER . '). Bitte unter Customizing → Dokumentvorlagen die Standardfassung übernehmen oder das Feld in die eigene Vorlage einfügen.');
+		}
+		$rels = (string)$zip->getFromName('word/_rels/document.xml.rels');
+		if (!str_contains($rels, 'Id="' . self::SIGNATURE_REL_ID . '"')) {
+			$rels = str_replace('</Relationships>', '<Relationship Id="' . self::SIGNATURE_REL_ID . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/bestatter-unterschrift.png"/></Relationships>', $rels);
+		}
+		$types = (string)$zip->getFromName('[Content_Types].xml');
+		if (!preg_match('#<Default\b[^>]*Extension="png"#i', $types)) {
+			$types = str_replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>', $types);
+		}
+		$zip->addFromString('word/document.xml', $xml);
+		$zip->addFromString('word/_rels/document.xml.rels', $rels);
+		$zip->addFromString('[Content_Types].xml', $types);
+		$zip->addFromString(self::SIGNATURE_MEDIA, $signature['png']);
+	}
+
 	private function folder(Folder $parent, string $name): Folder {
 		$node = $parent->nodeExists($name) ? $parent->get($name) : $parent->newFolder($name);
-		if (!$node instanceof Folder) throw new \RuntimeException('„' . $name . '“ ist eine Datei, erwartet wird ein Ordner. Bitte die Datei umbenennen oder entfernen.');
+		if (!$node instanceof Folder) {
+			throw new \RuntimeException('„' . $name . '“ ist eine Datei, erwartet wird ein Ordner. Bitte die Datei umbenennen oder entfernen.');
+		}
 		return $node;
 	}
 
@@ -1292,11 +1832,15 @@ class DocumentService {
 		$namespace = trim(str_replace('\\', '/', $namespace), '/');
 		if ($namespace !== '') {
 			$relative = $namespace . '/' . $name;
-			if ($folder->nodeExists($relative)) return $folder->get($relative);
+			if ($folder->nodeExists($relative)) {
+				return $folder->get($relative);
+			}
 			$countrySource = __DIR__ . '/../../resources/templates/' . $relative;
 			if (is_file($countrySource)) {
 				$countryFolder = $this->installationConfig->ensurePath($folder, $namespace);
-				if (!$countryFolder->nodeExists($name)) $countryFolder->newFile($name, (string)file_get_contents($countrySource));
+				if (!$countryFolder->nodeExists($name)) {
+					$countryFolder->newFile($name, (string)file_get_contents($countrySource));
+				}
 				return $countryFolder->get($name);
 			}
 			if ($regionalTemplateRequired) {
@@ -1306,14 +1850,20 @@ class DocumentService {
 		$source = __DIR__ . '/../../resources/templates/' . $name;
 		if (!$folder->nodeExists($name)) {
 			$fallback = $this->condolenceTemplateFallback($folder, $name);
-			if ($fallback !== null) return $fallback;
+			if ($fallback !== null) {
+				return $fallback;
+			}
 		}
 		if (!$folder->nodeExists($name)) {
-			if (!is_file($source)) throw new \RuntimeException('Vorlage ' . $name . ' wurde weder im konfigurierten Vorlagenordner noch im App-Paket gefunden.');
+			if (!is_file($source)) {
+				throw new \RuntimeException('Vorlage ' . $name . ' wurde weder im konfigurierten Vorlagenordner noch im App-Paket gefunden.');
+			}
 			$folder->newFile($name, (string)file_get_contents($source));
 		}
 		$template = $folder->get($name);
-		if (!$template instanceof \OCP\Files\File) throw new \RuntimeException('Vorlage ' . $name . ' ist im Vorlagenordner keine Datei, sondern ein Ordner. Bitte umbenennen oder entfernen.');
+		if (!$template instanceof \OCP\Files\File) {
+			throw new \RuntimeException('Vorlage ' . $name . ' ist im Vorlagenordner keine Datei, sondern ein Ordner. Bitte umbenennen oder entfernen.');
+		}
 		$replaceableHashes = self::REPLACEABLE_STANDARD_TEMPLATE_HASHES[$name] ?? [];
 		if (is_file($source) && in_array(hash('sha256', (string)$template->getContent()), $replaceableHashes, true)) {
 			$template->putContent((string)file_get_contents($source));
@@ -1327,12 +1877,18 @@ class DocumentService {
 	private function condolenceTemplateFallback(Folder $folder, string $expectedName): mixed {
 		$deck = strtoupper($expectedName) === 'KONDOLENZLISTE_DECKBLATT.DOCX';
 		$list = strtoupper($expectedName) === 'KONDOLENZLISTE.DOCX';
-		if (!$deck && !$list) return null;
+		if (!$deck && !$list) {
+			return null;
+		}
 		foreach ($folder->getDirectoryListing() as $node) {
 			$name = mb_strtolower($node->getName());
-			if (!str_ends_with($name, '.docx') || !str_contains($name, 'kondolenz')) continue;
+			if (!str_ends_with($name, '.docx') || !str_contains($name, 'kondolenz')) {
+				continue;
+			}
 			$isDeck = str_contains($name, 'deck');
-			if (($deck && $isDeck) || ($list && !$isDeck)) return $node;
+			if (($deck && $isDeck) || ($list && !$isDeck)) {
+				return $node;
+			}
 		}
 		return null;
 	}
@@ -1351,20 +1907,32 @@ class DocumentService {
 		$media = [];
 		for ($i = 0; $i < $zip->numFiles; $i++) {
 			$name = (string)$zip->getNameIndex($i);
-			if (!str_starts_with($name, 'word/media/')) continue;
+			if (!str_starts_with($name, 'word/media/')) {
+				continue;
+			}
 			$bytes = $zip->getFromIndex($i);
-			if ($bytes !== false && BranchLogoService::isPlaceholder($bytes)) $media[] = $name;
+			if ($bytes !== false && BranchLogoService::isPlaceholder($bytes)) {
+				$media[] = $name;
+			}
 		}
 		$rels = [];
-		if ($media === []) return ['media' => [], 'rels' => []];
+		if ($media === []) {
+			return ['media' => [], 'rels' => []];
+		}
 		for ($i = 0; $i < $zip->numFiles; $i++) {
 			$name = (string)$zip->getNameIndex($i);
-			if (!preg_match('#^word/_rels/(.+)\.rels$#', $name, $match)) continue;
+			if (!preg_match('#^word/_rels/(.+)\.rels$#', $name, $match)) {
+				continue;
+			}
 			$xml = (string)$zip->getFromIndex($i);
 			preg_match_all('#<Relationship\b[^>]*>#', $xml, $tags);
 			foreach ($tags[0] as $tag) {
-				if (!preg_match('#\bId="([^"]+)"#', $tag, $id) || !preg_match('#\bTarget="([^"]+)"#', $tag, $target)) continue;
-				if (in_array('word/' . ltrim(str_replace('../', '', $target[1]), '/'), $media, true)) $rels['word/' . $match[1]][] = $id[1];
+				if (!preg_match('#\bId="([^"]+)"#', $tag, $id) || !preg_match('#\bTarget="([^"]+)"#', $tag, $target)) {
+					continue;
+				}
+				if (in_array('word/' . ltrim(str_replace('../', '', $target[1]), '/'), $media, true)) {
+					$rels['word/' . $match[1]][] = $id[1];
+				}
 			}
 		}
 		return ['media' => $media, 'rels' => $rels];
@@ -1372,15 +1940,26 @@ class DocumentService {
 
 	/** Passt die Größe der Bilder mit den Beziehungs-IDs an das Seitenverhältnis des Logos an (höchstens der Rahmen des Platzhalters). */
 	public static function fitImageExtents(string $xml, array $relIds, int $width, int $height): string {
-		if ($relIds === [] || $width <= 0 || $height <= 0) return $xml;
+		if ($relIds === [] || $width <= 0 || $height <= 0) {
+			return $xml;
+		}
 		$ratio = $width / $height;
 		return (string)preg_replace_callback('#<w:drawing>.*?</w:drawing>#s', static function (array $match) use ($relIds, $ratio): string {
 			$drawing = $match[0];
 			$hit = false;
-			foreach ($relIds as $id) if (str_contains($drawing, 'r:embed="' . $id . '"')) { $hit = true; break; }
-			if (!$hit || !preg_match('#<wp:extent cx="(\d+)" cy="(\d+)"#', $drawing, $box)) return $drawing;
+			foreach ($relIds as $id) {
+				if (str_contains($drawing, 'r:embed="' . $id . '"')) {
+					$hit = true;
+					break;
+				}
+			}
+			if (!$hit || !preg_match('#<wp:extent cx="(\d+)" cy="(\d+)"#', $drawing, $box)) {
+				return $drawing;
+			}
 			[$cx, $cy] = [(int)$box[1], (int)$box[2]];
-			if ($cx <= 0 || $cy <= 0) return $drawing;
+			if ($cx <= 0 || $cy <= 0) {
+				return $drawing;
+			}
 			[$newCx, $newCy] = $cx / $cy > $ratio ? [(int)round($cy * $ratio), $cy] : [$cx, (int)round($cx / $ratio)];
 			return str_replace(['cx="' . $cx . '" cy="' . $cy . '"'], ['cx="' . $newCx . '" cy="' . $newCy . '"'], $drawing);
 		}, $xml);
@@ -1388,21 +1967,30 @@ class DocumentService {
 
 	private function replaceDocx(string $content, array $values, array $services, ?string $embeddedPaymentQr = null, string $branchKey = ''): string {
 		$tmp = tempnam(sys_get_temp_dir(), 'bestatter-docx-');
-		if ($tmp === false) throw new \RuntimeException('Temporäre DOCX-Datei konnte nicht erstellt werden.');
+		if ($tmp === false) {
+			throw new \RuntimeException('Temporäre DOCX-Datei konnte nicht erstellt werden.');
+		}
 		file_put_contents($tmp, $content);
 		$zip = new \ZipArchive();
-		if ($zip->open($tmp) !== true) { @unlink($tmp); throw new \RuntimeException('DOCX-Vorlage konnte nicht geöffnet werden.'); }
+		if ($zip->open($tmp) !== true) {
+			@unlink($tmp);
+			throw new \RuntimeException('DOCX-Vorlage konnte nicht geöffnet werden.');
+		}
 		$paymentQrPlaceholderFound = false;
 		$logoPlaceholders = $this->logoPlaceholders($zip);
 		$logo = $logoPlaceholders['media'] !== [] && $branchKey !== '' ? $this->logos?->logo($branchKey) : null;
 		$logoSize = $logo !== null ? (array)getimagesizefromstring($logo) : [];
-		foreach ($logoPlaceholders['media'] as $mediaName) $zip->addFromString($mediaName, $logo ?? (string)file_get_contents(BranchLogoService::EMPTY_FILE));
+		foreach ($logoPlaceholders['media'] as $mediaName) {
+			$zip->addFromString($mediaName, $logo ?? (string)file_get_contents(BranchLogoService::EMPTY_FILE));
+		}
 		// Stornierte Positionen und Paket-Köpfe (Summenzeilen) gehören nicht in Beleg- und Steuerzeilen;
 		// die Paketzeile entsteht beim Druck aus ihren Unterpositionen.
-		$services = array_values(array_filter($services, static fn(array $service): bool => ($service['serviceStatus'] ?? '') !== 'STORNIERT' && empty($service['isPackageHeader'])));
+		$services = array_values(array_filter($services, static fn (array $service): bool => ($service['serviceStatus'] ?? '') !== 'STORNIERT' && empty($service['isPackageHeader'])));
 		for ($i = 0; $i < $zip->numFiles; $i++) {
 			$name = $zip->getNameIndex($i);
-			if (in_array($name, $logoPlaceholders['media'], true)) continue;
+			if (in_array($name, $logoPlaceholders['media'], true)) {
+				continue;
+			}
 			if (str_starts_with($name, 'word/media/') && $embeddedPaymentQr !== null) {
 				$media = $zip->getFromIndex($i);
 				$placeholder = __DIR__ . '/../../resources/payment-qr-placeholder.png';
@@ -1413,9 +2001,13 @@ class DocumentService {
 				}
 				continue;
 			}
-			if (!str_starts_with($name, 'word/') || !str_ends_with($name, '.xml')) continue;
+			if (!str_starts_with($name, 'word/') || !str_ends_with($name, '.xml')) {
+				continue;
+			}
 			$xml = $zip->getFromIndex($i);
-			if ($xml === false) continue;
+			if ($xml === false) {
+				continue;
+			}
 			if ($name === 'word/document.xml') {
 				$isEstimate = ($values['{{order.document_title}}'] ?? '') === 'Kostenvoranschlag';
 				$xml = $this->replaceServiceRows($xml, $services, $isEstimate);
@@ -1423,8 +2015,18 @@ class DocumentService {
 				$xml = $this->removeEmptyPassThroughSummary($xml, $services);
 				$xml = $this->removeEmptyPriorInvoiceSummary($xml, $values);
 			}
-			if ($logo !== null && isset($logoPlaceholders['rels'][$name])) $xml = self::fitImageExtents($xml, $logoPlaceholders['rels'][$name], (int)($logoSize[0] ?? 0), (int)($logoSize[1] ?? 0));
-			$zip->addFromString($name, $this->replaceTextPlaceholders($xml, $values));
+			if ($logo !== null && isset($logoPlaceholders['rels'][$name])) {
+				$xml = self::fitImageExtents($xml, $logoPlaceholders['rels'][$name], (int)($logoSize[0] ?? 0), (int)($logoSize[1] ?? 0));
+			}
+			$replaced = $this->replaceTextPlaceholders($xml, $values);
+			if ($name === 'word/document.xml') {
+				$documentXml = $replaced;
+			}
+			$zip->addFromString($name, $replaced);
+		}
+		// ZipArchive liefert bis zum Schließen den alten Inhalt – daher den ersetzten Text weiterreichen.
+		if ($this->orderSignature !== null) {
+			$this->embedOrderSignature($zip, $documentXml ?? (string)$zip->getFromName('word/document.xml'));
 		}
 		$zip->close();
 		if ($embeddedPaymentQr !== null && $embeddedPaymentQr !== '' && !$paymentQrPlaceholderFound) {
@@ -1441,17 +2043,27 @@ class DocumentService {
 
 	private function docxContainsMedia(string $content, string $expectedMedia): bool {
 		$tmp = tempnam(sys_get_temp_dir(), 'bestatter-docx-check-');
-		if ($tmp === false) return false;
+		if ($tmp === false) {
+			return false;
+		}
 		file_put_contents($tmp, $content);
 		$zip = new \ZipArchive();
-		if ($zip->open($tmp) !== true) { @unlink($tmp); return false; }
+		if ($zip->open($tmp) !== true) {
+			@unlink($tmp);
+			return false;
+		}
 		$expectedHash = hash('sha256', $expectedMedia);
 		$found = false;
 		for ($i = 0; $i < $zip->numFiles; $i++) {
 			$name = $zip->getNameIndex($i);
-			if (!str_starts_with($name, 'word/media/')) continue;
+			if (!str_starts_with($name, 'word/media/')) {
+				continue;
+			}
 			$media = $zip->getFromIndex($i);
-			if ($media !== false && hash_equals($expectedHash, hash('sha256', $media))) { $found = true; break; }
+			if ($media !== false && hash_equals($expectedHash, hash('sha256', $media))) {
+				$found = true;
+				break;
+			}
 		}
 		$zip->close();
 		@unlink($tmp);
@@ -1460,21 +2072,33 @@ class DocumentService {
 
 	private function replaceServiceRows(string $xml, array $services, bool $isEstimate = false): string {
 		$document = new \DOMDocument();
-		if (!@$document->loadXML($xml, LIBXML_NONET)) return $xml;
+		if (!@$document->loadXML($xml, LIBXML_NONET)) {
+			return $xml;
+		}
 		$xpath = new \DOMXPath($document);
 		$xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
 		$prototype = ['heading' => null, 'item' => null, 'subtotal' => null];
 		foreach ($xpath->query('//w:tr') ?: [] as $row) {
 			$text = '';
-			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) $text .= $node->nodeValue;
-			if (str_contains($text, '{{service.group_heading}}')) $prototype['heading'] = $row;
-			if (str_contains($text, '{{service.title}}')) $prototype['item'] = $row;
-			if (str_contains($text, '{{service.group_subtotal}}')) $prototype['subtotal'] = $row;
+			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) {
+				$text .= $node->nodeValue;
+			}
+			if (str_contains($text, '{{service.group_heading}}')) {
+				$prototype['heading'] = $row;
+			}
+			if (str_contains($text, '{{service.title}}')) {
+				$prototype['item'] = $row;
+			}
+			if (str_contains($text, '{{service.group_subtotal}}')) {
+				$prototype['subtotal'] = $row;
+			}
 		}
 		if ($prototype['heading'] !== null && $prototype['item'] !== null && $prototype['subtotal'] !== null) {
+			// 0.89.5: Im Auftrag heißen Blöcke mit Schätzbeträgen oder Gebühren nach Bescheid „voraussichtlich“ wie im Kostenvoranschlag.
+			$open = PriceTerms::summary($services)['openByType'];
 			$labels = $isEstimate
 				? ['EL' => 'Eigene Leistungen – verbindliche Angebotspreise', 'FK' => 'Voraussichtliche Fremdleistungen und Fremdkosten', 'DP' => 'Voraussichtliche Gebühren und durchlaufende Posten']
-				: ['EL' => 'Eigene Leistungen', 'FK' => 'Fremdleistungen', 'DP' => 'Verauslagte Beträge – durchlaufende Posten ohne Umsatzsteuer'];
+				: ['EL' => 'Eigene Leistungen', 'FK' => $open['FK'] ? 'Voraussichtliche Fremdleistungen und Fremdkosten' : 'Fremdleistungen', 'DP' => $open['DP'] ? 'Voraussichtliche Gebühren und durchlaufende Posten' : 'Verauslagte Beträge – durchlaufende Posten ohne Umsatzsteuer'];
 			$labels = ['PK' => $isEstimate ? 'Bestattungspakete – verbindliche Angebotspreise' : 'Bestattungspakete'] + $labels;
 			$groups = ['PK' => [], 'EL' => [], 'FK' => [], 'DP' => []];
 			foreach ($this->printableServiceRows($services) as $service) {
@@ -1484,8 +2108,13 @@ class DocumentService {
 			$anchor = $prototype['heading'];
 			$parent = $anchor->parentNode;
 			foreach ($groups as $type => $items) {
-				$subtotal = array_sum(array_map(static fn(array $item): int => (int)($item['subtotalGrossCents'] ?? $item['grossCents'] ?? 0), $items));
-				if ($items === [] || $subtotal === 0) continue;
+				$subtotal = array_sum(array_map(static fn (array $item): int => (int)($item['subtotalGrossCents'] ?? $item['grossCents'] ?? 0), $items));
+				$markers = array_map(static fn (array $item): string => PriceTerms::marker($item), $items);
+				$hasNotice = in_array('NOTICE', $markers, true);
+				// Gebühren nach Bescheid (noch 0,00 €) bleiben sichtbar, statt mit dem leeren Block zu verschwinden.
+				if ($items === [] || ($subtotal === 0 && !$hasNotice)) {
+					continue;
+				}
 				$heading = $prototype['heading']->cloneNode(true);
 				$this->replacePlaceholdersInNode($xpath, $heading, ['{{service.group_heading}}' => $labels[$type]], false);
 				$parent->insertBefore($heading, $anchor);
@@ -1495,18 +2124,26 @@ class DocumentService {
 					$parent->insertBefore($item, $anchor);
 				}
 				$subtotalRow = $prototype['subtotal']->cloneNode(true);
-				$this->replacePlaceholdersInNode($xpath, $subtotalRow, ['{{service.group_subtotal}}' => 'Zwischensumme ' . $labels[$type], '{{service.group_subtotal_amount}}' => $this->money($subtotal)], false);
+				$this->replacePlaceholdersInNode($xpath, $subtotalRow, ['{{service.group_subtotal}}' => 'Zwischensumme ' . $labels[$type], '{{service.group_subtotal_amount}}' => PriceTerms::total($this->money($subtotal), $subtotal, in_array('ESTIMATE', $markers, true), $hasNotice)], false);
 				$parent->insertBefore($subtotalRow, $anchor);
 			}
-			foreach ($prototype as $row) $row->parentNode?->removeChild($row);
+			foreach ($prototype as $row) {
+				$row->parentNode?->removeChild($row);
+			}
 			return (string)$document->saveXML();
 		}
 		foreach ($xpath->query('//w:tr') ?: [] as $row) {
 			$text = '';
-			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) $text .= $node->nodeValue;
-			if (!str_contains($text, '{{service.title}}')) continue;
+			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) {
+				$text .= $node->nodeValue;
+			}
+			if (!str_contains($text, '{{service.title}}')) {
+				continue;
+			}
 			$parent = $row->parentNode;
-			if ($parent === null) continue;
+			if ($parent === null) {
+				continue;
+			}
 			$sourceRows = $services !== [] ? $this->printableServiceRows($services) : [['articleNumber' => '', 'title' => 'Keine Leistungen beauftragt', 'quantity' => 0, 'unit' => 'STK', 'unitPriceCents' => 0, 'vatRate' => 0, 'netCents' => 0, 'grossCents' => 0, 'sourcePackageName' => '']];
 			foreach ($sourceRows as $position => $service) {
 				$clone = $row->cloneNode(true);
@@ -1521,12 +2158,14 @@ class DocumentService {
 
 	private function serviceReplacements(array $service, int $position): array {
 		$hide = !empty($service['hidePrices']);
+		// 0.89.5: Schätzbetrag „ca. …“, Gebühr ohne Betrag „nach Bescheid“.
+		$marker = PriceTerms::marker($service);
 		return [
 			'{{service.position}}' => (string)($service['positionLabel'] ?? $service['position'] ?? $service['articleNumber'] ?? (($position + 1) * 10)), '{{service.article_number}}' => (string)($service['articleNumber'] ?? ''),
 			'{{service.title}}' => (string)($service['title'] ?? ''), '{{service.quantity}}' => trim($this->number((float)($service['quantity'] ?? 0)) . ' ' . $this->unitLabel((string)($service['unit'] ?? 'STK'))),
-			'{{service.unit_price}}' => $hide ? '' : $this->money((int)($service['unitPriceCents'] ?? 0)),
+			'{{service.unit_price}}' => $hide ? '' : PriceTerms::amount($this->money((int)($service['unitPriceCents'] ?? 0)), $marker),
 			'{{service.vat_rate}}' => $hide ? '' : (string)($service['vatLabel'] ?? ((string)($service['vatRate'] ?? 0) . ' %')),
-			'{{service.net}}' => $hide ? '' : $this->money((int)($service['netCents'] ?? 0)), '{{service.gross}}' => $hide ? '' : $this->money((int)($service['grossCents'] ?? 0)),
+			'{{service.net}}' => $hide ? '' : PriceTerms::amount($this->money((int)($service['netCents'] ?? 0)), $marker), '{{service.gross}}' => $hide ? '' : PriceTerms::amount($this->money((int)($service['grossCents'] ?? 0)), $marker),
 			'{{service.package}}' => (string)(($service['packageTitle'] ?? '') !== '' ? $service['packageTitle'] : ($service['sourcePackageName'] ?? '')),
 		];
 	}
@@ -1541,7 +2180,9 @@ class DocumentService {
 		$byPackage = [];
 		foreach ($services as $service) {
 			$package = (int)($service['packageServiceId'] ?? 0);
-			if ($package > 0) $byPackage[$package][] = $service;
+			if ($package > 0) {
+				$byPackage[$package][] = $service;
+			}
 		}
 		$rows = [];
 		$done = [];
@@ -1551,21 +2192,25 @@ class DocumentService {
 				$rows[] = $service + ['blockType' => strtoupper((string)($service['positionType'] ?? 'EL')), 'subtotalGrossCents' => (int)($service['grossCents'] ?? 0)];
 				continue;
 			}
-			if (isset($done[$package])) continue;
+			if (isset($done[$package])) {
+				continue;
+			}
 			$done[$package] = true;
 			$children = $byPackage[$package];
 			$mode = (string)($children[0]['printMode'] ?? '') ?: 'ITEMS_NO_PRICES';
-			$sum = static fn(string $key): int => array_sum(array_map(static fn(array $child): int => (int)($child[$key] ?? 0), $children));
-			$rates = array_values(array_unique(array_map(static fn(array $child): int => (int)($child['vatRate'] ?? 0), $children)));
+			$sum = static fn (string $key): int => array_sum(array_map(static fn (array $child): int => (int)($child[$key] ?? 0), $children));
+			$rates = array_values(array_unique(array_map(static fn (array $child): int => (int)($child['vatRate'] ?? 0), $children)));
 			$net = $sum('netCents');
 			$rows[] = [
 				'position' => (int)($children[0]['packagePosition'] ?? 0), 'positionLabel' => (string)($children[0]['packagePosition'] ?? ''), 'articleNumber' => '',
 				'title' => (string)($children[0]['packageTitle'] ?? 'Paket'), 'quantity' => 1.0, 'unit' => 'PAUSCHAL', 'unitPriceCents' => $net,
-				'vatRate' => $rates[0] ?? 0, 'vatLabel' => count($rates) > 1 ? implode(' / ', array_map(static fn(int $rate): string => $rate . ' %', $rates)) : null,
+				'vatRate' => $rates[0] ?? 0, 'vatLabel' => count($rates) > 1 ? implode(' / ', array_map(static fn (int $rate): string => $rate . ' %', $rates)) : null,
 				'netCents' => $net, 'vatCents' => $sum('vatCents'), 'grossCents' => $sum('grossCents'), 'positionType' => 'EL', 'sourcePackageName' => '',
 				'blockType' => 'PK', 'subtotalGrossCents' => $sum('grossCents'), 'isPackageRow' => true,
 			];
-			if ($mode === 'HEADER_ONLY') continue;
+			if ($mode === 'HEADER_ONLY') {
+				continue;
+			}
 			foreach ($children as $child) {
 				$rows[] = $child + [
 					'blockType' => 'PK', 'subtotalGrossCents' => 0, 'hidePrices' => $mode !== 'ITEMS_WITH_PRICES',
@@ -1578,16 +2223,24 @@ class DocumentService {
 
 	private function replaceInvoiceTaxRows(string $xml, array $services): string {
 		$document = new \DOMDocument();
-		if (!@$document->loadXML($xml, LIBXML_NONET)) return $xml;
+		if (!@$document->loadXML($xml, LIBXML_NONET)) {
+			return $xml;
+		}
 		$xpath = new \DOMXPath($document);
 		$xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
 		foreach ($xpath->query('//w:tr') ?: [] as $row) {
 			$text = '';
-			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) $text .= $node->nodeValue;
-			if (!str_contains($text, '{{tax.rate}}')) continue;
+			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) {
+				$text .= $node->nodeValue;
+			}
+			if (!str_contains($text, '{{tax.rate}}')) {
+				continue;
+			}
 			$groups = [];
 			foreach ($services as $service) {
-				if (strtoupper((string)($service['positionType'] ?? 'EL')) === 'DP') continue;
+				if (strtoupper((string)($service['positionType'] ?? 'EL')) === 'DP') {
+					continue;
+				}
 				$rate = (int)($service['vatRate'] ?? 0);
 				$groups[$rate] ??= ['net' => 0, 'vat' => 0];
 				$groups[$rate]['net'] += (int)($service['netCents'] ?? 0);
@@ -1596,7 +2249,9 @@ class DocumentService {
 			ksort($groups, SORT_NUMERIC);
 			$parent = $row->parentNode;
 			foreach ($groups as $rate => $amounts) {
-				if ($amounts['net'] === 0 && $amounts['vat'] === 0) continue;
+				if ($amounts['net'] === 0 && $amounts['vat'] === 0) {
+					continue;
+				}
 				$clone = $row->cloneNode(true);
 				$this->replacePlaceholdersInNode($xpath, $clone, ['{{tax.rate}}' => $rate . ' %', '{{tax.net}}' => $this->money($amounts['net']), '{{tax.vat}}' => $this->money($amounts['vat'])], false);
 				$parent->insertBefore($clone, $row);
@@ -1607,30 +2262,46 @@ class DocumentService {
 	}
 
 	private function removeEmptyPassThroughSummary(string $xml, array $services): string {
-		$passThrough = array_sum(array_map(static fn(array $item): int => strtoupper((string)($item['positionType'] ?? 'EL')) === 'DP' ? (int)($item['grossCents'] ?? 0) : 0, $services));
-		if ($passThrough !== 0) return $xml;
+		$passThrough = array_sum(array_map(static fn (array $item): int => strtoupper((string)($item['positionType'] ?? 'EL')) === 'DP' ? (int)($item['grossCents'] ?? 0) : 0, $services));
+		if ($passThrough !== 0 || PriceTerms::summary($services)['noticeByType']['DP']) {
+			return $xml;
+		}
 		$document = new \DOMDocument();
-		if (!@$document->loadXML($xml, LIBXML_NONET)) return $xml;
+		if (!@$document->loadXML($xml, LIBXML_NONET)) {
+			return $xml;
+		}
 		$xpath = new \DOMXPath($document);
 		$xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
 		foreach ($xpath->query('//w:tr') ?: [] as $row) {
 			$text = '';
-			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) $text .= $node->nodeValue;
-			if (str_contains($text, '{{order.pass_through_total}}')) $row->parentNode?->removeChild($row);
+			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) {
+				$text .= $node->nodeValue;
+			}
+			if (str_contains($text, '{{order.pass_through_total}}')) {
+				$row->parentNode?->removeChild($row);
+			}
 		}
 		return (string)$document->saveXML();
 	}
 
 	private function removeEmptyPriorInvoiceSummary(string $xml, array $values): string {
-		if (($values['{{case.invoice_has_prior}}'] ?? '0') === '1') return $xml;
+		if (($values['{{case.invoice_has_prior}}'] ?? '0') === '1') {
+			return $xml;
+		}
 		$document = new \DOMDocument();
-		if (!@$document->loadXML($xml, LIBXML_NONET)) return $xml;
+		if (!@$document->loadXML($xml, LIBXML_NONET)) {
+			return $xml;
+		}
 		$xpath = new \DOMXPath($document);
 		$xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
 		foreach ($xpath->query('//w:tr') ?: [] as $row) {
 			$text = '';
-			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) $text .= $node->nodeValue;
-			if (str_contains($text, '{{case.invoice_prior_gross}}')) $row->parentNode?->removeChild($row);
+			foreach ($xpath->query('.//w:t', $row) ?: [] as $node) {
+				$text .= $node->nodeValue;
+			}
+			if (str_contains($text, '{{case.invoice_prior_gross}}')) {
+				$row->parentNode?->removeChild($row);
+			}
 		}
 		return (string)$document->saveXML();
 	}
@@ -1645,7 +2316,9 @@ class DocumentService {
 	private function replaceTextPlaceholders(string $xml, array $values): string {
 		$document = new \DOMDocument();
 		$document->preserveWhiteSpace = true;
-		if (!@$document->loadXML($xml, LIBXML_NONET)) return $xml;
+		if (!@$document->loadXML($xml, LIBXML_NONET)) {
+			return $xml;
+		}
 		$xpath = new \DOMXPath($document);
 		$xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
 		$this->replacePlaceholdersInNode($xpath, $document, $values, true);
@@ -1661,10 +2334,14 @@ class DocumentService {
 				$textNodes[] = $node;
 				$text .= (string)$node->nodeValue;
 			}
-			if ($textNodes === [] || !str_contains($text, '{{')) continue;
+			if ($textNodes === [] || !str_contains($text, '{{')) {
+				continue;
+			}
 			preg_match_all('/\{\{[^{}]+\}\}/u', $text, $matches, PREG_OFFSET_CAPTURE);
 			foreach (array_reverse($matches[0] ?? []) as [$placeholder, $offset]) {
-				if (!array_key_exists($placeholder, $values) && !$blankUnknown) continue;
+				if (!array_key_exists($placeholder, $values) && !$blankUnknown) {
+					continue;
+				}
 				$replacement = array_key_exists($placeholder, $values) ? (string)$values[$placeholder] : $this->formattedPlaceholder($placeholder, $values);
 				$this->replaceTextRange($textNodes, (int)$offset, strlen((string)$placeholder), $replacement);
 			}
@@ -1674,7 +2351,10 @@ class DocumentService {
 	private function replaceTextRange(array $nodes, int $start, int $length, string $replacement): void {
 		$end = $start + $length;
 		$cursor = 0;
-		$startIndex = null; $endIndex = null; $startLocal = 0; $endLocal = 0;
+		$startIndex = null;
+		$endIndex = null;
+		$startLocal = 0;
+		$endLocal = 0;
 		foreach ($nodes as $index => $node) {
 			$nodeLength = strlen((string)$node->nodeValue);
 			$next = $cursor + $nodeLength;
@@ -1689,7 +2369,9 @@ class DocumentService {
 			}
 			$cursor = $next;
 		}
-		if ($startIndex === null || $endIndex === null) return;
+		if ($startIndex === null || $endIndex === null) {
+			return;
+		}
 		$startValue = (string)$nodes[$startIndex]->nodeValue;
 		if ($startIndex === $endIndex) {
 			$this->setTextNodeContent($nodes[$startIndex], substr($startValue, 0, $startLocal) . $replacement . substr($startValue, $endLocal));
@@ -1698,37 +2380,58 @@ class DocumentService {
 		}
 		$endValue = (string)$nodes[$endIndex]->nodeValue;
 		$this->setTextNodeContent($nodes[$startIndex], substr($startValue, 0, $startLocal) . $replacement);
-		for ($index = $startIndex + 1; $index < $endIndex; $index++) $this->setTextNodeContent($nodes[$index], '');
+		for ($index = $startIndex + 1; $index < $endIndex; $index++) {
+			$this->setTextNodeContent($nodes[$index], '');
+		}
 		$this->setTextNodeContent($nodes[$endIndex], substr($endValue, $endLocal));
 		$this->preserveTextWhitespace($nodes[$startIndex]);
 		$this->preserveTextWhitespace($nodes[$endIndex]);
 	}
 
 	private function setTextNodeContent(\DOMNode $node, string $value): void {
-		while ($node->firstChild !== null) $node->removeChild($node->firstChild);
+		while ($node->firstChild !== null) {
+			$node->removeChild($node->firstChild);
+		}
 		$node->appendChild($node->ownerDocument->createTextNode($value));
 	}
 
 	private function preserveTextWhitespace(\DOMNode $node): void {
 		$value = (string)$node->nodeValue;
-		if ($node instanceof \DOMElement && $value !== trim($value)) $node->setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+		if ($node instanceof \DOMElement && $value !== trim($value)) {
+			$node->setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+		}
 	}
 
 	private function placeholderData(array $case, array $costing): array {
 		$m = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$branch = $this->configuration->branchByKey((string)($case['branch'] ?? $m['branch'] ?? '')) ?? [];
 		$values = [];
-		foreach ($m as $key => $raw) if (is_scalar($raw) || $raw === null) $values['{{case.' . $key . '}}'] = $this->formatDocumentScalar((string)($raw ?? ''));
-		$value = static fn(string $key, string $fallback = ''): string => (string)($m[$key] ?? $fallback);
+		foreach ($m as $key => $raw) {
+			if (is_scalar($raw) || $raw === null) {
+				$values['{{case.' . $key . '}}'] = $this->formatDocumentScalar((string)($raw ?? ''));
+			}
+		}
+		$value = static fn (string $key, string $fallback = ''): string => (string)($m[$key] ?? $fallback);
 		$isEstimate = strtoupper($value('order_mode', 'A')) === 'KVA';
+		$kind = (string)($case['caseKind'] ?? CaseKinds::DEATH);
 		$taxableNetFromItems = 0;
 		$passThroughFromItems = 0;
 		foreach (($costing['items'] ?? []) as $item) {
-			if (($item['serviceStatus'] ?? '') === 'STORNIERT' || !empty($item['isPackageHeader'])) continue;
-			if (strtoupper((string)($item['positionType'] ?? 'EL')) === 'DP') $passThroughFromItems += (int)($item['grossCents'] ?? 0);
-			else $taxableNetFromItems += (int)($item['netCents'] ?? 0);
+			if (($item['serviceStatus'] ?? '') === 'STORNIERT' || !empty($item['isPackageHeader'])) {
+				continue;
+			}
+			if (strtoupper((string)($item['positionType'] ?? 'EL')) === 'DP') {
+				$passThroughFromItems += (int)($item['grossCents'] ?? 0);
+			} else {
+				$taxableNetFromItems += (int)($item['netCents'] ?? 0);
+			}
 		}
-		if (($costing['items'] ?? []) === []) $taxableNetFromItems = (int)($costing['totals']['netCents'] ?? 0);
+		if (($costing['items'] ?? []) === []) {
+			$taxableNetFromItems = (int)($costing['totals']['netCents'] ?? 0);
+		}
+		// 0.89.5: Schätzbeträge und Gebühren nach Bescheid (Preisart der Positionen).
+		$priceSummary = PriceTerms::summary($costing['items'] ?? []);
+		$noticeOpen = $priceSummary['noticeTitles'] !== [];
 		$lastResidence = trim(implode(', ', array_filter([$value('last_residence_street', $value('last_residence')), trim($value('last_residence_postal_code') . ' ' . $value('last_residence_city')), $value('last_residence_country', 'Deutschland')])));
 		$overrides = [
 			'{{case.id}}' => (string)$case['caseNumber'], '{{case.case_number}}' => (string)$case['caseNumber'], '{{case.number}}' => (string)$case['caseNumber'],
@@ -1759,38 +2462,106 @@ class DocumentService {
 			'{{order.urkunden_gebuehrenpflichtig}}' => $value('urkunden_gebuehrenpflichtig', '0'),
 			// 0.75.2: Ort der Niederlassung statt ihres internen Schlüssels (vorher „LINDENHOF, 01.10.2026“).
 			'{{ort_datum}}' => trim((trim((string)($branch['city'] ?? '')) ?: $value('branch')) . ', ' . date('d.m.Y'), ', '),
-			'{{order.document_title}}' => $isEstimate ? 'Kostenvoranschlag' : 'Bestattungsauftrag',
-			'{{order.confirmation_text}}' => $isEstimate ? 'Dieser Kostenvoranschlag stellt die ausgewählten Bestattungsleistungen sowie die zum Erstellungsdatum voraussichtlich anfallenden Kosten dar.' : 'Ich beauftrage das Bestattungsunternehmen mit den abgestimmten Bestattungsleistungen und bestätige die Angaben dieses Auftrags.',
-			'{{order.services_heading}}' => $isEstimate ? 'Voraussichtliche Leistungen und Kosten' : 'Beauftragte Leistungen und Kosten',
-			'{{order.cost_note}}' => $isEstimate
+			'{{order.document_title}}' => self::orderDocumentTitle($kind, $isEstimate),
+			'{{order.confirmation_text}}' => match (true) {
+				$kind === CaseKinds::PRECARE && $isEstimate => 'Dieses Angebot stellt die gewünschten Bestattungsleistungen sowie die zum Erstellungsdatum voraussichtlich anfallenden Kosten dar.',
+				$kind === CaseKinds::PRECARE => 'Ich vereinbare mit dem Bestattungsunternehmen die nachstehenden Leistungen für meine spätere Bestattung und bestätige die Angaben dieses Vertrags.',
+				$isEstimate => 'Dieser Kostenvoranschlag stellt die ausgewählten Leistungen sowie die zum Erstellungsdatum voraussichtlich anfallenden Kosten dar.',
+				$kind === CaseKinds::ORDER => 'Ich beauftrage das Bestattungsunternehmen mit den abgestimmten Leistungen und bestätige die Angaben dieses Auftrags.',
+				default => 'Ich beauftrage das Bestattungsunternehmen mit den abgestimmten Bestattungsleistungen und bestätige die Angaben dieses Auftrags.',
+			},
+			'{{order.services_heading}}' => $kind === CaseKinds::PRECARE ? ($isEstimate ? 'Gewünschte Leistungen und voraussichtliche Kosten' : 'Vereinbarte Leistungen und Kosten') : ($isEstimate ? 'Voraussichtliche Leistungen und Kosten' : 'Beauftragte Leistungen und Kosten'),
+			'{{case.order_type_label}}' => (string)($case['orderTypeLabel'] ?? ''), '{{case.kind_label}}' => CaseKinds::label($kind),
+			'{{order.cost_note}}' => trim(($isEstimate
 				? 'Die Preise unserer eigenen Leistungen sind bis zum ausgewiesenen Gültigkeitsdatum verbindlich, sofern Art und Umfang der aufgeführten Leistungen unverändert bleiben. Beträge für Fremdleistungen und Fremdkosten sind Schätzbeträge, soweit sie nicht ausdrücklich als Festpreis bezeichnet sind; Preisänderungen Dritter können den Endbetrag verändern. Durchlaufende Posten werden in der tatsächlich verauslagten Höhe weitergegeben. Sobald eine wesentliche Kostenabweichung erkennbar wird, informieren wir den Auftraggeber unverzüglich.'
-				: 'Die Einzelpreise verstehen sich netto. Die ausgewiesene Gesamtsumme enthält die gesetzliche Mehrwertsteuer. Fremdleistungen, Auslagen und Gebühren werden entsprechend ihrer vertraglichen und steuerlichen Behandlung dargestellt.',
+				: 'Die Einzelpreise verstehen sich netto. Die ausgewiesene Gesamtsumme enthält die gesetzliche Mehrwertsteuer. Fremdleistungen, Auslagen und Gebühren werden entsprechend ihrer vertraglichen und steuerlichen Behandlung dargestellt.') . ' ' . PriceTerms::costNoteSuffix($priceSummary, fn (int $cents): string => $this->money($cents))),
+			'{{order.price_terms}}' => PriceTerms::priceTerms($priceSummary, PriceTerms::threshold($this->config)),
 			'{{order.tax_heading}}' => $isEstimate ? 'Voraussichtliche Umsatzsteuerübersicht' : 'Umsatzsteuerübersicht',
 			'{{order.taxable_net_label}}' => $isEstimate ? 'Voraussichtliches steuerpflichtiges Entgelt netto' : 'Steuerpflichtiges Entgelt netto',
 			'{{order.total_vat_label}}' => $isEstimate ? 'Voraussichtliche Mehrwertsteuer' : 'Mehrwertsteuer',
-			'{{order.pass_through_label}}' => $isEstimate ? 'Voraussichtliche durchlaufende Posten' : 'Durchlaufende Posten',
-			'{{order.total_gross_label}}' => $isEstimate ? 'Voraussichtlicher Gesamtbetrag' : 'Gesamtbetrag',
+			'{{order.pass_through_label}}' => $isEstimate || $priceSummary['openByType']['DP'] ? 'Voraussichtliche durchlaufende Posten' : 'Durchlaufende Posten',
+			'{{order.total_gross_label}}' => $isEstimate || $priceSummary['open'] ? 'Voraussichtlicher Gesamtbetrag' : 'Gesamtbetrag',
 			'{{order.status}}' => $value('order_status', 'Entwurf'),
-			'{{order.workflow_detail}}' => $isEstimate ? $value('kva_valid_until') : $value('commissioning_type'),
+			'{{order.workflow_detail}}' => $isEstimate ? $this->formatDocumentDate($value('kva_valid_until')) : $value('commissioning_type'),
 			'{{order.kva_number}}' => $value('order_number', $value('kva_number')),
 			'{{order.kva_date}}' => $this->formatDocumentDate($isEstimate ? $value('kva_date') : $value('order_date')),
-			'{{order.order_client_name}}' => trim($value('order_client_first_name') . ' ' . $value('order_client_name')),
+			// 0.89.7: Firmenkunden – Firma vor der Person
+			'{{order.order_client_name}}' => trim(implode(', ', array_filter([$value('order_client_company'), trim($value('order_client_first_name') . ' ' . $value('order_client_name'))]))),
+			'{{order.client_company}}' => $value('order_client_company'), '{{order.client_vat_id}}' => $value('order_client_vat_id'),
 			'{{order.order_client_relation}}' => $value('order_client_relation'),
 			'{{order.order_client_phone}}' => $value('order_client_phone'), '{{order.order_client_mobile}}' => $value('order_client_mobile'),
 			'{{order.order_client_email}}' => $value('order_client_email'),
-			'{{order.invoice_recipient_address}}' => $value('invoice_recipient_address', trim(implode(', ', array_filter([$value('invoice_first_name', $value('order_client_first_name')), $value('invoice_name', $value('order_client_name')), $value('invoice_street', $value('order_client_street')), $value('invoice_postal_city', $value('order_client_postal_city')), $value('invoice_country', $value('order_client_country', 'Deutschland'))])))),
+			'{{order.invoice_recipient_address}}' => $value('invoice_recipient_address', trim(implode(', ', array_filter([strtoupper($value('invoice_same_as_client', 'JA')) === 'NEIN' ? $value('invoice_company') : $value('order_client_company'), $value('invoice_first_name', $value('order_client_first_name')), $value('invoice_name', $value('order_client_name')), $value('invoice_street', $value('order_client_street')), $value('invoice_postal_city', $value('order_client_postal_city')), $value('invoice_country', $value('order_client_country', 'Deutschland'))])))),
 			'{{order.certificate_free_count}}' => $value('certificate_free_count', '2'),
 			'{{order.order_signature_name}}' => $value('order_signature_name'), '{{order.order_signature_date}}' => $this->formatDocumentDate($value('order_signature_date')),
 			'{{order.total_net}}' => $this->money((int)($costing['totals']['netCents'] ?? 0)),
 			'{{order.total_vat}}' => $this->money((int)($costing['totals']['vatCents'] ?? 0)),
-			'{{order.total_gross}}' => $this->money((int)($costing['totals']['grossCents'] ?? 0)),
+			'{{order.total_gross}}' => PriceTerms::total($this->money((int)($costing['totals']['grossCents'] ?? 0)), (int)($costing['totals']['grossCents'] ?? 0), false, $noticeOpen),
 			'{{order.taxable_net}}' => $this->money((int)($costing['invoiceTaxableNetCents'] ?? $taxableNetFromItems)),
-			'{{order.pass_through_total}}' => $this->money((int)($costing['invoicePassThroughCents'] ?? $passThroughFromItems)),
+			'{{order.pass_through_total}}' => PriceTerms::total($this->money((int)($costing['invoicePassThroughCents'] ?? $passThroughFromItems)), (int)($costing['invoicePassThroughCents'] ?? $passThroughFromItems), false, $priceSummary['noticeByType']['DP']),
 		];
 		$overrides += $this->orderPowerOfAttorneyValues($case, $m, $branch, $costing);
+		// 0.89.7 (Schritt C): Vorsorgevertrag – Preisart, Vertragsdatum, Wiedervorlage und Finanzierungen.
+		if ($kind === CaseKinds::PRECARE) {
+			$overrides += $this->precareValues((int)($case['id'] ?? 0), $m);
+		}
 		// 0.76.0: {{marker}} und {{marker.SCHLUESSEL}}
 		$labelValues = $this->labels !== null && (int)($case['id'] ?? 0) > 0 ? $this->labels->placeholderValues((int)$case['id']) : [];
 		return array_merge($values, $overrides, $labelValues);
+	}
+
+	/**
+	 * 0.89.7 (Schritt D): Sterbefall aus einer Vorsorge – Hinweis in der Rechnung, dass ein Teil voraussichtlich aus der
+	 * Vorsorge (Treuhand, Sterbegeldversicherung) beglichen wird. Keine Verrechnung, nur der Hinweis.
+	 */
+	private function precarePaymentNote(array $case): string {
+		$originId = (int)($case['originCaseId'] ?? 0);
+		if ($originId <= 0 || $this->precare === null || ($case['caseKind'] ?? CaseKinds::DEATH) !== CaseKinds::DEATH) {
+			return '';
+		}
+		try {
+			$fundings = $this->precare->fundings($originId);
+		} catch (\Throwable) {
+			return '';
+		}
+		$parts = [];
+		foreach ($fundings as $funding) {
+			if (!in_array($funding['status'], ['BEANTRAGT', 'AKTIV', 'AUSGEZAHLT'], true) || !in_array($funding['fundingType'], ['TREUHAND', 'STERBEGELD', 'VERPFAENDUNG'], true)) {
+				continue;
+			}
+			$parts[] = trim(implode(' ', array_filter([(string)$funding['fundingTypeLabel'], (string)$funding['providerName'], $funding['contractNumber'] !== '' ? '(Vertrag ' . $funding['contractNumber'] . ')' : ''])));
+		}
+		return $parts === [] ? '' : 'Hinweis: Ein Teil des Betrags wird voraussichtlich aus der Bestattungsvorsorge beglichen: ' . implode('; ', $parts) . '.';
+	}
+
+	/** @return array<string, string> Platzhalter {{precare.*}} des Vorsorgevertrags */
+	private function precareValues(int $caseId, array $master = []): array {
+		$precare = null;
+		try {
+			$precare = $caseId > 0 ? $this->precare?->forCase($caseId) : null;
+		} catch (\Throwable) {
+			$precare = null;
+		}
+		if ($precare === null) {
+			return [];
+		}
+		$fundings = array_map(fn (array $funding): string => trim(implode(', ', array_filter([(string)$funding['fundingTypeLabel'], (string)$funding['providerName'], $funding['contractNumber'] !== '' ? 'Vertrag ' . $funding['contractNumber'] : '', $funding['amountCents'] !== null ? $this->money((int)$funding['amountCents']) : '', (string)$funding['statusLabel']]))), (array)$precare['fundings']);
+		$guaranteed = ($precare['priceMode'] ?? '') === 'GUARANTEED';
+		return [
+			'{{precare.status}}' => (string)$precare['statusLabel'],
+			'{{precare.ceremony}}' => match ((string)($master['with_funeral_ceremony'] ?? '')) {
+				'1' => 'mit Trauerfeier', '0' => 'ohne Trauerfeier', default => 'noch offen'
+			},
+			'{{precare.contract_date}}' => $this->formatDocumentDate((string)$precare['contractDate']),
+			'{{precare.price_mode}}' => (string)$precare['priceModeLabel'],
+			'{{precare.price_terms}}' => $guaranteed
+				? 'Preisgarantie: Die vereinbarten Preise der eigenen Leistungen des Bestattungsunternehmens gelten auch zum Zeitpunkt der Ausführung. Fremdleistungen, Gebühren und durchlaufende Posten werden in der dann gültigen Höhe abgerechnet.'
+				: 'Abgerechnet werden die Preise zum Zeitpunkt der Ausführung. Die vorstehende Aufstellung gibt die heutigen Preise wieder; Änderungen bis zur Ausführung sind möglich.',
+			'{{precare.review_interval}}' => (string)(int)$precare['reviewIntervalMonths'] . ' Monate',
+			'{{precare.next_review}}' => $this->formatDocumentDate((string)$precare['nextReviewAt']),
+			'{{precare.fundings}}' => $fundings !== [] ? implode('; ', $fundings) : 'Keine Finanzierung erfasst (Selbstzahler bzw. Regelung durch die Erben).',
+			'{{precare.funding_total}}' => $this->money((int)$precare['fundingTotalCents']),
+		];
 	}
 
 	/**
@@ -1800,25 +2571,18 @@ class DocumentService {
 	 * @return array<string, string>
 	 */
 	private function orderPowerOfAttorneyValues(array $case, array $m, array $branch, array $costing): array {
-		$value = static fn(string $key): string => trim((string)($m[$key] ?? ''));
-		$box = static fn(bool $checked): string => $checked ? '☒' : '☐';
-		$groups = [];
-		foreach (($costing['items'] ?? []) as $item) {
-			if (($item['serviceStatus'] ?? '') === 'STORNIERT') continue;
-			$number = (string)($item['articleNumber'] ?? '');
-			if ($number !== '') $groups[substr($number, 0, 2)] = true;
-		}
-		$variants = $this->customizing?->valuesForKey('BURIAL_VARIANT') ?? [];
-		$facts = ProcessRules::funeralFacts((string)($case['burialVariantCode'] ?? $m['burial_variant_code'] ?? ''), (string)($case['funeralType'] ?? $m['funeral_type'] ?? ''), $variants);
-		$ceremony = ($case['withFuneralCeremony'] ?? null) === true || isset($groups['14']);
-		$formalities = isset($groups['15']);
+		$value = static fn (string $key): string => trim((string)($m[$key] ?? ''));
+		$box = static fn (bool $checked): string => $checked ? '☒' : '☐';
+		$selections = $this->orderChoiceService()->placeholderValues($this->computeOrderSelections($case, $m, $costing));
 		$conclusion = strtoupper($value('order_contract_conclusion'));
 		$withdrawal = self::withdrawalApplies($m);
+		$tablet = strtoupper($value('order_signature_method')) === 'TABLET' && $value('order_signature_name') !== '';
+		$signedDate = $this->formatDocumentDate($value('order_signature_date'));
 		$postalCity = $value('order_client_postal_city');
 		$country = $value('order_client_country');
 		$payment = ['TRANSFER' => 'Überweisung', 'SEPA_DIRECT_DEBIT' => 'SEPA-Lastschrift'][strtoupper($value('payment_method'))] ?? '';
 		$register = trim((string)($branch['registerCourt'] ?? '') . ' ' . (string)($branch['registerNumber'] ?? ''));
-		return [
+		return $selections + [
 			'{{order.client_address}}' => implode(', ', array_filter([$value('order_client_street'), $postalCity, $country !== '' && mb_strtolower($country) !== 'deutschland' ? $country : ''])),
 			'{{order.client_phone_line}}' => implode(' / ', array_filter([$value('order_client_phone'), $value('order_client_mobile')])),
 			'{{order.contractor_contact}}' => implode(' · ', array_filter([(string)($branch['phone'] ?? ''), (string)($branch['email'] ?? '')])),
@@ -1827,15 +2591,8 @@ class DocumentService {
 				$register,
 				($branch['managingDirectors'] ?? '') !== '' ? 'vertreten durch ' . $branch['managingDirectors'] : '',
 			])),
-			'{{order.scope_transfer}}' => $box(isset($groups['11']) || isset($groups['12'])),
-			'{{order.scope_ceremony}}' => $box($ceremony),
-			'{{order.scope_formalities}}' => $box($formalities),
 			'{{order.payment_terms}}' => implode(' · ', array_filter([$payment, $value('order_payment_terms')])),
 			'{{order.special_terms}}' => $value('order_special_terms'),
-			'{{order.poa_registry}}' => $box(true),
-			'{{order.poa_crematorium}}' => $box($facts['scope'] === 'CREMATION' || isset($groups['63'])),
-			'{{order.poa_ceremony}}' => $box($ceremony),
-			'{{order.poa_deregistration}}' => $box($formalities),
 			'{{order.poa_other}}' => $box($value('order_poa_other') !== ''),
 			'{{order.poa_other_text}}' => $value('order_poa_other'),
 			'{{order.contract_conclusion}}' => self::CONTRACT_CONCLUSIONS[$conclusion] ?? '',
@@ -1844,26 +2601,41 @@ class DocumentService {
 				'GESCHAEFTSRAEUME' => 'Dieser Vertrag wurde in den Geschäftsräumen des Bestattungsunternehmens geschlossen. Eine Widerrufsbelehrung für außerhalb von Geschäftsräumen oder im Fernabsatz geschlossene Verträge ist daher nicht beigefügt.',
 				default => 'Ort des Vertragsschlusses: bitte im Auftrag angeben (Geschäftsräume, außerhalb der Geschäftsräume oder Fernabsatz).',
 			},
-			'{{order.withdrawal_request_box}}' => $withdrawal ? '☐' : '',
-			'{{order.withdrawal_request}}' => $withdrawal ? 'Ich verlange ausdrücklich, dass das Bestattungsunternehmen vor Ablauf der Widerrufsfrist mit den beauftragten Dienstleistungen beginnt.' : '',
-			'{{order.withdrawal_ack_box}}' => $withdrawal ? '☐' : '',
-			'{{order.withdrawal_ack}}' => $withdrawal ? 'Mir ist bekannt, dass ich bei einem Widerruf einen angemessenen Betrag für die bis dahin erbrachten Dienstleistungen zu zahlen habe und dass mein Widerrufsrecht bei vollständiger Erbringung der Dienstleistungen erlischt.' : '',
-			'{{order.digital_signature_line}}' => $value('order_signature_name') !== '' ? 'Digital bestätigt durch ' . $value('order_signature_name') . ($value('order_signature_date') !== '' ? ' am ' . $this->formatDocumentDate($value('order_signature_date')) : '') . '.' : '',
+			// 0.89.0: Die Erklärungen kreuzt der/die Auftraggeber/in bei der Unterschrift am Tablet selbst an (JA), sonst leer zum Ankreuzen.
+			'{{order.withdrawal_request_box}}' => $withdrawal ? $box(strtoupper($value('order_withdrawal_request')) === 'JA') : '',
+			'{{order.withdrawal_request}}' => $withdrawal ? self::WITHDRAWAL_REQUEST_TEXT : '',
+			'{{order.withdrawal_ack_box}}' => $withdrawal ? $box(strtoupper($value('order_withdrawal_ack')) === 'JA') : '',
+			'{{order.withdrawal_ack}}' => $withdrawal ? self::WITHDRAWAL_ACK_TEXT : '',
+			'{{order.digital_signature_line}}' => $tablet
+				? 'Am Tablet eigenhändig unterschrieben von ' . $value('order_signature_name') . ' am ' . $signedDate . ($value('order_signature_time') !== '' ? ' um ' . $value('order_signature_time') . ' Uhr' : '') . ' (elektronische Unterschrift' . ($value('order_signature_sha256') !== '' ? ', Prüfwert ' . substr($value('order_signature_sha256'), 0, 16) : '') . ').'
+				: ($value('order_signature_name') !== '' ? 'Digital bestätigt durch ' . $value('order_signature_name') . ($value('order_signature_date') !== '' ? ' am ' . $this->formatDocumentDate($value('order_signature_date')) : '') . '.' : ''),
+			// 0.89.0: Unterschriftszeile nach der Unterschrift am Tablet
+			'{{order.client_signature}}' => $this->orderSignature !== null ? self::SIGNATURE_MARKER : '',
+			'{{order.signed_place_date}}' => $tablet ? implode(', ', array_filter([$value('order_signature_place'), $signedDate])) : '',
+			'{{order.contractor_place_date}}' => $tablet ? implode(', ', array_filter([$value('order_signature_place'), $signedDate])) : '',
+			'{{order.contractor_acceptance}}' => $tablet && $value('order_signature_accepted_by') !== '' ? 'Angenommen: ' . $value('order_signature_accepted_by') : '',
 			'{{order.withdrawal_enclosure}}' => $withdrawal ? ' sowie der Widerrufsbelehrung mit Muster-Widerrufsformular' : '',
 		];
 	}
 
 	private function deathDisplay(array $m, string $fallback = ''): string {
 		$exact = trim((string)($m['date_of_death'] ?? $fallback));
-		if ($exact !== '') return $this->formatDocumentDate($exact) . (($m['time_of_death'] ?? '') !== '' ? ' ' . $m['time_of_death'] . ' Uhr' : '');
-		$from = trim((string)($m['death_time_from'] ?? '')); $to = trim((string)($m['death_time_to'] ?? ''));
+		if ($exact !== '') {
+			return $this->formatDocumentDate($exact) . (($m['time_of_death'] ?? '') !== '' ? ' ' . $m['time_of_death'] . ' Uhr' : '');
+		}
+		$from = trim((string)($m['death_time_from'] ?? ''));
+		$to = trim((string)($m['death_time_to'] ?? ''));
 		return $from !== '' || $to !== '' ? 'zwischen ' . ($from !== '' ? $this->formatDocumentDate($from) : '?') . ' und ' . ($to !== '' ? $this->formatDocumentDate($to) : '?') : '';
 	}
 
 	private function formattedPlaceholder(string $placeholder, array $values): string {
-		if (!preg_match('/^\{\{([^{}|]+)\|date:(DD\.MM\.YYYY|DD\.MM\.YY|YYYY-MM-DD)\}\}$/u', $placeholder, $match)) return '';
+		if (!preg_match('/^\{\{([^{}|]+)\|date:(DD\.MM\.YYYY|DD\.MM\.YY|YYYY-MM-DD)\}\}$/u', $placeholder, $match)) {
+			return '';
+		}
 		$base = '{{' . $match[1] . '}}';
-		if (!array_key_exists($base, $values)) return '';
+		if (!array_key_exists($base, $values)) {
+			return '';
+		}
 		$format = ['DD.MM.YYYY' => 'd.m.Y', 'DD.MM.YY' => 'd.m.y', 'YYYY-MM-DD' => 'Y-m-d'][$match[2]];
 		return $this->formatDocumentDate((string)$values[$base], $format);
 	}
@@ -1874,16 +2646,26 @@ class DocumentService {
 
 	private function formatDocumentDate(string $value, string $format = 'd.m.Y'): string {
 		$value = trim($value);
-		if ($value === '') return '';
+		if ($value === '') {
+			return '';
+		}
 		foreach (['!Y-m-d', '!d.m.Y', '!d.m.y'] as $inputFormat) {
 			$date = \DateTimeImmutable::createFromFormat($inputFormat, substr($value, 0, 10));
-			if ($date instanceof \DateTimeImmutable) return $date->format($format);
+			if ($date instanceof \DateTimeImmutable) {
+				return $date->format($format);
+			}
 		}
 		return $value;
 	}
 
-	private function money(int $cents): string { return number_format($cents / 100, 2, ',', '.') . ' EUR'; }
-	private function number(float $value): string { return rtrim(rtrim(number_format($value, 3, ',', ''), '0'), ','); }
+	private function money(int $cents): string {
+		return number_format($cents / 100, 2, ',', '.') . ' EUR';
+	}
+	private function number(float $value): string {
+		return rtrim(rtrim(number_format($value, 3, ',', ''), '0'), ',');
+	}
 	/** Einheit in der Mengenspalte von KVA, Auftrag und Rechnung; Pauschalen erscheinen nur mit der Menge („1“). */
-	private function unitLabel(string $unit): string { return ['STK' => 'Stk.', 'PAUSCHAL' => '', 'SATZ' => 'Satz', 'PERS' => 'Pers.', 'STD' => 'Std.', 'KM' => 'km', 'TAG' => 'Tage', 'KG' => 'kg', 'L' => 'l'][$unit] ?? $unit; }
+	private function unitLabel(string $unit): string {
+		return ['STK' => 'Stk.', 'PAUSCHAL' => '', 'SATZ' => 'Satz', 'PERS' => 'Pers.', 'STD' => 'Std.', 'KM' => 'km', 'TAG' => 'Tage', 'KG' => 'kg', 'L' => 'l'][$unit] ?? $unit;
+	}
 }

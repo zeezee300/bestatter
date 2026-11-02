@@ -20,6 +20,7 @@ final class LabelRules {
 	public const MAX_ACTIVE = 12;
 	public const MAX_VALUES = 30;
 	public const ICON_FILE = __DIR__ . '/../../resources/label-icons.json';
+	/** Bis 0.89.4 mitgelieferte Marker-Vorschläge; seit 0.89.5 im Einrichtungspaket (Datei fehlt, Migration 5500 und LabelService prüfen das). */
 	public const BUNDLE_FILE = __DIR__ . '/../../resources/labels.json';
 	/** 0.77.0: Notiz je gesetztem Marker (intern, nie in Dokumentvorlagen). */
 	public const NOTE_MODES = ['NONE' => 'keine Notiz', 'OPTIONAL' => 'Notiz möglich', 'REQUIRED' => 'Notiz erforderlich'];
@@ -39,24 +40,29 @@ final class LabelRules {
 
 	private static ?array $iconCache = null;
 
-	private function __construct() {}
+	private function __construct() {
+	}
 
 	/** @return array{groups:list<array{key:string,name:string}>,icons:list<array{key:string,name:string,group:string,terms:string,svg:string}>} */
 	public static function iconCatalog(): array {
-		if (self::$iconCache !== null) return self::$iconCache;
+		if (self::$iconCache !== null) {
+			return self::$iconCache;
+		}
 		$data = is_file(self::ICON_FILE) ? json_decode((string)file_get_contents(self::ICON_FILE), true) : null;
 		return self::$iconCache = ['groups' => (array)($data['groups'] ?? []), 'icons' => (array)($data['icons'] ?? [])];
 	}
 
 	/** @return list<string> */
 	public static function iconKeys(): array {
-		return array_values(array_map(static fn(array $icon): string => (string)$icon['key'], self::iconCatalog()['icons']));
+		return array_values(array_map(static fn (array $icon): string => (string)$icon['key'], self::iconCatalog()['icons']));
 	}
 
 	public static function keyFromName(string $name): string {
 		$key = ProcessRules::keyFromTitle($name);
 		// Schlüssel beginnen mit einem Buchstaben und haben mindestens zwei Zeichen (z. B. Name „X“ → „E_X“).
-		if (!preg_match('/^[A-Z][A-Z0-9_]/', $key)) $key = 'E_' . $key;
+		if (!preg_match('/^[A-Z][A-Z0-9_]/', $key)) {
+			$key = 'E_' . $key;
+		}
 		return substr($key, 0, 60);
 	}
 
@@ -66,42 +72,80 @@ final class LabelRules {
 	 */
 	public static function normalizeDefinition(array $input, ?array $existing = null): array {
 		$name = trim(preg_replace('/\s+/u', ' ', (string)($input['name'] ?? '')) ?? '');
-		if ($name === '') throw new \InvalidArgumentException('Der Marker braucht einen Namen.');
-		if (mb_strlen($name) > 100) throw new \InvalidArgumentException('Der Name eines Markers darf höchstens 100 Zeichen lang sein.');
+		if ($name === '') {
+			throw new \InvalidArgumentException('Der Marker braucht einen Namen.');
+		}
+		if (mb_strlen($name) > 100) {
+			throw new \InvalidArgumentException('Der Name eines Markers darf höchstens 100 Zeichen lang sein.');
+		}
 		$key = $existing !== null ? (string)$existing['key'] : strtoupper(trim((string)($input['key'] ?? '')));
-		if ($key === '') $key = self::keyFromName($name);
-		if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) throw new \InvalidArgumentException('Der technische Schlüssel des Markers ist ungültig (Großbuchstaben, Ziffern und _; beginnt mit einem Buchstaben).');
+		if ($key === '') {
+			$key = self::keyFromName($name);
+		}
+		if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) {
+			throw new \InvalidArgumentException('Der technische Schlüssel des Markers ist ungültig (Großbuchstaben, Ziffern und _; beginnt mit einem Buchstaben).');
+		}
 		$kind = $existing !== null ? (string)$existing['kind'] : strtoupper(trim((string)($input['kind'] ?? 'BOOL')));
-		if (!isset(self::KINDS[$kind])) throw new \InvalidArgumentException('Unbekannte Art des Markers.');
+		if (!isset(self::KINDS[$kind])) {
+			throw new \InvalidArgumentException('Unbekannte Art des Markers.');
+		}
 		$description = trim((string)($input['description'] ?? ''));
-		if (mb_strlen($description) > 500) throw new \InvalidArgumentException('Die Beschreibung eines Markers darf höchstens 500 Zeichen lang sein.');
+		if (mb_strlen($description) > 500) {
+			throw new \InvalidArgumentException('Die Beschreibung eines Markers darf höchstens 500 Zeichen lang sein.');
+		}
 		$color = strtoupper(trim((string)($input['color'] ?? 'SLATE')));
-		if (!isset(self::COLORS[$color])) throw new \InvalidArgumentException('Bitte eine Farbe aus der vorgegebenen Palette wählen.');
+		if (!isset(self::COLORS[$color])) {
+			throw new \InvalidArgumentException('Bitte eine Farbe aus der vorgegebenen Palette wählen.');
+		}
 		$icon = trim((string)($input['icon'] ?? self::FALLBACK_ICON));
-		if (!in_array($icon, self::iconKeys(), true)) throw new \InvalidArgumentException('Bitte ein Symbol aus der vorgegebenen Auswahl wählen.');
+		if (!in_array($icon, self::iconKeys(), true)) {
+			throw new \InvalidArgumentException('Bitte ein Symbol aus der vorgegebenen Auswahl wählen.');
+		}
 		$values = [];
 		if ($kind === 'LIST') {
 			$seen = [];
 			foreach (array_values((array)($input['values'] ?? [])) as $index => $raw) {
-				if (!is_array($raw)) continue;
+				if (!is_array($raw)) {
+					continue;
+				}
 				$valueName = trim(preg_replace('/\s+/u', ' ', (string)($raw['name'] ?? '')) ?? '');
-				if ($valueName === '') continue;
-				if (mb_strlen($valueName) > 100) throw new \InvalidArgumentException('Ein Auswahlwert darf höchstens 100 Zeichen lang sein.');
+				if ($valueName === '') {
+					continue;
+				}
+				if (mb_strlen($valueName) > 100) {
+					throw new \InvalidArgumentException('Ein Auswahlwert darf höchstens 100 Zeichen lang sein.');
+				}
 				$valueKey = strtoupper(trim((string)($raw['key'] ?? '')));
-				if ($valueKey === '') $valueKey = self::keyFromName($valueName);
-				if (!preg_match('/^[A-Z][A-Z0-9_]{0,59}$/', $valueKey)) throw new \InvalidArgumentException('Der Schlüssel des Auswahlwerts „' . $valueName . '“ ist ungültig.');
-				if (isset($seen[$valueKey])) throw new \InvalidArgumentException('Der Auswahlwert „' . $valueName . '“ ist doppelt vorhanden.');
+				if ($valueKey === '') {
+					$valueKey = self::keyFromName($valueName);
+				}
+				if (!preg_match('/^[A-Z][A-Z0-9_]{0,59}$/', $valueKey)) {
+					throw new \InvalidArgumentException('Der Schlüssel des Auswahlwerts „' . $valueName . '“ ist ungültig.');
+				}
+				if (isset($seen[$valueKey])) {
+					throw new \InvalidArgumentException('Der Auswahlwert „' . $valueName . '“ ist doppelt vorhanden.');
+				}
 				$seen[$valueKey] = true;
 				$values[] = ['key' => $valueKey, 'name' => $valueName, 'sortOrder' => ($index + 1) * 10, 'active' => !array_key_exists('active', $raw) || filter_var($raw['active'], FILTER_VALIDATE_BOOLEAN)];
 			}
-			if ($values === []) throw new \InvalidArgumentException('Ein Listen-Marker braucht mindestens einen Auswahlwert.');
-			if (count($values) > self::MAX_VALUES) throw new \InvalidArgumentException('Ein Listen-Marker darf höchstens ' . self::MAX_VALUES . ' Auswahlwerte haben.');
+			if ($values === []) {
+				throw new \InvalidArgumentException('Ein Listen-Marker braucht mindestens einen Auswahlwert.');
+			}
+			if (count($values) > self::MAX_VALUES) {
+				throw new \InvalidArgumentException('Ein Listen-Marker darf höchstens ' . self::MAX_VALUES . ' Auswahlwerte haben.');
+			}
 		}
 		$noteMode = strtoupper(trim((string)($input['noteMode'] ?? ($existing['noteMode'] ?? 'OPTIONAL'))));
-		if (!isset(self::NOTE_MODES[$noteMode])) throw new \InvalidArgumentException('Unbekannte Einstellung für Notizen.');
+		if (!isset(self::NOTE_MODES[$noteMode])) {
+			throw new \InvalidArgumentException('Unbekannte Einstellung für Notizen.');
+		}
 		$noteHint = trim(preg_replace('/\s+/u', ' ', (string)($input['noteHint'] ?? ($existing['noteHint'] ?? ''))) ?? '');
-		if (mb_strlen($noteHint) > self::NOTE_HINT_MAX) throw new \InvalidArgumentException('Der Platzhaltertext der Notiz darf höchstens ' . self::NOTE_HINT_MAX . ' Zeichen lang sein.');
-		if ($noteMode === 'NONE') $noteHint = '';
+		if (mb_strlen($noteHint) > self::NOTE_HINT_MAX) {
+			throw new \InvalidArgumentException('Der Platzhaltertext der Notiz darf höchstens ' . self::NOTE_HINT_MAX . ' Zeichen lang sein.');
+		}
+		if ($noteMode === 'NONE') {
+			$noteHint = '';
+		}
 		return [
 			'key' => $key, 'name' => $name, 'description' => $description, 'kind' => $kind, 'color' => $color, 'icon' => $icon,
 			'noteMode' => $noteMode, 'noteHint' => $noteHint,
@@ -119,9 +163,14 @@ final class LabelRules {
 		$result = [];
 		foreach (array_slice(array_filter(array_map('trim', explode(',', $filter))), 0, 12) as $part) {
 			[$key, $value] = array_pad(explode('=', $part, 2), 2, '');
-			$key = strtoupper(trim($key)); $value = strtoupper(trim($value));
-			if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) throw new \InvalidArgumentException('Ungültiger Markerfilter.');
-			if ($value !== '' && !preg_match('/^[A-Z][A-Z0-9_]{0,59}$/', $value)) throw new \InvalidArgumentException('Ungültiger Wert im Markerfilter.');
+			$key = strtoupper(trim($key));
+			$value = strtoupper(trim($value));
+			if (!preg_match('/^[A-Z][A-Z0-9_]{1,59}$/', $key)) {
+				throw new \InvalidArgumentException('Ungültiger Markerfilter.');
+			}
+			if ($value !== '' && !preg_match('/^[A-Z][A-Z0-9_]{0,59}$/', $value)) {
+				throw new \InvalidArgumentException('Ungültiger Wert im Markerfilter.');
+			}
 			$result[$key . '=' . $value] = ['key' => $key, 'value' => $value];
 		}
 		return array_values($result);
@@ -136,10 +185,17 @@ final class LabelRules {
 		$hints = [];
 		$manner = mb_strtolower(trim((string)($master['manner_of_death'] ?? '')));
 		$release = strtoupper(trim((string)($master['release_status'] ?? '')));
-		if ($release === 'GESPERRT') $hints[] = self::hint('FREIGABE', 'Freigabe gesperrt');
-		elseif ($manner !== '' && $manner !== 'natürlicher tod' && $release !== 'FREIGEGEBEN') $hints[] = self::hint('FREIGABE', 'Todesart „' . trim((string)$master['manner_of_death']) . '“ – Freigabe abwarten');
-		if (strtoupper(trim((string)($master['guardianship_status'] ?? ''))) === 'JA') $hints[] = self::hint('BETREUUNG', 'Betreuung' . (trim((string)($master['guardian_name'] ?? '')) !== '' ? ': ' . trim((string)$master['guardian_name']) : ''));
-		if ($paymentOverdue) $hints[] = self::hint('ZAHLUNG_UEBERFAELLIG', 'Zahlung überfällig');
+		if ($release === 'GESPERRT') {
+			$hints[] = self::hint('FREIGABE', 'Freigabe gesperrt');
+		} elseif ($manner !== '' && $manner !== 'natürlicher tod' && $release !== 'FREIGEGEBEN') {
+			$hints[] = self::hint('FREIGABE', 'Todesart „' . trim((string)$master['manner_of_death']) . '“ – Freigabe abwarten');
+		}
+		if (strtoupper(trim((string)($master['guardianship_status'] ?? ''))) === 'JA') {
+			$hints[] = self::hint('BETREUUNG', 'Betreuung' . (trim((string)($master['guardian_name'] ?? '')) !== '' ? ': ' . trim((string)$master['guardian_name']) : ''));
+		}
+		if ($paymentOverdue) {
+			$hints[] = self::hint('ZAHLUNG_UEBERFAELLIG', 'Zahlung überfällig');
+		}
 		return $hints;
 	}
 
@@ -150,7 +206,9 @@ final class LabelRules {
 
 	/** Zahlungsziel überschritten? (gleiche Regel wie der Ablaufauslöser „Rechnung überfällig“ mit 0 Tagen) */
 	public static function invoiceOverdue(string $invoiceDate, int $paymentTermDays, string $today): bool {
-		if (trim($invoiceDate) === '') return false;
+		if (trim($invoiceDate) === '') {
+			return false;
+		}
 		[$dueDate] = ProcessRules::invoiceOverdue($invoiceDate, $paymentTermDays, 0, $today);
 		return $dueDate < substr($today, 0, 10);
 	}
@@ -165,7 +223,9 @@ final class LabelRules {
 		$note = preg_replace('/[ \t]+\n/u', "\n", $note) ?? '';
 		$note = preg_replace('/\n{3,}/u', "\n\n", $note) ?? '';
 		$note = trim($note);
-		if (mb_strlen($note) > self::NOTE_MAX) throw new \InvalidArgumentException('Die Notiz darf höchstens ' . self::NOTE_MAX . ' Zeichen lang sein.');
+		if (mb_strlen($note) > self::NOTE_MAX) {
+			throw new \InvalidArgumentException('Die Notiz darf höchstens ' . self::NOTE_MAX . ' Zeichen lang sein.');
+		}
 		return $note;
 	}
 
@@ -177,7 +237,9 @@ final class LabelRules {
 		$lines = [];
 		foreach ($notes as $name => $note) {
 			$note = trim((string)$note);
-			if ($note !== '') $lines[] = '„' . $name . '“: ' . str_replace("\n", "\n  ", $note);
+			if ($note !== '') {
+				$lines[] = '„' . $name . '“: ' . str_replace("\n", "\n  ", $note);
+			}
 		}
 		return $lines === [] ? '' : self::TASK_NOTE_HEADING . "\n" . implode("\n", $lines);
 	}
@@ -192,9 +254,13 @@ final class LabelRules {
 		// Nur ein vollständiger, unveränderter Block zählt (danach Textende oder Zeilenumbruch).
 		if ($position !== false) {
 			$rest = substr($description, $position + strlen($previousBlock));
-			if ($rest === '' || str_starts_with($rest, "\n")) $description = rtrim(rtrim(substr($description, 0, $position)) . $rest);
+			if ($rest === '' || str_starts_with($rest, "\n")) {
+				$description = rtrim(rtrim(substr($description, 0, $position)) . $rest);
+			}
 		}
-		if ($block === '') return $description;
+		if ($block === '') {
+			return $description;
+		}
 		return $description === '' ? $block : $description . "\n\n" . $block;
 	}
 

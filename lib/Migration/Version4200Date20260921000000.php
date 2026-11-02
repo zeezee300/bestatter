@@ -27,7 +27,10 @@ use OCP\Migration\SimpleMigrationStep;
  * jeder Änderung synchron.
  */
 class Version4200Date20260921000000 extends SimpleMigrationStep {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
@@ -64,19 +67,27 @@ class Version4200Date20260921000000 extends SimpleMigrationStep {
 			$recordId = (int)$row['id'];
 			$uids = [];
 			$directUid = trim((string)($row['assignee_uid'] ?? ''));
-			if ($directUid !== '') $uids[] = $directUid;
+			if ($directUid !== '') {
+				$uids[] = $directUid;
+			}
 			$payload = json_decode((string)($row['payload'] ?? ''), true);
 			if (is_array($payload)) {
 				$payloadUid = trim((string)($payload['assigneeUid'] ?? ''));
-				if ($payloadUid !== '') $uids[] = $payloadUid;
+				if ($payloadUid !== '') {
+					$uids[] = $payloadUid;
+				}
 				foreach ((array)($payload['assigneeUids'] ?? []) as $candidate) {
 					$candidate = trim((string)$candidate);
-					if ($candidate !== '') $uids[] = $candidate;
+					if ($candidate !== '') {
+						$uids[] = $candidate;
+					}
 				}
 			}
 			foreach (array_unique($uids) as $uid) {
 				$key = $recordId . '|' . $uid;
-				if (isset($existing[$key])) continue;
+				if (isset($existing[$key])) {
+					continue;
+				}
 				$existing[$key] = true;
 				$toInsert[] = [$recordId, $uid];
 			}

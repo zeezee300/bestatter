@@ -5,23 +5,64 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Controller;
 
 use OCA\Bestatter\Service\HelpAssistantService;
+use OCA\Bestatter\Service\HelpFeedbackService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
-/** The app-wide BestatterAccessMiddleware protects all three endpoints. */
+/** The app-wide BestatterAccessMiddleware protects all endpoints; the feedback list is for Bestatter administrators only. */
 class HelpApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private HelpAssistantService $help) { parent::__construct($appName, $request); }
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private HelpAssistantService $help,
+		private HelpFeedbackService $feedback,
+	) {
+		parent::__construct($appName, $request);
+	}
 
 	#[NoAdminRequired]
-	public function availability(): DataResponse { return new DataResponse($this->help->availability()); }
+	public function availability(): DataResponse {
+		return new DataResponse($this->help->availability());
+	}
 
 	#[NoAdminRequired]
-	public function ask(string $question = ''): DataResponse {
-		$result = $this->help->ask($question);
+	public function ask(string $question = '', string $context = ''): DataResponse {
+		$result = $this->help->ask($question, $context);
 		return new DataResponse($result, $result['status'] === 'SCHEDULED' ? 202 : 200);
 	}
 
 	#[NoAdminRequired]
-	public function status(int $taskId): DataResponse { return new DataResponse($this->help->status($taskId)); }
+	public function status(int $taskId): DataResponse {
+		return new DataResponse($this->help->status($taskId));
+	}
+
+	/** 0.89.6: Hilfetexte zur geöffneten Seite. */
+	#[NoAdminRequired]
+	public function topics(string $context = ''): DataResponse {
+		return new DataResponse($this->help->topics($context));
+	}
+
+	/** 0.89.6: ein Hilfetext („Was bedeutet das?“). */
+	#[NoAdminRequired]
+	public function topic(string $id = ''): DataResponse {
+		return new DataResponse($this->help->topic($id));
+	}
+
+	/** 0.89.6: „Hat das geholfen? – Nein“ (ohne Benutzerkennung). */
+	#[NoAdminRequired]
+	public function addFeedback(string $question = '', string $page = '', string $pageTitle = '', string $sources = '[]'): DataResponse {
+		$list = json_decode($sources, true);
+		return new DataResponse($this->feedback->add($question, $page, $pageTitle, is_array($list) ? $list : []), 201);
+	}
+
+	#[NoAdminRequired]
+	public function feedback(): DataResponse {
+		return new DataResponse($this->feedback->entries());
+	}
+
+	#[NoAdminRequired]
+	public function resolveFeedback(string $id): DataResponse {
+		return new DataResponse($this->feedback->resolve($id));
+	}
 }

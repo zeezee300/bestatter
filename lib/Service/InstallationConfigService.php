@@ -20,6 +20,9 @@ class InstallationConfigService {
 		'admin_groups' => 'Bestatter-Administratoren,Bestatter Administratoren',
 		'storage_root' => 'Bestatter',
 		'cases_folder' => 'Fälle',
+		// 0.89.7 (OP-074/075): eigene Oberordner für Aufträge ohne Sterbefall und Vorsorgen (neben „Fälle“, je <Jahr>/<Nummer>).
+		'orders_folder' => 'Aufträge',
+		'precare_folder' => 'Vorsorgen',
 		'templates_folder' => 'Vorlagen',
 		'assistant_folder' => '.Assistenz',
 		'article_images_folder' => 'Artikelbilder',
@@ -54,7 +57,10 @@ class InstallationConfigService {
 	public const STANDARD_FOLDERS = ['STAMMDATEN' => '01 Stammdaten', 'AUFTRAG' => '02 Auftrag', 'BEHOERDEN' => '03 Behörden', 'FRIEDHOF' => '04 Friedhof', 'KORRESPONDENZ' => '04 Korrespondenz', 'TRAUERDRUCK' => '05 Trauerdruck', 'ABRECHNUNG' => '06 Abrechnung'];
 	public const FUNCTIONS = ['UPLOAD' => ['default_upload_folder', 'Standardablage Upload'], 'ORDER' => ['order_folder', 'Ablage Auftrag/KVA'], 'AUTHORITIES' => ['authorities_folder', 'Ablage Behörden'], 'BILLING' => ['billing_folder', 'Ablage Rechnungen']];
 
-	public function __construct(private IConfig $config) {}
+	public function __construct(
+		private IConfig $config,
+	) {
+	}
 
 	public function settings(): array {
 		return [
@@ -62,6 +68,8 @@ class InstallationConfigService {
 			'adminGroups' => $this->adminGroups(),
 			'storageRoot' => $this->storageRoot(),
 			'casesFolder' => $this->casesFolder(),
+			'ordersFolder' => $this->ordersFolder(),
+			'precareFolder' => $this->precareFolder(),
 			'templatesFolder' => $this->templatesFolder(),
 			'assistantFolder' => $this->assistantFolder(),
 			'articleImagesFolder' => $this->articleImagesFolder(),
@@ -77,6 +85,8 @@ class InstallationConfigService {
 			'storageAccount' => $this->storageAccount(),
 			'paths' => [
 				'cases' => $this->casesPath(),
+				'orders' => $this->casesPathForKind(CaseKinds::ORDER),
+				'precare' => $this->casesPathForKind(CaseKinds::PRECARE),
 				'templates' => $this->templatesPath(),
 				'assistant' => $this->join($this->storageRoot(), $this->assistantFolder()),
 				'articleImages' => $this->join($this->storageRoot(), $this->articleImagesFolder()),
@@ -87,16 +97,21 @@ class InstallationConfigService {
 	public function save(array $input): array {
 		$memberGroup = $this->groupName((string)($input['memberGroup'] ?? ''), 'Mitgliedergruppe');
 		$adminGroups = array_values(array_unique(array_filter(array_map(
-			fn(mixed $value): string => $this->groupName((string)$value, 'Administrationsgruppe'),
+			fn (mixed $value): string => $this->groupName((string)$value, 'Administrationsgruppe'),
 			(array)($input['adminGroups'] ?? []),
 		))));
-		if ($adminGroups === []) throw new \InvalidArgumentException('Mindestens eine Administrationsgruppe ist erforderlich.');
+		if ($adminGroups === []) {
+			throw new \InvalidArgumentException('Mindestens eine Administrationsgruppe ist erforderlich.');
+		}
 
 		$values = [
 			'member_group' => $memberGroup,
 			'admin_groups' => implode(',', $adminGroups),
 			'storage_root' => $this->relativePath((string)($input['storageRoot'] ?? ''), 'Arbeitsordner'),
 			'cases_folder' => $this->folderName((string)($input['casesFolder'] ?? ''), 'Fallordner'),
+			// 0.89.7: fehlt die Angabe (ältere Oberfläche, Ersteinrichtung), bleibt der bisherige Name.
+			'orders_folder' => $this->folderName((string)($input['ordersFolder'] ?? $this->ordersFolder()), 'Ordner für Aufträge'),
+			'precare_folder' => $this->folderName((string)($input['precareFolder'] ?? $this->precareFolder()), 'Ordner für Vorsorgen'),
 			'templates_folder' => $this->folderName((string)($input['templatesFolder'] ?? ''), 'Vorlagenordner'),
 			'assistant_folder' => $this->folderName((string)($input['assistantFolder'] ?? ''), 'Assistenzordner'),
 			'article_images_folder' => $this->folderName((string)($input['articleImagesFolder'] ?? ''), 'Artikelbilderordner'),
@@ -105,77 +120,164 @@ class InstallationConfigService {
 		// Umbenennung der vorhandenen Fallordner). Die frühere Namensliste wird nur noch angenommen, wenn sie
 		// dem aktuellen Plan entspricht (z. B. aus der Ersteinrichtung ohne Änderung).
 		if (array_key_exists('caseSubfolders', $input)) {
-			$names = array_values(array_map(fn(mixed $value): string => $this->folderName((string)$value, 'Fall-Unterordner'), (array)$input['caseSubfolders']));
+			$names = array_values(array_map(fn (mixed $value): string => $this->folderName((string)$value, 'Fall-Unterordner'), (array)$input['caseSubfolders']));
 			if ($names !== $this->caseSubfolders()) {
-				if ($this->planStored()) throw new \InvalidArgumentException('Die Fall-Unterordner werden über den Ordnerplan geändert (Vorschau, dann „Änderung übernehmen“). Vorhandene Fallordner werden dabei mit umbenannt.');
+				if ($this->planStored()) {
+					throw new \InvalidArgumentException('Die Fall-Unterordner werden über den Ordnerplan geändert (Vorschau, dann „Änderung übernehmen“). Vorhandene Fallordner werden dabei mit umbenannt.');
+				}
 				// Erstkonfiguration (noch kein gespeicherter Plan): Namensliste in einen Plan übernehmen.
 				$this->storePlan($this->planFromNames($names), $this->functionFolders());
 			}
 		}
 		// Funktionsordner (Auswahl nach Namen im aktuellen Plan) – gespeichert wird das Kennzeichen.
 		$plan = $this->folderPlan();
-		$functions = $this->functionFolders(); $functionsChanged = false;
+		$functions = $this->functionFolders();
+		$functionsChanged = false;
 		foreach (['defaultUploadFolder' => 'UPLOAD', 'orderFolder' => 'ORDER', 'authoritiesFolder' => 'AUTHORITIES', 'billingFolder' => 'BILLING'] as $inputKey => $function) {
-			if (!isset($input[$inputKey]) || trim((string)$input[$inputKey]) === '') continue;
-			$match = array_values(array_filter($plan, static fn(array $item): bool => $item['name'] === trim((string)$input[$inputKey]) || $item['key'] === trim((string)$input[$inputKey])));
-			if ($match === []) throw new \InvalidArgumentException('Der Funktionsordner "' . trim((string)$input[$inputKey]) . '" ist nicht in den Standard-Unterordnern enthalten.');
-			if ($functions[$function] !== $match[0]['key']) { $functions[$function] = $match[0]['key']; $functionsChanged = true; }
+			if (!isset($input[$inputKey]) || trim((string)$input[$inputKey]) === '') {
+				continue;
+			}
+			$match = array_values(array_filter($plan, static fn (array $item): bool => $item['name'] === trim((string)$input[$inputKey]) || $item['key'] === trim((string)$input[$inputKey])));
+			if ($match === []) {
+				throw new \InvalidArgumentException('Der Funktionsordner "' . trim((string)$input[$inputKey]) . '" ist nicht in den Standard-Unterordnern enthalten.');
+			}
+			if ($functions[$function] !== $match[0]['key']) {
+				$functions[$function] = $match[0]['key'];
+				$functionsChanged = true;
+			}
 		}
-		if ($functionsChanged) $this->storePlan($plan, $functions);
+		if ($functionsChanged) {
+			$this->storePlan($plan, $functions);
+		}
 
 		if (is_array($input['roleGroups'] ?? null)) {
 			$roles = $this->roleGroups();
 			foreach (self::ROLE_KEYS as $role) {
-				if (!array_key_exists($role, $input['roleGroups'])) continue;
+				if (!array_key_exists($role, $input['roleGroups'])) {
+					continue;
+				}
 				$name = trim((string)$input['roleGroups'][$role]);
 				$roles[$role] = $name === '' ? '' : $this->groupName($name, 'Rollengruppe');
 			}
 			$values['role_groups'] = json_encode($roles, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 		}
 
-		foreach ($values as $key => $value) $this->config->setAppValue(Application::APP_ID, $key, $value);
+		$topLevel = [$values['cases_folder'], $values['orders_folder'], $values['precare_folder'], $values['templates_folder'], $values['assistant_folder'], $values['article_images_folder']];
+		if (count(array_unique(array_map('mb_strtolower', $topLevel))) !== count($topLevel)) {
+			throw new \InvalidArgumentException('Fälle, Aufträge, Vorsorgen, Vorlagen, Assistenz und Artikelbilder brauchen verschiedene Ordnernamen.');
+		}
+
+		foreach ($values as $key => $value) {
+			$this->config->setAppValue(Application::APP_ID, $key, $value);
+		}
 		return $this->settings();
 	}
 
-	public function memberGroup(): string { return $this->value('member_group'); }
-	public function storageMode(): string { return $this->value('storage_mode') === 'CENTRAL' ? 'CENTRAL' : 'USER'; }
-	public function storageAccount(): string { return $this->value('storage_account'); }
+	public function memberGroup(): string {
+		return $this->value('member_group');
+	}
+	public function storageMode(): string {
+		return $this->value('storage_mode') === 'CENTRAL' ? 'CENTRAL' : 'USER';
+	}
+	public function storageAccount(): string {
+		return $this->value('storage_account');
+	}
 	/** Nur über CaseStorageService (mit Prüfung von Konto und Bestand) aufrufen. */
 	public function setStorage(string $mode, string $account): void {
 		$this->config->setAppValue(Application::APP_ID, 'storage_mode', $mode === 'CENTRAL' ? 'CENTRAL' : 'USER');
 		$this->config->setAppValue(Application::APP_ID, 'storage_account', trim($account));
 	}
 	/** Bis 0.70: Erfassungseingang im Arbeitsordner (bei zentraler Ablage bzw. Teamordner für alle sichtbar). */
-	public function captureInboxPath(): string { return $this->join($this->storageRoot(), '.Erfassungseingang'); }
+	public function captureInboxPath(): string {
+		return $this->join($this->storageRoot(), '.Erfassungseingang');
+	}
 	/** 0.71.0: Persönlicher, nicht geteilter Arbeitsbereich im eigenen Nextcloud-Ordner (Sprachaufnahmen, Erfassungsbögen vor der Zuordnung). */
 	public const PRIVATE_WORK_ROOT = '.Bestatter-privat';
-	public function privateAudioPath(): string { return self::PRIVATE_WORK_ROOT . '/Aufnahmen'; }
-	public function privateCaptureInboxPath(): string { return self::PRIVATE_WORK_ROOT . '/Erfassungseingang'; }
-	public function articleImagesPath(): string { return $this->join($this->storageRoot(), $this->articleImagesFolder()); }
-	public function assistantPath(): string { return $this->join($this->storageRoot(), $this->assistantFolder()); }
-	public function adminGroups(): array { return array_values(array_filter(array_map('trim', explode(',', $this->value('admin_groups'))))); }
-	public function storageRoot(): string { return $this->value('storage_root'); }
-	public function casesFolder(): string { return $this->value('cases_folder'); }
-	public function templatesFolder(): string { return $this->value('templates_folder'); }
-	public function assistantFolder(): string { return $this->value('assistant_folder'); }
-	public function articleImagesFolder(): string { return $this->value('article_images_folder'); }
-	public function defaultUploadFolder(): string { return $this->functionFolderName('UPLOAD'); }
-	public function orderFolder(): string { return $this->functionFolderName('ORDER'); }
-	public function authoritiesFolder(): string { return $this->functionFolderName('AUTHORITIES'); }
-	public function billingFolder(): string { return $this->functionFolderName('BILLING'); }
+	public function privateAudioPath(): string {
+		return self::PRIVATE_WORK_ROOT . '/Aufnahmen';
+	}
+	public function privateCaptureInboxPath(): string {
+		return self::PRIVATE_WORK_ROOT . '/Erfassungseingang';
+	}
+	public function articleImagesPath(): string {
+		return $this->join($this->storageRoot(), $this->articleImagesFolder());
+	}
+	public function assistantPath(): string {
+		return $this->join($this->storageRoot(), $this->assistantFolder());
+	}
+	public function adminGroups(): array {
+		return array_values(array_filter(array_map('trim', explode(',', $this->value('admin_groups')))));
+	}
+	public function storageRoot(): string {
+		return $this->value('storage_root');
+	}
+	public function casesFolder(): string {
+		return $this->value('cases_folder');
+	}
+	public function ordersFolder(): string {
+		return $this->value('orders_folder');
+	}
+	public function precareFolder(): string {
+		return $this->value('precare_folder');
+	}
+	public function templatesFolder(): string {
+		return $this->value('templates_folder');
+	}
+	public function assistantFolder(): string {
+		return $this->value('assistant_folder');
+	}
+	public function articleImagesFolder(): string {
+		return $this->value('article_images_folder');
+	}
+	public function defaultUploadFolder(): string {
+		return $this->functionFolderName('UPLOAD');
+	}
+	public function orderFolder(): string {
+		return $this->functionFolderName('ORDER');
+	}
+	public function authoritiesFolder(): string {
+		return $this->functionFolderName('AUTHORITIES');
+	}
+	public function billingFolder(): string {
+		return $this->functionFolderName('BILLING');
+	}
 
 	/** Namen der Fall-Unterordner in Planreihenfolge. */
 	public function caseSubfolders(): array {
-		return array_values(array_map(static fn(array $item): string => $item['name'], $this->folderPlan()));
+		return array_values(array_map(static fn (array $item): string => $item['name'], $this->folderPlan()));
 	}
 
-	/** @return list<array{key: string, name: string}> */
+	/**
+	 * 0.89.7: Unterordner, die beim Anlegen einer Akte dieser Vorgangsart entstehen – laut „Anlegen bei“ im Ordnerplan bzw.
+	 * der Ordnerauswahl einer Auftragsart ($onlyKeys). Weitere Unterordner entstehen bei Bedarf (z. B. Ablage einer Rechnung).
+	 * @param list<string> $onlyKeys @return list<string>
+	 */
+	public function caseSubfoldersFor(string $kind, array $onlyKeys = []): array {
+		$plan = $this->folderPlan();
+		$onlyKeys = array_values(array_filter(array_map(static fn (mixed $key): string => strtoupper(trim((string)$key)), $onlyKeys)));
+		$names = [];
+		foreach ($plan as $item) {
+			$selected = $onlyKeys !== [] ? in_array($item['key'], $onlyKeys, true) : ($item['kinds'] === [] || in_array($kind, $item['kinds'], true));
+			if ($selected) {
+				$names[] = $item['name'];
+			}
+		}
+		return $names;
+	}
+
+	/** @return list<array{key: string, name: string, kinds: list<string>}> kinds leer = bei allen Vorgangsarten anlegen */
 	public function folderPlan(): array {
 		$stored = json_decode(trim($this->config->getAppValue(Application::APP_ID, 'case_folder_plan', '')), true);
 		if (is_array($stored) && $stored !== []) {
 			$plan = [];
-			foreach ($stored as $item) if (is_array($item) && isset($item['key'], $item['name'])) $plan[] = ['key' => (string)$item['key'], 'name' => (string)$item['name']];
-			if ($plan !== []) return $plan;
+			foreach ($stored as $item) {
+				if (is_array($item) && isset($item['key'], $item['name'])) {
+					$plan[] = ['key' => (string)$item['key'], 'name' => (string)$item['name'], 'kinds' => self::planKinds($item['kinds'] ?? [])];
+				}
+			}
+			if ($plan !== []) {
+				return $plan;
+			}
 		}
 		$decoded = json_decode($this->value('case_subfolders'), true);
 		return $this->planFromNames(is_array($decoded) && $decoded !== [] ? array_values(array_map('strval', $decoded)) : array_values(self::STANDARD_FOLDERS));
@@ -191,7 +293,7 @@ class InstallationConfigService {
 			$key = is_array($stored) ? (string)($stored[$function] ?? '') : '';
 			if ($key === '' || !in_array($key, $keys, true)) {
 				$legacyName = $this->value($legacyKey);
-				$byName = array_values(array_filter($plan, static fn(array $item): bool => $item['name'] === $legacyName));
+				$byName = array_values(array_filter($plan, static fn (array $item): bool => $item['name'] === $legacyName));
 				$key = $byName[0]['key'] ?? ($this->resolveKey($legacyName) ?? ($keys[0] ?? ''));
 			}
 			$result[$function] = $key;
@@ -200,7 +302,11 @@ class InstallationConfigService {
 	}
 
 	public function folderNameForKey(string $key): ?string {
-		foreach ($this->folderPlan() as $item) if ($item['key'] === $key) return $item['name'];
+		foreach ($this->folderPlan() as $item) {
+			if ($item['key'] === $key) {
+				return $item['name'];
+			}
+		}
 		return null;
 	}
 
@@ -214,8 +320,14 @@ class InstallationConfigService {
 	 */
 	public function resolveSubfolder(string $reference): ?string {
 		$reference = trim($reference);
-		if ($reference === '') return null;
-		foreach ($this->folderPlan() as $item) if ($item['name'] === $reference) return $item['name'];
+		if ($reference === '') {
+			return null;
+		}
+		foreach ($this->folderPlan() as $item) {
+			if ($item['name'] === $reference) {
+				return $item['name'];
+			}
+		}
 		$key = $this->resolveKey($reference);
 		return $key !== null ? $this->folderNameForKey($key) : null;
 	}
@@ -223,11 +335,27 @@ class InstallationConfigService {
 	private function resolveKey(string $reference): ?string {
 		$keys = array_column($this->folderPlan(), 'key');
 		$reference = trim($reference);
-		if (in_array(strtoupper($reference), $keys, true)) return strtoupper($reference);
+		if (in_array(strtoupper($reference), $keys, true)) {
+			return strtoupper($reference);
+		}
 		$standard = array_search($reference, self::STANDARD_FOLDERS, true);
-		if (is_string($standard) && in_array($standard, $keys, true)) return $standard;
+		if (is_string($standard) && in_array($standard, $keys, true)) {
+			return $standard;
+		}
 		$derived = self::keyFromName($reference);
 		return in_array($derived, $keys, true) ? $derived : null;
+	}
+
+	/** 0.89.7: Vorgangsarten eines Planordners; alle drei oder keine = bei jeder Art anlegen (leere Liste). @return list<string> */
+	public static function planKinds(mixed $value): array {
+		$kinds = [];
+		foreach ((array)$value as $kind) {
+			$kind = strtoupper(trim((string)$kind));
+			if (in_array($kind, CaseKinds::ALL, true) && !in_array($kind, $kinds, true)) {
+				$kinds[] = $kind;
+			}
+		}
+		return count($kinds) === count(CaseKinds::ALL) ? [] : array_values(array_filter(CaseKinds::ALL, static fn (string $kind): bool => in_array($kind, $kinds, true)));
 	}
 
 	/** Kennzeichen aus einem Ordnernamen: Nummerierung entfernen, Umlaute umschreiben, Großbuchstaben. */
@@ -240,16 +368,22 @@ class InstallationConfigService {
 
 	/** @param list<string> $names @return list<array{key: string, name: string}> */
 	public function planFromNames(array $names): array {
-		$plan = []; $used = [];
+		$plan = [];
+		$used = [];
 		foreach ($names as $name) {
 			$name = $this->folderName((string)$name, 'Fall-Unterordner');
-			if (in_array(mb_strtolower($name), array_map('mb_strtolower', array_column($plan, 'name')), true)) continue;
+			if (in_array(mb_strtolower($name), array_map('mb_strtolower', array_column($plan, 'name')), true)) {
+				continue;
+			}
 			$standard = array_search($name, self::STANDARD_FOLDERS, true);
 			$base = is_string($standard) ? $standard : self::keyFromName($name);
-			$key = $base; $n = 2;
-			while (isset($used[$key])) $key = $base . '_' . $n++;
+			$key = $base;
+			$n = 2;
+			while (isset($used[$key])) {
+				$key = $base . '_' . $n++;
+			}
 			$used[$key] = true;
-			$plan[] = ['key' => $key, 'name' => $name];
+			$plan[] = ['key' => $key, 'name' => $name, 'kinds' => []];
 		}
 		return $plan;
 	}
@@ -261,15 +395,20 @@ class InstallationConfigService {
 	/**
 	 * Nur über CaseFolderPlanService (Prüfung, Umbenennung der Fallordner) bzw. die Ersteinrichtung aufrufen.
 	 * Schreibt zusätzlich die bisherigen Einzelwerte (Namen), damit ältere Auswertungen konsistent bleiben.
-	 * @param list<array{key: string, name: string}> $plan @param array<string, string> $functions
+	 * @param list<array{key: string, name: string, kinds?: list<string>}> $plan @param array<string, string> $functions
 	 */
 	public function storePlan(array $plan, array $functions): void {
 		$names = array_column($plan, 'name');
-		$this->config->setAppValue(Application::APP_ID, 'case_folder_plan', json_encode(array_values($plan), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+		$stored = array_map(static fn (array $item): array => ['key' => (string)$item['key'], 'name' => (string)$item['name']] + (self::planKinds($item['kinds'] ?? []) !== [] ? ['kinds' => self::planKinds($item['kinds'])] : []), array_values($plan));
+		$this->config->setAppValue(Application::APP_ID, 'case_folder_plan', json_encode($stored, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		$this->config->setAppValue(Application::APP_ID, 'function_folders', json_encode($functions, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		$this->config->setAppValue(Application::APP_ID, 'case_subfolders', json_encode(array_values($names), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		foreach (self::FUNCTIONS as $function => [$legacyKey]) {
-			foreach ($plan as $item) if ($item['key'] === ($functions[$function] ?? '')) $this->config->setAppValue(Application::APP_ID, $legacyKey, $item['name']);
+			foreach ($plan as $item) {
+				if ($item['key'] === ($functions[$function] ?? '')) {
+					$this->config->setAppValue(Application::APP_ID, $legacyKey, $item['name']);
+				}
+			}
 		}
 	}
 
@@ -280,26 +419,65 @@ class InstallationConfigService {
 	}
 
 	/** Öffentliche Namensprüfung für den Ordnerplan. */
-	public function validFolderName(string $value, string $label): string { return $this->folderName($value, $label); }
+	public function validFolderName(string $value, string $label): string {
+		return $this->folderName($value, $label);
+	}
 
 	/** Rolle => Nextcloud-Gruppenname; leerer Name = Rolle nicht belegt (Aufgabe geht an die Fallverantwortung). */
 	public function roleGroups(): array {
 		$decoded = json_decode($this->value('role_groups'), true);
 		$defaults = json_decode(self::DEFAULTS['role_groups'], true);
 		$result = [];
-		foreach (self::ROLE_KEYS as $role) $result[$role] = trim((string)(is_array($decoded) && array_key_exists($role, $decoded) ? $decoded[$role] : ($defaults[$role] ?? '')));
+		foreach (self::ROLE_KEYS as $role) {
+			$result[$role] = trim((string)(is_array($decoded) && array_key_exists($role, $decoded) ? $decoded[$role] : ($defaults[$role] ?? '')));
+		}
 		return $result;
 	}
 
-	public function casesPath(): string { return $this->join($this->storageRoot(), $this->casesFolder()); }
-	public function templatesPath(): string { return $this->join($this->storageRoot(), $this->templatesFolder()); }
+	public function casesPath(): string {
+		return $this->join($this->storageRoot(), $this->casesFolder());
+	}
+
+	/** 0.89.7: Oberordner einer Vorgangsart (Sterbefall = bisheriger Fallordner). */
+	public function casesPathForKind(string $kind): string {
+		return match (CaseKinds::normalize($kind)) {
+			CaseKinds::ORDER => $this->join($this->storageRoot(), $this->ordersFolder()),
+			CaseKinds::PRECARE => $this->join($this->storageRoot(), $this->precareFolder()),
+			default => $this->casesPath(),
+		};
+	}
+
+	/** @return list<string> alle Oberordner der Fallakten (Sterbefälle, Aufträge, Vorsorgen) – für Sicherung, Umzug, Ordnerplan. */
+	public function allCasesPaths(): array {
+		return array_values(array_unique(array_map(fn (string $kind): string => $this->casesPathForKind($kind), CaseKinds::ALL)));
+	}
+
+	/**
+	 * 0.89.7: relativer Ordner einer Akte: <Oberordner der Vorgangsart>/<Jahr>/<Nummer>. Die Art ergibt sich aus dem Präfix der
+	 * Nummer („A-“, „V-“), das Jahr folgt darauf.
+	 */
+	public function caseFolderPath(string $caseNumber): string {
+		$caseNumber = trim($caseNumber);
+		$year = CaseKinds::yearOfNumber($caseNumber);
+		if ($year === null || str_contains($caseNumber, '/') || str_contains($caseNumber, '\\')) {
+			throw new \InvalidArgumentException('Die Fallnummer enthält kein gültiges Jahr.');
+		}
+		return $this->casesPathForKind(CaseKinds::kindOfNumber($caseNumber)) . '/' . $year . '/' . $caseNumber;
+	}
+	public function templatesPath(): string {
+		return $this->join($this->storageRoot(), $this->templatesFolder());
+	}
 
 	public function ensurePath(Folder $base, string $relativePath): Folder {
 		$folder = $base;
 		foreach (explode('/', trim($relativePath, '/')) as $name) {
-			if ($name === '') continue;
+			if ($name === '') {
+				continue;
+			}
 			$node = $folder->nodeExists($name) ? $folder->get($name) : $folder->newFolder($name);
-			if (!$node instanceof Folder) throw new \RuntimeException('Der konfigurierte Pfad "' . $relativePath . '" ist keine Ordnerstruktur.');
+			if (!$node instanceof Folder) {
+				throw new \RuntimeException('Der konfigurierte Pfad "' . $relativePath . '" ist keine Ordnerstruktur.');
+			}
 			$folder = $node;
 		}
 		return $folder;
@@ -310,12 +488,14 @@ class InstallationConfigService {
 	}
 
 	private function join(string ...$parts): string {
-		return implode('/', array_values(array_filter(array_map(static fn(string $part): string => trim($part, '/'), $parts), static fn(string $part): bool => $part !== '')));
+		return implode('/', array_values(array_filter(array_map(static fn (string $part): string => trim($part, '/'), $parts), static fn (string $part): bool => $part !== '')));
 	}
 
 	private function groupName(string $value, string $label): string {
 		$value = trim($value);
-		if ($value === '' || preg_match('/[\x00-\x1F\x7F]/u', $value)) throw new \InvalidArgumentException($label . ' ist ungültig.');
+		if ($value === '' || preg_match('/[\x00-\x1F\x7F]/u', $value)) {
+			throw new \InvalidArgumentException($label . ' ist ungültig.');
+		}
 		return $value;
 	}
 
@@ -329,8 +509,12 @@ class InstallationConfigService {
 
 	private function relativePath(string $value, string $label): string {
 		$value = trim(str_replace('\\', '/', $value), '/');
-		if ($value === '') throw new \InvalidArgumentException($label . ' darf nicht leer sein.');
-		foreach (explode('/', $value) as $segment) $this->folderName($segment, $label);
+		if ($value === '') {
+			throw new \InvalidArgumentException($label . ' darf nicht leer sein.');
+		}
+		foreach (explode('/', $value) as $segment) {
+			$this->folderName($segment, $label);
+		}
 		return $value;
 	}
 }

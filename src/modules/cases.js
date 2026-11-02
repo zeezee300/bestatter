@@ -1,4 +1,5 @@
 import { burialGuidance } from './burial-guidance.js'
+import { CASE_KIND_LABELS, CASE_KIND_PLURALS, DEFAULT_ORDER_TYPES, PRECARE_LABELS, caseKindOf, caseDisplayName, masterSectionsFor, normalizeCaseKind, orderTypeLabel } from './case-kinds.js'
 
 export function createCasesModule(ctx) {
 	const { state, sections, labels, listMap, fixedOptions } = ctx
@@ -122,8 +123,14 @@ export function createCasesModule(ctx) {
 		return `<label data-field="${key}"><span>${esc(labels[key] || key)}</span><input class="bp-field" name="${key}" type="${fieldType(key)}" ${key === 'newborn_lifetime_hours' ? 'min="0" step="1"' : ['body_height_cm','body_weight_kg'].includes(key) ? 'min="1" step="1"' : ''} value="${esc(value)}"></label>`
 	}
 
+	if (labels) Object.assign(labels, PRECARE_LABELS)
+	const orderTypes = () => state.orderTypes?.types?.length ? state.orderTypes.types : DEFAULT_ORDER_TYPES
+
 	function masterDataForm(data) {
-		const groups = sections[state.masterTab] || sections.Personendaten
+		// 0.89.7: Bereiche je Vorgangsart (Auftrag: Kunde bzw. verstorbene Person, Vorsorge: Person und Wünsche)
+		const sectionSet = masterSectionsFor(state.currentCase, orderTypes()) || sections
+		if (!sectionSet[state.masterTab]) state.masterTab = Object.keys(sectionSet)[0]
+		const groups = sectionSet[state.masterTab]
 		const exact = String(data.death_time_mode || 'EXAKT').toUpperCase()
 		const hasGuardian = String(data.guardianship_status || 'NEIN').toUpperCase() === 'JA'
 		const family = familyState(data)
@@ -139,34 +146,57 @@ export function createCasesModule(ctx) {
 			}).map((key) => field(key, data)).join('')
 			return `<section class="bp-field-section"><h3>${esc(title)}</h3>${help}<div class="bp-form-grid">${fields}</div></section>`
 		}).join('')
-		const guidance = family.messages.length ? `<div class="bp-family-guidance" role="status">${family.messages.map((message) => `<p>${esc(message)}</p>`).join('')}</div>` : ''
-		return `<div class="bp-subtabs bp-master-subtabs">${Object.keys(sections).map((name) => `<button class="${state.masterTab === name ? 'active' : ''}" data-master-tab="${esc(name)}">${esc(name)}</button>`).join('')}</div><form id="case-form" class="bp-master-form bp-case-form">${guidance}${content}<div class="bp-save-state bp-save-mirrored" id="case-save-state">Änderungen werden automatisch gespeichert.</div></form>`
+		const kindHint = caseKindOf(state.currentCase) === 'AUFTRAG' && sectionSet.Kunde ? '<p class="bp-section-help">Anschrift, Firma, USt-IdNr. und Rechnungsempfänger erfassen Sie im Reiter „Auftrag / KVA“.</p>' : caseKindOf(state.currentCase) === 'VORSORGE' && state.masterTab === 'Wünsche' ? '<p class="bp-section-help">Die Wünsche gehen beim Einlösen der Vorsorge in die gleichnamigen Felder des Sterbefalls über. Vertrauenspersonen erfassen Sie unter „Kontakte“.</p>' : ''
+		const guidance = `${kindHint}${family.messages.length ? `<div class="bp-family-guidance" role="status">${family.messages.map((message) => `<p>${esc(message)}</p>`).join('')}</div>` : ''}`
+		return `<div class="bp-subtabs bp-master-subtabs">${Object.keys(sectionSet).map((name) => `<button class="${state.masterTab === name ? 'active' : ''}" data-master-tab="${esc(name)}">${esc(name)}</button>`).join('')}</div><form id="case-form" class="bp-master-form bp-case-form">${guidance}${content}<div class="bp-save-state bp-save-mirrored" id="case-save-state">Änderungen werden automatisch gespeichert.</div></form>`
 	}
 
+	/**
+	 * 0.89.7: eine Listenansicht für alle Vorgangsarten (state.caseSearch.kind). Sterbefälle wie bisher mit Nebenaufträgen,
+	 * Aufträge mit Auftragsart, Vorsorgen mit Geburtsdatum. Nicht passende Arten aus dem Zwischenspeicher werden ausgeblendet.
+	 */
 	function caseList() {
-		const search = state.caseSearch || {}; const rows = search.items?.length || state.query || search.view !== 'ALL' || search.branch !== 'ALL' || (search.labels || []).length ? (search.items || []) : state.cases
+		const search = state.caseSearch || {}; const kind = normalizeCaseKind(search.kind); const death = kind === 'STERBEFALL'
+		const source = search.items?.length || state.query || search.view !== 'ALL' || search.branch !== 'ALL' || (search.labels || []).length ? (search.items || []) : state.cases
+		const rows = source.filter((item) => caseKindOf(item) === kind)
 		const page = Math.floor((search.offset || 0) / (search.limit || 25)) + 1; const pages = Math.max(1, Math.ceil((search.total || 0) / (search.limit || 25)))
-		const views = [['ALL','Alle Fälle'],['MY_OPEN','Meine offenen Fälle'],['OPEN','Alle offenen Fälle'],['SIDE_OPEN','Offene Nebenaufträge'],['CLOSED','Abgeschlossene Fälle']]
+		const plural = CASE_KIND_PLURALS[kind]
+		const views = death ? [['ALL','Alle Fälle'],['MY_OPEN','Meine offenen Fälle'],['OPEN','Alle offenen Fälle'],['SIDE_OPEN','Offene Nebenaufträge'],['CLOSED','Abgeschlossene Fälle']] : [['ALL',`Alle ${plural}`],['MY_OPEN',`Meine offenen ${plural}`],['OPEN',`Alle offenen ${plural}`],['CLOSED',`Abgeschlossene ${plural}`]]
 		const branches = (state.branches || []).filter((entry) => entry.active).map((entry) => `<option value="${esc(entry.key)}" ${search.branch===entry.key?'selected':''}>${esc(entry.name)}</option>`).join('')
 		const sideOrderFilters = [['ALL','Alle Nebenaufträge'],['HAS','Vorhanden'],['OPEN','Offen'],['BILLING_OPEN','Abrechnung offen'],['DONE','Erledigt'],['NONE','Keine']]
 		const statusLabels = { ENTWURF:'Entwurf', BEAUFTRAGT:'Beauftragt', ABGESCHLOSSEN:'Abgeschlossen', STORNIERT:'Storniert' }
+		const date = (value) => value ? esc(new Date(`${value}T12:00:00`).toLocaleDateString('de-DE')) : '–'
+		const columns = death ? ['Fallnummer', 'Verstorbene Person', 'Hinweise', 'Sterbedatum', 'Bestattungsart', 'Status', 'Nebenaufträge'] : (kind === 'AUFTRAG' ? ['Auftragsnummer', 'Kunde', 'Hinweise', 'Auftragsart', 'Niederlassung', 'Status'] : ['Vorsorgenummer', 'Vorsorgenehmer/in', 'Hinweise', 'Geburtsdatum', 'Niederlassung', 'Status'])
 		const tableRows = rows.map((item) => {
+			const symbols = `<td data-label="Hinweise" class="bp-case-symbols">${ctx.caseListSymbols ? ctx.caseListSymbols(item) : ''}</td>`
+			const menu = `<td class="bp-row-menu-cell">${ctx.caseRowMenuButton ? ctx.caseRowMenuButton(item) : ''}</td>`
+			if (!death) {
+				const detail = kind === 'AUFTRAG' ? `<td data-label="Auftragsart">${esc(item.orderTypeLabel || orderTypeLabel(item.orderType, orderTypes()) || '–')}</td>` : `<td data-label="Geburtsdatum">${date(item.masterData?.date_of_birth)}</td>`
+				return `<tr data-case-id="${item.id}" tabindex="0"><td data-label="${columns[0]}">${esc(item.caseNumber)}</td><td data-label="${columns[1]}">${esc(caseDisplayName(item))}</td>${symbols}${detail}<td data-label="Niederlassung">${esc(item.branch || '–')}</td><td data-label="Status"><span class="bp-status">${esc(item.status)}</span></td>${menu}</tr>`
+			}
 			const summary = item.sideOrderSummary || { total:0, open:0, items:[] }; const expanded = Boolean(state.expandedCaseIds?.[item.id])
 			const disclosure = summary.total ? `<button type="button" class="bp-disclosure" data-expand-case="${item.id}" aria-expanded="${expanded}" aria-controls="case-side-orders-${item.id}" title="Nebenaufträge ${expanded?'einklappen':'aufklappen'}">${expanded?'▾':'▸'}</button>` : '<span class="bp-disclosure-spacer"></span>'
 			const sideOrderCountLabel = summary.total === 1 ? '1 Nebenauftrag' : `${summary.total} Nebenaufträge`
-			const main = `<tr data-case-id="${item.id}" tabindex="0"><td data-label="Fallnummer"><span class="bp-case-number-cell">${disclosure}${esc(item.caseNumber)}</span></td><td data-label="Verstorbene Person">${esc(item.lastName)}, ${esc(item.firstName)}</td><td data-label="Hinweise" class="bp-case-symbols">${ctx.caseListSymbols ? ctx.caseListSymbols(item) : ''}</td><td data-label="Sterbedatum">${item.dateOfDeath ? esc(new Date(`${item.dateOfDeath}T12:00:00`).toLocaleDateString('de-DE')) : '–'}</td><td data-label="Bestattungsart">${esc(item.funeralType || '–')}</td><td data-label="Status"><span class="bp-status">${esc(item.status)}</span></td><td data-label="Nebenaufträge">${summary.total ? `<span class="bp-side-order-count">${sideOrderCountLabel}${summary.open?` · ${summary.open} offen`:''}</span>` : '–'}</td><td class="bp-row-menu-cell">${ctx.caseRowMenuButton ? ctx.caseRowMenuButton(item) : ''}</td></tr>`
+			const main = `<tr data-case-id="${item.id}" tabindex="0"><td data-label="Fallnummer"><span class="bp-case-number-cell">${disclosure}${esc(item.caseNumber)}</span></td><td data-label="Verstorbene Person">${esc(item.lastName)}, ${esc(item.firstName)}</td>${symbols}<td data-label="Sterbedatum">${date(item.dateOfDeath)}</td><td data-label="Bestattungsart">${esc(item.funeralType || '–')}</td><td data-label="Status"><span class="bp-status">${esc(item.status)}</span></td><td data-label="Nebenaufträge">${summary.total ? `<span class="bp-side-order-count">${sideOrderCountLabel}${summary.open?` · ${summary.open} offen`:''}</span>` : '–'}</td>${menu}</tr>`
 			const children = expanded ? (summary.items || []).map((order,index) => `<tr class="bp-side-order-child ${order.matched?'is-match':''}" ${index===0?`id="case-side-orders-${item.id}"`:''} data-parent-case-id="${item.id}"><td colspan="8"><button type="button" data-open-side-order="${order.id}" data-side-order-case="${item.id}"><span><b>${esc(order.sideOrderNumber)}</b><small>${esc(order.customerName || 'Auftraggeber nicht vollständig')}</small></span><span class="bp-status">${esc(statusLabels[order.status] || order.status)}</span>${order.nextAction?`<small>${esc(order.nextAction)}</small>`:''}</button></td></tr>`).join('') : ''
 			return main + children
 		}).join('')
-		return `<div class="bp-page-head"><div><p class="bp-eyebrow">Fallführung</p><h2>Fälle</h2></div><button class="bp-primary" id="new-case">Neuen Sterbefall anlegen</button></div><div class="bp-saved-filters" aria-label="Gespeicherte Fallansichten">${views.map(([key,label])=>`<button type="button" class="bp-secondary ${search.view===key?'active':''}" data-case-view="${key}">${label}</button>`).join('')}</div><div class="bp-toolbar"><input id="case-search" value="${esc(state.query)}" placeholder="Fall-, Nebenauftragsnummer, Name, Status oder Notiz …" aria-label="Fälle und Nebenaufträge durchsuchen"><select id="case-branch-filter" aria-label="Niederlassung filtern"><option value="ALL">Alle Niederlassungen</option>${branches}</select><select id="case-side-order-filter" aria-label="Nebenaufträge filtern">${sideOrderFilters.map(([value,label])=>`<option value="${value}" ${String(search.sideOrders||'ALL')===value?'selected':''}>${label}</option>`).join('')}</select><span>${search.total ?? rows.length} Fälle</span></div>${ctx.caseListFilterBar ? ctx.caseListFilterBar() : ''}<section class="bp-panel bp-table bp-case-table"><table><thead><tr><th>Fallnummer</th><th>Verstorbene Person</th><th>Hinweise</th><th>Sterbedatum</th><th>Bestattungsart</th><th>Status</th><th>Nebenaufträge</th><th><span class="hidden-visually">Aktionen</span></th></tr></thead><tbody>${tableRows || '<tr><td colspan="8" class="bp-empty">Keine passenden Fälle gefunden.</td></tr>'}</tbody></table><div class="bp-pagination"><button class="bp-secondary" data-case-page="previous" ${page<=1?'disabled':''}>Zurück</button><b>Seite ${page} von ${pages}</b><button class="bp-secondary" data-case-page="next" ${page>=pages?'disabled':''}>Weiter</button></div></section>`
+		const colspan = columns.length + 1
+		const head = death
+			? `<div class="bp-page-head"><div><p class="bp-eyebrow">Fallführung</p><h2>Sterbefälle</h2></div><button class="bp-primary" id="new-case">Neuen Sterbefall anlegen</button></div>`
+			: `<div class="bp-page-head"><div><p class="bp-eyebrow">${kind === 'AUFTRAG' ? 'Aufträge ohne Sterbefall' : 'Bestattungsvorsorge'}</p><h2>${plural}</h2></div><button class="bp-primary" id="new-kind-case" data-new-case-kind="${kind}">${kind === 'AUFTRAG' ? 'Neuen Auftrag anlegen' : 'Neue Vorsorge anlegen'}</button></div>`
+		const searchPlaceholder = death ? 'Fall-, Nebenauftragsnummer, Name, Status oder Notiz …' : (kind === 'AUFTRAG' ? 'Auftragsnummer, Kunde, Status oder Notiz …' : 'Vorsorgenummer, Name, Status oder Notiz …')
+		const sideOrderSelect = death ? `<select id="case-side-order-filter" aria-label="Nebenaufträge filtern">${sideOrderFilters.map(([value,label])=>`<option value="${value}" ${String(search.sideOrders||'ALL')===value?'selected':''}>${label}</option>`).join('')}</select>` : ''
+		return `${head}<div class="bp-saved-filters" aria-label="Gespeicherte Ansichten">${views.map(([key,label])=>`<button type="button" class="bp-secondary ${search.view===key?'active':''}" data-case-view="${key}">${label}</button>`).join('')}</div><div class="bp-toolbar"><input id="case-search" value="${esc(state.query)}" placeholder="${searchPlaceholder}" aria-label="${death ? 'Fälle und Nebenaufträge durchsuchen' : `${plural} durchsuchen`}"><select id="case-branch-filter" aria-label="Niederlassung filtern"><option value="ALL">Alle Niederlassungen</option>${branches}</select>${sideOrderSelect}<span>${search.total ?? rows.length} ${death ? 'Fälle' : (Number(search.total ?? rows.length) === 1 ? CASE_KIND_LABELS[kind] : plural)}</span></div>${ctx.caseListFilterBar ? ctx.caseListFilterBar() : ''}<section class="bp-panel bp-table bp-case-table"><table><thead><tr>${columns.map((column) => `<th>${column}</th>`).join('')}<th><span class="hidden-visually">Aktionen</span></th></tr></thead><tbody>${tableRows || `<tr><td colspan="${colspan}" class="bp-empty">${death ? 'Keine passenden Fälle gefunden.' : `Keine passenden ${plural} gefunden.`}</td></tr>`}</tbody></table><div class="bp-pagination"><button class="bp-secondary" data-case-page="previous" ${page<=1?'disabled':''}>Zurück</button><b>Seite ${page} von ${pages}</b><button class="bp-secondary" data-case-page="next" ${page>=pages?'disabled':''}>Weiter</button></div></section>`
 	}
 
 	async function loadCaseSearch(reset = false) {
 		if (reset) state.caseSearch.offset = 0
-		const request = ++searchRequest; const view = state.caseSearch.view || 'ALL'
-		const sideOrders = view === 'SIDE_OPEN' ? 'OPEN' : (state.caseSearch.sideOrders || 'ALL')
-		const params = new URLSearchParams({ query: state.query || '', status: view === 'CLOSED' ? 'ABGESCHLOSSEN' : (['OPEN','MY_OPEN','SIDE_OPEN'].includes(view) ? 'OPEN' : 'ALL'), branch: state.caseSearch.branch || 'ALL', responsible: view === 'MY_OPEN' ? currentUser() : 'ALL', sideOrders, labels: (state.caseSearch.labels || []).join(','), limit: String(state.caseSearch.limit || 25), offset: String(state.caseSearch.offset || 0) })
-		const result = await ctx.api(`${ctx.apiBase}/cases/search?${params}`, { loadingLabel: 'Fälle werden gesucht …' })
+		const request = ++searchRequest; const view = state.caseSearch.view || 'ALL'; const kind = normalizeCaseKind(state.caseSearch.kind)
+		if (view === 'SIDE_OPEN' && kind !== 'STERBEFALL') state.caseSearch.view = 'ALL'
+		const sideOrders = kind !== 'STERBEFALL' ? 'ALL' : (view === 'SIDE_OPEN' ? 'OPEN' : (state.caseSearch.sideOrders || 'ALL'))
+		const params = new URLSearchParams({ query: state.query || '', status: view === 'CLOSED' ? 'ABGESCHLOSSEN' : (['OPEN','MY_OPEN','SIDE_OPEN'].includes(view) ? 'OPEN' : 'ALL'), branch: state.caseSearch.branch || 'ALL', responsible: view === 'MY_OPEN' ? currentUser() : 'ALL', sideOrders, labels: (state.caseSearch.labels || []).join(','), kind, limit: String(state.caseSearch.limit || 25), offset: String(state.caseSearch.offset || 0) })
+		const result = await ctx.api(`${ctx.apiBase}/cases/search?${params}`, { loadingLabel: `${CASE_KIND_PLURALS[kind]} werden gesucht …` })
 		if (request !== searchRequest) return false
 		state.caseSearch = { ...state.caseSearch, ...result }
 		const merged = new Map(state.cases.map((item) => [Number(item.id), item])); result.items.forEach((item) => merged.set(Number(item.id), item)); state.cases = [...merged.values()]
@@ -180,6 +210,66 @@ export function createCasesModule(ctx) {
 		document.getElementById('case-branch-filter')?.addEventListener('change',async(event)=>{state.caseSearch.branch=event.target.value;try{await loadCaseSearch(true);render()}catch(error){notifyError(error.message)}})
 		document.getElementById('case-side-order-filter')?.addEventListener('change',async(event)=>{state.caseSearch.sideOrders=event.target.value;if(state.caseSearch.view==='SIDE_OPEN'&&event.target.value!=='OPEN')state.caseSearch.view='ALL';try{await loadCaseSearch(true);render()}catch(error){notifyError(error.message)}})
 		document.querySelectorAll('[data-case-page]').forEach((button)=>button.addEventListener('click',async()=>{const step=button.dataset.casePage==='next'?1:-1;state.caseSearch.offset=Math.max(0,(state.caseSearch.offset||0)+step*(state.caseSearch.limit||25));try{await loadCaseSearch(false);render()}catch(error){notifyError(error.message)}}))
+		document.getElementById('new-kind-case')?.addEventListener('click', (event) => showNewKindCase(event.currentTarget.dataset.newCaseKind))
+	}
+
+	/**
+	 * 0.89.7: Auftrag ohne Sterbefall bzw. Vorsorge anlegen – kurze Abfrage der Pflichtangaben, danach öffnet sich die Akte.
+	 * Auftrag: Auftragsart (Customizing → Auftragsarten); verlangt sie die verstorbene Person (Überführung, Urnenbeisetzung),
+	 * werden Verstorbene/r und Auftraggeber getrennt erfasst, sonst nur der Kunde (Nachname oder Firma genügt). Der Kunde bzw.
+	 * Auftraggeber wird als Auftraggeber im Auftrag vorbelegt. Vorsorge: Vor-, Nachname und Geburtsdatum (vorsorgende Person
+	 * ist zugleich Vertragspartner/in).
+	 */
+	function showNewKindCase(kindValue) {
+		const kind = normalizeCaseKind(kindValue)
+		if (kind === 'STERBEFALL') return
+		const order = kind === 'AUFTRAG'
+		const types = orderTypes().filter((type) => type.active !== false)
+		if (order && !types.length) { notifyError('Es ist keine Auftragsart eingerichtet. Bitte unter Customizing → Auftragsarten anlegen.'); return }
+		const branches = (state.branches || []).filter((entry) => entry.active)
+		const branchSelect = branches.length ? `<label><span>Niederlassung</span><select name="branch">${branches.map((entry) => `<option value="${esc(entry.key)}">${esc(entry.name)}</option>`).join('')}</select></label>` : ''
+		const typeSelect = order ? `<label class="bp-span-2"><span>Auftragsart</span><select name="orderType" required>${types.map((type) => `<option value="${esc(type.key)}" data-requires-deceased="${type.requiresDeceased ? '1' : ''}">${esc(type.label)}</option>`).join('')}</select></label>` : ''
+		const customer = `<label data-new-kind-customer><span>Nachname oder Firma</span><input name="lastName" required maxlength="100" autocomplete="off"></label><label data-new-kind-customer><span>Vorname <small>(bei Firmen leer lassen)</small></span><input name="firstName" maxlength="100" autocomplete="off"></label>`
+		const deceased = `<fieldset class="bp-span-2 bp-new-kind-deceased" data-new-kind-deceased hidden><legend>Verstorbene Person</legend><div class="bp-form-grid bp-new-kind-grid"><label><span>Vorname</span><input name="deceasedFirstName" maxlength="100" autocomplete="off"></label><label><span>Nachname</span><input name="deceasedLastName" maxlength="100" autocomplete="off"></label><label><span>Sterbedatum</span><input name="dateOfDeath" type="date"></label></div></fieldset>`
+		const nameFields = order
+			? `${deceased}<p class="bp-span-2 bp-muted" data-new-kind-client-hint hidden>Auftraggeber/in (z. B. Angehörige oder ein anderes Bestattungsunternehmen):</p>${customer}`
+			: `<label><span>Vorname</span><input name="firstName" required maxlength="100" autocomplete="off"></label><label><span>Nachname</span><input name="lastName" required maxlength="100" autocomplete="off"></label><label><span>Geburtsdatum</span><input name="dateOfBirth" type="date" required></label>`
+		const hint = order ? 'Die Auftragsnummer beginnt mit „A-“. Leistungen, Auftrag und Rechnung erfassen Sie danach in der Akte.' : 'Die Vorsorgenummer beginnt mit „V-“. Das Geburtsdatum hilft, die Vorsorge im Sterbefall sicher zu finden.'
+		document.getElementById('bestatter-app')?.insertAdjacentHTML('beforeend', `<div class="bp-modal" role="dialog" aria-modal="true" aria-labelledby="new-kind-case-title"><form id="new-kind-case-form" class="bp-modal-card"><div class="bp-panel-head"><div><p class="bp-eyebrow">${esc(CASE_KIND_LABELS[kind])}</p><h2 id="new-kind-case-title">${order ? 'Neuen Auftrag anlegen' : 'Neue Vorsorge anlegen'}</h2><p class="bp-muted">${esc(hint)}</p></div></div><div class="bp-form-grid bp-new-kind-grid">${typeSelect}${nameFields}${branchSelect}</div><div class="bp-actions"><button type="button" class="bp-secondary" data-close-modal>Abbrechen</button><button type="submit" class="bp-primary">Anlegen</button></div></form></div>`)
+		const modal = [...document.querySelectorAll('.bp-modal')].pop()
+		const form = modal.querySelector('form')
+		modal.querySelector('[data-close-modal]').onclick = () => modal.remove()
+		const requiresDeceased = () => Boolean(form.elements.orderType?.selectedOptions?.[0]?.dataset.requiresDeceased)
+		const syncType = () => {
+			if (!order) return
+			const needs = requiresDeceased()
+			form.querySelector('[data-new-kind-deceased]').hidden = !needs
+			form.querySelector('[data-new-kind-client-hint]').hidden = !needs
+			form.elements.deceasedFirstName.required = needs; form.elements.deceasedLastName.required = needs
+		}
+		form.elements.orderType?.addEventListener('change', syncType); syncType()
+		form.querySelector('input,select')?.focus()
+		const token = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replaceAll('-', '') : `${Date.now()}${Math.random().toString(36).slice(2, 10)}`
+		form.onsubmit = async (event) => {
+			event.preventDefault()
+			const values = Object.fromEntries(new FormData(form).entries())
+			const trim = (value) => String(value || '').trim()
+			const needs = order && requiresDeceased()
+			// Kunde bzw. Auftraggeber: als Auftraggeber im Auftrag vorbelegen (Vorsorge: die vorsorgende Person selbst)
+			const client = { order_client_name: trim(values.lastName), order_client_first_name: trim(values.firstName), order_client_relation: order ? (trim(values.firstName) ? 'Kunde' : 'Firma') : 'Selbst' }
+			const masterData = { first_name: needs ? trim(values.deceasedFirstName) : trim(values.firstName), last_name: needs ? trim(values.deceasedLastName) : trim(values.lastName), branch: String(values.branch || ''), responsible_employee: currentUser(), status: 'NEU', ...client }
+			if (order && !trim(values.firstName) && trim(values.lastName)) { masterData.order_client_company = trim(values.lastName); masterData.order_client_name = '' }
+			if (needs && values.dateOfDeath) masterData.date_of_death = String(values.dateOfDeath)
+			if (!order) masterData.date_of_birth = String(values.dateOfBirth || '')
+			const body = new URLSearchParams({ caseKind: kind, orderType: String(values.orderType || ''), firstName: masterData.first_name, lastName: masterData.last_name, branch: masterData.branch, responsibleEmployee: masterData.responsible_employee, masterData: JSON.stringify(masterData), creationToken: token })
+			try {
+				const created = await ctx.api(ctx.urls.cases, { method: 'POST', body, feedback: `${CASE_KIND_LABELS[kind]} wurde angelegt.` })
+				modal.remove()
+				state.cases = [created, ...state.cases.filter((item) => Number(item.id) !== Number(created.id))]
+				if (ctx.openCaseById) await ctx.openCaseById(created.id)
+				else render()
+			} catch (error) { notifyError(error.message) }
+		}
 	}
 
 	function overview() {
@@ -211,6 +301,7 @@ export function createCasesModule(ctx) {
 		// 0.88.1: unbesetzte Rollen der Abläufe einmal zentral melden (nur Administratoren, ausblendbar)
 		return `${ctx.roleNoticeView ? ctx.roleNoticeView() : ''}<section class="bp-hero"><div><p class="bp-eyebrow">Mein Arbeitstag</p><h2>Arbeits\u00fcbersicht</h2><p>Eigene Aufgaben, interne Tätigkeiten und externe Fixtermine aus Nextcloud Tasks und Kalender.</p></div></section>
 		<section class="bp-metrics"><article><strong>${personal.counts?.openCases ?? state.dashboard.openCases ?? 0}</strong><span>Meine offenen F\u00e4lle</span></article><article><strong>${personal.counts?.tasksToday ?? 0}</strong><span>Meine Aufgaben heute</span></article><article><strong>${personal.counts?.overdueTasks ?? 0}</strong><span>\u00dcberf\u00e4llige Aufgaben</span></article><article><strong>${personal.counts?.schedulesToday ?? 0}</strong><span>Termine heute</span></article></section>
+		${ctx.precareReviewsPanel ? ctx.precareReviewsPanel() : ''}
 		<section class="bp-mobile-quick" aria-label="Mobile Tages\u00fcbersicht"><h3>Heute schnell im Blick</h3>${[...(personal.overdueTasks || []), ...(personal.tasksToday || []), ...(personal.schedulesToday || [])].slice(0, 12).map((item) => { const type = item.type || 'task'; return `<button type="button" data-dashboard-record-type="${esc(type)}" data-dashboard-record-id="${Number(item.id)}"><b>${esc(item.title)}</b><span class="bp-mobile-record-meta"><small>${esc(item.caseNumber || 'Ohne Fall')} · ${esc(formatRecordDate(item.date))}</small><span class="bp-record-badges">${recordBadges(item, type)}</span></span></button>` }).join('') || '<p class="bp-empty">Heute sind keine pers\u00f6nlichen Aktivit\u00e4ten vorhanden.</p>'}</section>
 		<div class="bp-dashboard-grid"><section class="bp-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Aufgaben</p><h3>Arbeitsvorrat</h3></div><button class="bp-secondary" data-view="task">Alle Aufgaben</button></div><div class="bp-work-list">${rows}</div></section>
 		<section class="bp-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Termine und Fristen</p><h3>Kalender</h3></div><button class="bp-secondary" data-view="schedule">Alle Termine</button></div><div class="bp-calendar"><b>${month.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}</b><div class="bp-calendar-grid"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>${cells.join('')}</div><div class="bp-day-agenda"><h3>${selected.length} Eintr\u00e4ge</h3>${selected.length ? selected.map((item) => { const type = item.kind === 'Termin' ? 'schedule' : 'task'; return `<button type="button" class="bp-agenda-item" data-dashboard-record-type="${type}" data-dashboard-record-id="${Number(item.id)}"><b>${recordCaseNumber(item) ? `Fall ${esc(recordCaseNumber(item))} · ` : ''}${esc(item.kind)}: ${esc(item.title)}</b><span class="bp-agenda-meta"><small>${esc(formatRecordDate(item.date))}</small><span class="bp-record-badges">${recordBadges(item, type)}</span></span></button>` }).join('') : '<p class="bp-muted">F\u00fcr diesen Tag sind keine Aufgaben oder Termine vorhanden.</p>'}</div></div></section></div>`
@@ -234,7 +325,8 @@ export function createCasesModule(ctx) {
 		const statusWarning = protection.statusInconsistent
 			? `<aside class="bp-compliance-note"><b>Status-Hinweis</b><p>Fallstatus und Auftragsstatus stimmen aktuell nicht überein (gespeicherter Auftragsstatus „${esc(protection.storedOrderStatus || '')}“, ermittelt „${esc(protection.effectiveOrderStatus || '')}“). Beim nächsten Öffnen des Reiters „Auftrag“ wird der Auftragsstatus automatisch nachgezogen; bitte bei Bedarf dort kurz prüfen.</p></aside>`
 			: ''
-		return `${guidance}${statusWarning}${ctx.processOverviewCard ? ctx.processOverviewCard() : ''}${completenessSection}<section class="bp-case-summary"><article><p class="bp-eyebrow">Auftrag / KVA</p><h3>${esc(data.order_status || 'Noch nicht angelegt')}</h3><button class="bp-primary" data-case-tab="order">Auftrag öffnen</button></article><article><p class="bp-eyebrow">Aufgaben</p><h3>${(state.records.task || []).filter((record) => record.caseId === item.id && record.status !== 'ERLEDIGT').length} offen</h3><button class="bp-secondary" data-case-tab="task">Aufgaben öffnen</button></article><article><p class="bp-eyebrow">Fallnotiz</p><h3>${esc(data.notes || 'Keine Fallnotiz hinterlegt.')}</h3><button class="bp-secondary" data-case-tab="master">Stammdaten bearbeiten</button></article></section>${sideOrdersPanel()}`
+		// 0.89.7: Herkunft (Vorsorge/Auftrag), passende Vorsorge, Vorsorgestand bzw. „Als Sterbefall weiterführen“
+		return `${ctx.caseKindOverview ? ctx.caseKindOverview() : ''}${guidance}${statusWarning}${ctx.processOverviewCard ? ctx.processOverviewCard() : ''}${completenessSection}<section class="bp-case-summary"><article><p class="bp-eyebrow">Auftrag / KVA</p><h3>${esc(data.order_status || 'Noch nicht angelegt')}</h3><button class="bp-primary" data-case-tab="order">Auftrag öffnen</button></article><article><p class="bp-eyebrow">Aufgaben</p><h3>${(state.records.task || []).filter((record) => record.caseId === item.id && record.status !== 'ERLEDIGT').length} offen</h3><button class="bp-secondary" data-case-tab="task">Aufgaben öffnen</button></article><article><p class="bp-eyebrow">Fallnotiz</p><h3>${esc(data.notes || 'Keine Fallnotiz hinterlegt.')}</h3><button class="bp-secondary" data-case-tab="master">Stammdaten bearbeiten</button></article></section>${caseKindOf(item) === 'STERBEFALL' ? sideOrdersPanel() : ''}`
 	}
 
 	function sideOrdersPanel() {
@@ -292,5 +384,5 @@ export function createCasesModule(ctx) {
 		ctx.root.querySelector('[data-close-side-order-create]')?.addEventListener('click',()=>{const details=ctx.root.querySelector('.bp-side-order-create');if(details)details.open=false})
 	}
 
-	return { currentUser, assigneeOptions, listOptions, contactsByCategory, fieldType, field, masterDataForm, caseList, overview, dashboardView, caseOverview, sideOrdersPanel, loadCaseSearch, bindCaseSearch, bindSideOrders }
+	return { currentUser, assigneeOptions, listOptions, contactsByCategory, fieldType, field, masterDataForm, caseList, overview, dashboardView, caseOverview, sideOrdersPanel, loadCaseSearch, bindCaseSearch, bindSideOrders, showNewKindCase }
 }

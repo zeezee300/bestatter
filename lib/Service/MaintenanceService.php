@@ -18,7 +18,8 @@ class MaintenanceService {
 		private AuditService $audit,
 		private LoggerInterface $logger,
 		private AssistantService $assistant,
-	) {}
+	) {
+	}
 
 	/**
 	 * Jeder Teilschritt läuft isoliert: schlägt eine einzelne Kennzahl fehl (z.B. wegen
@@ -29,17 +30,17 @@ class MaintenanceService {
 	 */
 	public function runScheduled(): array {
 		$steps = [
-			'orphanRecords' => fn(): int => $this->countOrphanRecords(),
-			'syncErrors' => fn(): int => $this->countWhere('bestatter_records', "payload LIKE '%\"syncError\"%'"),
-			'failedWorkflowRuns' => fn(): int => $this->countValue('bestatter_action_runs', 'run_status', 'FAILED'),
-			'runningWorkflowRuns' => fn(): int => $this->countValue('bestatter_action_runs', 'run_status', 'RUNNING'),
-			'pendingAssistantRules' => fn(): int => $this->countValue('bestatter_assistant_rules', 'status', 'PENDING'),
-			'retentionDueCases' => fn(): int => $this->retention->settings()['enabled'] ? $this->retention->preview(500)['count'] : 0,
-			'auditIntegrity' => fn(): string => $this->audit->verifyIntegrity()['status'],
-			'failedPaperlessJobs' => fn(): int => $this->countValue('bestatter_integration_jobs', 'job_status', 'FAILED'),
-			'staleCaptureImports' => fn(): int => $this->countStaleCaptureImports(),
+			'orphanRecords' => fn (): int => $this->countOrphanRecords(),
+			'syncErrors' => fn (): int => $this->countWhere('bestatter_records', "payload LIKE '%\"syncError\"%'"),
+			'failedWorkflowRuns' => fn (): int => $this->countValue('bestatter_action_runs', 'run_status', 'FAILED'),
+			'runningWorkflowRuns' => fn (): int => $this->countValue('bestatter_action_runs', 'run_status', 'RUNNING'),
+			'pendingAssistantRules' => fn (): int => $this->countValue('bestatter_assistant_rules', 'status', 'PENDING'),
+			'retentionDueCases' => fn (): int => $this->retention->settings()['enabled'] ? $this->retention->preview(500)['count'] : 0,
+			'auditIntegrity' => fn (): string => $this->audit->verifyIntegrity()['status'],
+			'failedPaperlessJobs' => fn (): int => $this->countValue('bestatter_integration_jobs', 'job_status', 'FAILED'),
+			'staleCaptureImports' => fn (): int => $this->countStaleCaptureImports(),
 			// 0.71.0: Sprachaufnahmen, deren Transkription nie abgeholt wurde, nach 24 Stunden löschen (Zusage „Audio wird gelöscht“).
-			'deletedStaleAudio' => fn(): int => $this->assistant->cleanupStaleAudio(),
+			'deletedStaleAudio' => fn (): int => $this->assistant->cleanupStaleAudio(),
 		];
 		$summary = [];
 		$failed = [];
@@ -56,7 +57,7 @@ class MaintenanceService {
 				]);
 			}
 		}
-		$count = static fn(string $key): int => is_int($summary[$key] ?? null) ? $summary[$key] : 0;
+		$count = static fn (string $key): int => is_int($summary[$key] ?? null) ? $summary[$key] : 0;
 		$status = $failed !== [] || ($count('orphanRecords') + $count('runningWorkflowRuns')) > 0 || $summary['auditIntegrity'] === 'ERROR'
 			? 'ERROR'
 			: (($count('syncErrors') + $count('failedWorkflowRuns') + $count('retentionDueCases') + $count('failedPaperlessJobs') + $count('staleCaptureImports')) > 0 ? 'WARN' : 'OK');
@@ -65,7 +66,7 @@ class MaintenanceService {
 		$this->config->setAppValue(Application::APP_ID, 'maintenance_last_status', $status);
 		$this->config->setAppValue(Application::APP_ID, 'maintenance_last_summary', json_encode($summary, JSON_THROW_ON_ERROR));
 		// Fallakten werden nie automatisch gelöscht; nur liegengebliebene persönliche Sprachaufnahmen.
-		return ['status'=>$status, 'runAt'=>$now, 'summary'=>$summary, 'failedMetrics'=>$failed, 'automaticDeletions'=>$count('deletedStaleAudio'), 'retentionMode'=>'preview-only'];
+		return ['status' => $status, 'runAt' => $now, 'summary' => $summary, 'failedMetrics' => $failed, 'automaticDeletions' => $count('deletedStaleAudio'), 'retentionMode' => 'preview-only'];
 	}
 
 	private function countWhere(string $table, string $where): int {
@@ -84,7 +85,7 @@ class MaintenanceService {
 	}
 
 	private function countStaleCaptureImports(): int {
-		$query=$this->db->getQueryBuilder();
-		return (int)$query->select($query->func()->count('id','count'))->from('bestatter_capture_imports')->where($query->expr()->notIn('import_status',$query->createNamedParameter(['COMPLETED','DISCARDED'],\OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))->andWhere($query->expr()->lt('updated_at',$query->createNamedParameter(date('c',time()-7*86400))))->executeQuery()->fetchOne();
+		$query = $this->db->getQueryBuilder();
+		return (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_capture_imports')->where($query->expr()->notIn('import_status', $query->createNamedParameter(['COMPLETED','DISCARDED'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))->andWhere($query->expr()->lt('updated_at', $query->createNamedParameter(date('c', time() - 7 * 86400))))->executeQuery()->fetchOne();
 	}
 }

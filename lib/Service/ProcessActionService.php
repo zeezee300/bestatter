@@ -39,7 +39,8 @@ class ProcessActionService {
 		private DeregistrationService $deregistrations,
 		private CaseStorageService $storage,
 		private LabelService $labels,
-	) {}
+	) {
+	}
 
 	/** Terminvorlagen (Knopf „Termin anlegen“, Terminformular) aus resources/schedule-presets.json. */
 	public function schedulePresets(): array {
@@ -56,7 +57,9 @@ class ProcessActionService {
 	public function available(int $recordId): array {
 		$source = $this->records->get($recordId);
 		$step = $this->stepActions($source);
-		if ($step === null || $step['actions'] === []) return [];
+		if ($step === null || $step['actions'] === []) {
+			return [];
+		}
 		$runs = $this->runs($recordId);
 		$scheduleOptions = (int)$source['caseId'] > 0 ? $this->documents->funeralEventOptions((int)$source['caseId']) : [];
 		$linkedScheduleId = (int)($source['data']['sourceScheduleId'] ?? $source['data']['link']['sourceScheduleId'] ?? 0);
@@ -81,7 +84,7 @@ class ProcessActionService {
 			$action['recoveryReason'] = $staleRunning ? 'STALE_RUNNING' : ($outputMissing ? 'OUTPUTS_MISSING' : '');
 			$action['lastRun'] = $run;
 			if (in_array($action['type'], ['DOCUMENT', 'DOCUMENT_BUNDLE'], true) && str_contains(strtoupper((string)$action['key']), 'KONDOLENZ')) {
-				$availableIds = array_map(static fn(array $option): int => (int)$option['id'], $scheduleOptions);
+				$availableIds = array_map(static fn (array $option): int => (int)$option['id'], $scheduleOptions);
 				$selectedScheduleId = in_array($linkedScheduleId, $availableIds, true) ? $linkedScheduleId : (count($scheduleOptions) === 1 ? (int)$scheduleOptions[0]['id'] : 0);
 				$action['scheduleOptions'] = $scheduleOptions;
 				$action['selectedScheduleId'] = $selectedScheduleId;
@@ -94,32 +97,49 @@ class ProcessActionService {
 	/** Knöpfe des Ablaufschritts, aus dem die Aufgabe stammt (null = keine Ablaufaufgabe). */
 	private function stepActions(array $source): ?array {
 		$stepId = (int)($source['data']['processStepId'] ?? 0);
-		if ($stepId <= 0) return null;
+		if ($stepId <= 0) {
+			return null;
+		}
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('id', 'step_key', 'title', 'actions_json')->from('bestatter_process_steps')
 			->where($query->expr()->eq('id', $query->createNamedParameter($stepId)))
 			->executeQuery()->fetchAssociative();
 		$row = $row === false ? [] : $row;
 		$actions = $row === [] ? [] : (json_decode((string)$row['actions_json'], true) ?: []);
-		$actions = array_map(static fn(array $action): array => $action + ['caseStatusAfter' => '', 'recipientCategory' => '', 'templateKeys' => [], 'sourceStatusAfter' => '', 'repeatable' => false, 'dueOffsetDays' => 0, 'priority' => 'NORMAL', 'title' => '', 'description' => '', 'templateKey' => '', 'schedulePresetKey' => '', 'openForm' => false, 'view' => ''], array_values($actions));
+		$actions = array_map(static fn (array $action): array => $action + ['caseStatusAfter' => '', 'recipientCategory' => '', 'templateKeys' => [], 'sourceStatusAfter' => '', 'repeatable' => false, 'dueOffsetDays' => 0, 'priority' => 'NORMAL', 'title' => '', 'description' => '', 'templateKey' => '', 'schedulePresetKey' => '', 'openForm' => false, 'view' => ''], array_values($actions));
 		return ['stepId' => $stepId, 'stepKey' => (string)($row['step_key'] ?? $source['data']['processStepKey'] ?? ''), 'title' => (string)($row['title'] ?? $source['title']), 'actions' => $actions];
 	}
 
 	private function scheduleActionNeedsForm(array $action): bool {
-		if (!empty($action['openForm'])) return true;
+		if (!empty($action['openForm'])) {
+			return true;
+		}
 		$presetKey = strtoupper((string)($action['schedulePresetKey'] ?? ''));
-		if ($presetKey === '') return false;
-		foreach ($this->schedulePresets() as $preset) if ($preset['key'] === $presetKey) return $preset['scheduleKind'] === 'EXTERNAL_APPOINTMENT';
+		if ($presetKey === '') {
+			return false;
+		}
+		foreach ($this->schedulePresets() as $preset) {
+			if ($preset['key'] === $presetKey) {
+				return $preset['scheduleKind'] === 'EXTERNAL_APPOINTMENT';
+			}
+		}
 		return false;
 	}
 
 	/** Reactivates manual task consequences when their authoritative appointment changes. */
 	public function invalidateScheduleDependents(array $before, array $after): array {
-		if (($after['type'] ?? '') !== 'schedule' || !$this->scheduleContentChanged($before, $after)) return ['tasks' => 0, 'runs' => 0];
-		$scheduleId = (int)$after['id']; $caseId = (int)$after['caseId']; $taskCount = 0; $runCount = 0;
+		if (($after['type'] ?? '') !== 'schedule' || !$this->scheduleContentChanged($before, $after)) {
+			return ['tasks' => 0, 'runs' => 0];
+		}
+		$scheduleId = (int)$after['id'];
+		$caseId = (int)$after['caseId'];
+		$taskCount = 0;
+		$runCount = 0;
 		foreach ($this->records->list('task', $caseId) as $task) {
 			$linkedScheduleId = (int)($task['data']['sourceScheduleId'] ?? $task['data']['link']['sourceScheduleId'] ?? 0);
-			if ($linkedScheduleId !== $scheduleId) continue;
+			if ($linkedScheduleId !== $scheduleId) {
+				continue;
+			}
 			$taskCount++;
 			foreach (['COMPLETED', 'FAILED'] as $status) {
 				$query = $this->db->getQueryBuilder();
@@ -132,12 +152,14 @@ class ProcessActionService {
 					->executeStatement();
 			}
 		}
-		if ($runCount > 0) $this->audit->log($caseId, 'SCHEDULE', $scheduleId, 'DEPENDENT_ACTIONS_REACTIVATED', $this->scheduleSnapshot($before), $this->scheduleSnapshot($after) + ['reactivatedRuns' => $runCount]);
+		if ($runCount > 0) {
+			$this->audit->log($caseId, 'SCHEDULE', $scheduleId, 'DEPENDENT_ACTIONS_REACTIVATED', $this->scheduleSnapshot($before), $this->scheduleSnapshot($after) + ['reactivatedRuns' => $runCount]);
+		}
 		return ['tasks' => $taskCount, 'runs' => $runCount];
 	}
 
 	private function scheduleContentChanged(array $before, array $after): bool {
-		$fields = static fn(array $record): array => [
+		$fields = static fn (array $record): array => [
 			'date' => (string)($record['date'] ?? ''), 'status' => (string)($record['status'] ?? ''), 'title' => (string)($record['title'] ?? ''),
 			'durationMinutes' => (int)($record['data']['durationMinutes'] ?? 60), 'location' => (string)($record['data']['location'] ?? ''),
 			'appointmentCategory' => (string)($record['data']['appointmentCategory'] ?? ''), 'externalContactIds' => array_values((array)($record['data']['externalContactIds'] ?? [])),
@@ -150,7 +172,9 @@ class ProcessActionService {
 	public function execute(int $recordId, string $actionKey, string $input = '{}'): array {
 		$source = $this->records->get($recordId);
 		$step = $this->stepActions($source);
-		if ($step === null) throw new \InvalidArgumentException('Diese Aufgabe stammt nicht aus einem Ablauf und hat keine Knöpfe.');
+		if ($step === null) {
+			throw new \InvalidArgumentException('Diese Aufgabe stammt nicht aus einem Ablauf und hat keine Knöpfe.');
+		}
 		$action = null;
 		foreach ($step['actions'] as $candidate) {
 			if ($candidate['key'] === $actionKey) {
@@ -198,7 +222,9 @@ class ProcessActionService {
 			$context = ['source' => $source, 'case' => $case];
 			$date = $this->actionDate($source, (int)$action['dueOffsetDays']);
 			$linkMeta = ['source' => 'PROCESS_ACTION', 'stepKey' => $step['stepKey'], 'actionKey' => $actionKey, 'parentRecordId' => $recordId];
-			if ($source['type'] === 'schedule') $linkMeta += ['sourceScheduleId' => $recordId, 'sourceScheduleUid' => $source['data']['nextcloud']['uid'] ?? ''];
+			if ($source['type'] === 'schedule') {
+				$linkMeta += ['sourceScheduleId' => $recordId, 'sourceScheduleUid' => $source['data']['nextcloud']['uid'] ?? ''];
+			}
 			$result = match ($action['type']) {
 				'TASK' => $this->existingOpenTask((int)$source['caseId'], $this->expand($action['title'], $context), $recordId) ?? $this->groupware->createTask(
 					$this->expand($action['title'], $context),
@@ -237,7 +263,7 @@ class ProcessActionService {
 						'link' => ['source' => 'PROCESS_ACTION', 'stepKey' => $step['stepKey'], 'actionKey' => $actionKey, 'parentRecordId' => $recordId],
 						// Befund 1 (Analyse 2026-09-24): Ohne Terminart griff die Trauerfeier-Automatik nie.
 						'schedulePresetKey' => (string)($action['schedulePresetKey'] ?? ''),
-					], static fn(mixed $value): bool => $value !== ''), JSON_THROW_ON_ERROR),
+					], static fn (mixed $value): bool => $value !== ''), JSON_THROW_ON_ERROR),
 					(int)$source['caseId'],
 				),
 				'DOCUMENT' => $this->executeDocument($case, $action, $recordId, $source, $inputData),
@@ -276,7 +302,9 @@ class ProcessActionService {
 	}
 
 	private function executeEmailDraft(?array $case, array $action, int $recordId, array $context, array $input): array {
-		if ($case === null) throw new \InvalidArgumentException('E-Mail-Entwürfe können nur für fallbezogene Aufgaben angelegt werden.');
+		if ($case === null) {
+			throw new \InvalidArgumentException('E-Mail-Entwürfe können nur für fallbezogene Aufgaben angelegt werden.');
+		}
 		$subject = trim((string)($input['subject'] ?? $this->expand($action['title'], $context)));
 		$body = trim((string)($input['body'] ?? $this->expand($action['description'], $context)));
 		$record = $this->records->create('document', $subject, date('c'), 'ENTWURF', json_encode([
@@ -289,7 +317,9 @@ class ProcessActionService {
 	}
 
 	private function executeContactActivity(?array $case, array $action, int $recordId, array $context, array $input): array {
-		if ($case === null) throw new \InvalidArgumentException('Kontaktaktivitäten können nur für fallbezogene Aufgaben dokumentiert werden.');
+		if ($case === null) {
+			throw new \InvalidArgumentException('Kontaktaktivitäten können nur für fallbezogene Aufgaben dokumentiert werden.');
+		}
 		$record = $this->records->create('activity', trim((string)($input['title'] ?? $this->expand($action['title'], $context))), date('c'), 'DOKUMENTIERT', json_encode([
 			'kind' => 'CONTACT_ACTIVITY',
 			'description' => trim((string)($input['description'] ?? $this->expand($action['description'], $context))),
@@ -304,27 +334,42 @@ class ProcessActionService {
 	 * angelegt; bereits vorhandene Abmeldungen derselben Vorlage werden nicht doppelt erzeugt.
 	 */
 	private function executeDeregistrations(?array $case, array $action, array $input): array {
-		if ($case === null) throw new \InvalidArgumentException('Abmeldungen können nur für fallbezogene Aufgaben angelegt werden.');
-		$requested = array_values(array_unique(array_filter(array_map(static fn(mixed $value): string => strtoupper(trim((string)$value)), (array)($input['templateKeys'] ?? $action['templateKeys'] ?? [])))));
-		if ($requested === []) throw new \InvalidArgumentException('Bitte mindestens eine Abmeldung auswählen.');
+		if ($case === null) {
+			throw new \InvalidArgumentException('Abmeldungen können nur für fallbezogene Aufgaben angelegt werden.');
+		}
+		$requested = array_values(array_unique(array_filter(array_map(static fn (mixed $value): string => strtoupper(trim((string)$value)), (array)($input['templateKeys'] ?? $action['templateKeys'] ?? [])))));
+		if ($requested === []) {
+			throw new \InvalidArgumentException('Bitte mindestens eine Abmeldung auswählen.');
+		}
 		$existing = [];
-		foreach ($this->deregistrations->list((int)$case['id']) as $record) $existing[strtoupper((string)($record['data']['templateKey'] ?? ''))] = true;
-		$created = []; $skipped = []; $failed = [];
+		foreach ($this->deregistrations->list((int)$case['id']) as $record) {
+			$existing[strtoupper((string)($record['data']['templateKey'] ?? ''))] = true;
+		}
+		$created = [];
+		$skipped = [];
+		$failed = [];
 		foreach ($requested as $templateKey) {
-			if (isset($existing[$templateKey])) { $skipped[] = $templateKey; continue; }
+			if (isset($existing[$templateKey])) {
+				$skipped[] = $templateKey;
+				continue;
+			}
 			try {
 				$created[] = $this->deregistrations->save((int)$case['id'], ['templateKey' => $templateKey, 'status' => 'ENTWURF']);
 			} catch (\InvalidArgumentException $error) {
 				$failed[] = ['templateKey' => $templateKey, 'message' => $error->getMessage()];
 			}
 		}
-		if ($created === [] && $failed !== []) throw new \InvalidArgumentException('Es konnte keine Abmeldung angelegt werden: ' . implode('; ', array_map(static fn(array $item): string => $item['message'], $failed)));
+		if ($created === [] && $failed !== []) {
+			throw new \InvalidArgumentException('Es konnte keine Abmeldung angelegt werden: ' . implode('; ', array_map(static fn (array $item): string => $item['message'], $failed)));
+		}
 		return ['created' => $created, 'skipped' => $skipped, 'failed' => $failed];
 	}
 
 	/** Befund 2 (Analyse 2026-09-24): eine offene Aufgabe gleichen Titels im Fall wird wiederverwendet statt verdoppelt. */
 	private function existingOpenTask(int $caseId, string $title, int $sourceRecordId): ?array {
-		if ($caseId <= 0 || trim($title) === '') return null;
+		if ($caseId <= 0 || trim($title) === '') {
+			return null;
+		}
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('id', 'owner_uid', 'title', 'status')->from('bestatter_records')
 			->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))
@@ -332,15 +377,21 @@ class ProcessActionService {
 			->andWhere($query->expr()->neq('status', $query->createNamedParameter('ERLEDIGT')))
 			->executeQuery()->fetchAllAssociative();
 		foreach ($rows as $row) {
-			if ((int)$row['id'] === $sourceRecordId) continue;
-			if (mb_strtolower(trim((string)$row['title'])) !== mb_strtolower(trim($title))) continue;
+			if ((int)$row['id'] === $sourceRecordId) {
+				continue;
+			}
+			if (mb_strtolower(trim((string)$row['title'])) !== mb_strtolower(trim($title))) {
+				continue;
+			}
 			return $this->records->get((int)$row['id'], (string)$row['owner_uid']) + ['reusedExisting' => true];
 		}
 		return null;
 	}
 
 	private function applyCaseStatus(?array $case, string $status): array {
-		if ($case === null) throw new \InvalidArgumentException('Der Fallstatus kann nur für fallbezogene Aufgaben geändert werden.');
+		if ($case === null) {
+			throw new \InvalidArgumentException('Der Fallstatus kann nur für fallbezogene Aufgaben geändert werden.');
+		}
 		$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$masterData['status'] = $status;
 		// expectedUpdatedAt schützt vor stillem Überschreiben: $case wurde zu Beginn von
@@ -350,13 +401,17 @@ class ProcessActionService {
 	}
 
 	private function decodeInput(string $input): array {
-		if (trim($input) === '') return [];
+		if (trim($input) === '') {
+			return [];
+		}
 		try {
 			$data = json_decode($input, true, 512, JSON_THROW_ON_ERROR);
 		} catch (\JsonException $error) {
 			throw new \InvalidArgumentException('Ungültige Eingaben für den Knopf.', 0, $error);
 		}
-		if (!is_array($data)) throw new \InvalidArgumentException('Ungültige Eingaben für den Knopf.');
+		if (!is_array($data)) {
+			throw new \InvalidArgumentException('Ungültige Eingaben für den Knopf.');
+		}
 		return $data;
 	}
 
@@ -377,8 +432,12 @@ class ProcessActionService {
 
 	private function executeDocumentBundle(?array $case, array $action, int $recordId, array $source, array $input = []): array {
 		$templateKeys = array_values(array_unique(array_filter((array)($action['templateKeys'] ?? []))));
-		if ($templateKeys === []) throw new \InvalidArgumentException('Das Dokumentpaket enthält keine Vorlagen.');
-		if ($case === null) throw new \InvalidArgumentException('Dokumente können nur für fallbezogene Vorgänge erzeugt werden.');
+		if ($templateKeys === []) {
+			throw new \InvalidArgumentException('Das Dokumentpaket enthält keine Vorlagen.');
+		}
+		if ($case === null) {
+			throw new \InvalidArgumentException('Dokumente können nur für fallbezogene Vorgänge erzeugt werden.');
+		}
 		[$case, $schedule] = $this->caseWithScheduleContext($case, $source, (int)($input['scheduleId'] ?? 0));
 		$files = [];
 		try {
@@ -386,7 +445,9 @@ class ProcessActionService {
 				$files[] = $this->documents->generateTemplate($case, $templateKey);
 			}
 		} catch (\Throwable $error) {
-			foreach ($files as $file) $this->documents->discardGeneratedOutput($file);
+			foreach ($files as $file) {
+				$this->documents->discardGeneratedOutput($file);
+			}
 			throw new \InvalidArgumentException('Das Dokumentpaket konnte nicht vollständig erzeugt werden: ' . $error->getMessage(), 0, $error);
 		}
 
@@ -400,7 +461,9 @@ class ProcessActionService {
 			return ['bundle' => $action['key'], 'documents' => $result];
 		} catch (\Throwable $error) {
 			$this->safeRollback();
-			foreach ($files as $file) $this->documents->discardGeneratedOutput($file);
+			foreach ($files as $file) {
+				$this->documents->discardGeneratedOutput($file);
+			}
 			throw new \InvalidArgumentException('Das Dokumentpaket konnte nicht vollständig gespeichert werden: ' . $error->getMessage(), 0, $error);
 		}
 	}
@@ -421,7 +484,9 @@ class ProcessActionService {
 		// Befund 7 (Analyse 2026-09-24): Bei kurzfristig bestätigten Terminen lagen Fristen mit
 		// negativem Versatz (z. B. -3 Tage) sonst in der Vergangenheit.
 		$today = new \DateTimeImmutable('today 09:00', new \DateTimeZone('Europe/Berlin'));
-		if ($due < $today) $due = $today;
+		if ($due < $today) {
+			$due = $today;
+		}
 		return $due->format('Y-m-d\TH:i');
 	}
 
@@ -429,21 +494,33 @@ class ProcessActionService {
 		$schedule = $source['type'] === 'schedule' ? $source : null;
 		if ($schedule === null) {
 			$linkedScheduleId = (int)($source['data']['sourceScheduleId'] ?? $source['data']['link']['sourceScheduleId'] ?? 0);
-			if ($linkedScheduleId > 0 && $selectedScheduleId > 0 && $selectedScheduleId !== $linkedScheduleId) throw new \InvalidArgumentException('Diese Aufgabe ist bereits eindeutig mit einer anderen Trauerfeier verknüpft.');
+			if ($linkedScheduleId > 0 && $selectedScheduleId > 0 && $selectedScheduleId !== $linkedScheduleId) {
+				throw new \InvalidArgumentException('Diese Aufgabe ist bereits eindeutig mit einer anderen Trauerfeier verknüpft.');
+			}
 			$options = $this->documents->funeralEventOptions((int)$case['id']);
-			$availableIds = array_map(static fn(array $option): int => (int)$option['id'], $options);
-			if ($linkedScheduleId <= 0 && $selectedScheduleId > 0 && !in_array($selectedScheduleId, $availableIds, true)) throw new \InvalidArgumentException('Die ausgewählte Trauerfeier gehört nicht zu diesem Fall oder ist nicht bestätigt.');
+			$availableIds = array_map(static fn (array $option): int => (int)$option['id'], $options);
+			if ($linkedScheduleId <= 0 && $selectedScheduleId > 0 && !in_array($selectedScheduleId, $availableIds, true)) {
+				throw new \InvalidArgumentException('Die ausgewählte Trauerfeier gehört nicht zu diesem Fall oder ist nicht bestätigt.');
+			}
 			$scheduleId = $linkedScheduleId > 0 ? $linkedScheduleId : $selectedScheduleId;
 			if ($scheduleId <= 0) {
-				if (count($options) > 1) throw new \InvalidArgumentException('Bitte wählen Sie aus, für welche Trauerfeier die Kondolenzlisten erzeugt werden sollen.');
-				if (count($options) === 1) $scheduleId = (int)$options[0]['id'];
+				if (count($options) > 1) {
+					throw new \InvalidArgumentException('Bitte wählen Sie aus, für welche Trauerfeier die Kondolenzlisten erzeugt werden sollen.');
+				}
+				if (count($options) === 1) {
+					$scheduleId = (int)$options[0]['id'];
+				}
 			}
 			if ($scheduleId > 0) {
 				$candidate = $this->records->get($scheduleId);
-				if ($candidate['type'] === 'schedule' && (int)$candidate['caseId'] === (int)$case['id'] && in_array(strtoupper((string)$candidate['status']), ['BESTAETIGT', 'ERLEDIGT'], true)) $schedule = $candidate;
+				if ($candidate['type'] === 'schedule' && (int)$candidate['caseId'] === (int)$case['id'] && in_array(strtoupper((string)$candidate['status']), ['BESTAETIGT', 'ERLEDIGT'], true)) {
+					$schedule = $candidate;
+				}
 			}
 		}
-		if ($schedule === null) return [$case, null];
+		if ($schedule === null) {
+			return [$case, null];
+		}
 		$date = new \DateTimeImmutable((string)$schedule['date'], new \DateTimeZone('Europe/Berlin'));
 		$duration = max(15, (int)($schedule['data']['durationMinutes'] ?? 60));
 		$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
@@ -476,9 +553,13 @@ class ProcessActionService {
 			throw new \InvalidArgumentException('Eine Terminvorlage enthält einen ungültigen Schlüssel oder keine Bezeichnung.');
 		}
 		$kind = strtoupper((string)($preset['scheduleKind'] ?? 'EXTERNAL_APPOINTMENT'));
-		if (!in_array($kind, ['INTERNAL_ACTIVITY', 'EXTERNAL_APPOINTMENT'], true)) $kind = 'EXTERNAL_APPOINTMENT';
+		if (!in_array($kind, ['INTERNAL_ACTIVITY', 'EXTERNAL_APPOINTMENT'], true)) {
+			$kind = 'EXTERNAL_APPOINTMENT';
+		}
 		$priority = strtoupper((string)($preset['priority'] ?? 'NORMAL'));
-		if (!in_array($priority, self::PRIORITIES, true)) $priority = 'NORMAL';
+		if (!in_array($priority, self::PRIORITIES, true)) {
+			$priority = 'NORMAL';
+		}
 		return [
 			'key' => $key,
 			'label' => $label,
@@ -498,18 +579,24 @@ class ProcessActionService {
 		$actions = [];
 		$seenKeys = [];
 		foreach (array_values($input) as $index => $action) {
-			if (!is_array($action)) throw new \InvalidArgumentException('Ein Knopf ist ungültig.');
+			if (!is_array($action)) {
+				throw new \InvalidArgumentException('Ein Knopf ist ungültig.');
+			}
 			$type = strtoupper((string)($action['type'] ?? 'TASK'));
 			$key = strtoupper(trim((string)($action['key'] ?? '')));
-			if ($key === '') $key = ProcessRules::keyFromTitle((string)($action['label'] ?? ('AKTION_' . ($index + 1))));
+			if ($key === '') {
+				$key = ProcessRules::keyFromTitle((string)($action['label'] ?? ('AKTION_' . ($index + 1))));
+			}
 			if (!in_array($type, self::ACTION_TYPES, true) || !preg_match('/^[A-Z0-9_-]+$/', $key)) {
 				throw new \InvalidArgumentException('Ein Knopf enthält einen ungültigen Typ oder Schlüssel.');
 			}
-			if (isset($seenKeys[$key])) throw new \InvalidArgumentException('Der Aktionsschlüssel „' . $key . '“ ist doppelt vergeben.');
+			if (isset($seenKeys[$key])) {
+				throw new \InvalidArgumentException('Der Aktionsschlüssel „' . $key . '“ ist doppelt vergeben.');
+			}
 			$seenKeys[$key] = true;
 			$title = trim((string)($action['title'] ?? ''));
 			$templateKey = strtoupper(trim((string)($action['templateKey'] ?? '')));
-			$templateKeys = array_values(array_unique(array_filter(array_map(static fn(mixed $value): string => strtoupper(trim((string)$value)), (array)($action['templateKeys'] ?? [])))));
+			$templateKeys = array_values(array_unique(array_filter(array_map(static fn (mixed $value): string => strtoupper(trim((string)$value)), (array)($action['templateKeys'] ?? [])))));
 			$schedulePresetKey = strtoupper(trim((string)($action['schedulePresetKey'] ?? '')));
 			$openForm = filter_var($action['openForm'] ?? false, FILTER_VALIDATE_BOOLEAN);
 			$view = strtolower(trim((string)($action['view'] ?? '')));
@@ -520,10 +607,18 @@ class ProcessActionService {
 			if ($type === 'DOCUMENT' && $templateKey === '') {
 				throw new \InvalidArgumentException('Für eine Dokumentaktion muss eine Vorlage gewählt werden.');
 			}
-			if ($type === 'DOCUMENT_BUNDLE' && count($templateKeys) < 2) throw new \InvalidArgumentException('Ein Dokumentpaket benötigt mindestens zwei Vorlagen.');
-			if ($type === 'DEREGISTRATIONS' && $templateKeys === []) throw new \InvalidArgumentException('Für „Abmeldungen anlegen“ muss mindestens eine Abmeldung vorausgewählt sein.');
-			if ($type === 'OPEN_VIEW' && !in_array($view, self::OPEN_VIEWS, true)) throw new \InvalidArgumentException('Für „Bereich öffnen“ muss ein gültiger Bereich gewählt werden.');
-			if ($schedulePresetKey !== '' && !preg_match('/^[A-Z0-9_-]+$/', $schedulePresetKey)) throw new \InvalidArgumentException('Ungültige Terminart in einem Knopf.');
+			if ($type === 'DOCUMENT_BUNDLE' && count($templateKeys) < 2) {
+				throw new \InvalidArgumentException('Ein Dokumentpaket benötigt mindestens zwei Vorlagen.');
+			}
+			if ($type === 'DEREGISTRATIONS' && $templateKeys === []) {
+				throw new \InvalidArgumentException('Für „Abmeldungen anlegen“ muss mindestens eine Abmeldung vorausgewählt sein.');
+			}
+			if ($type === 'OPEN_VIEW' && !in_array($view, self::OPEN_VIEWS, true)) {
+				throw new \InvalidArgumentException('Für „Bereich öffnen“ muss ein gültiger Bereich gewählt werden.');
+			}
+			if ($schedulePresetKey !== '' && !preg_match('/^[A-Z0-9_-]+$/', $schedulePresetKey)) {
+				throw new \InvalidArgumentException('Ungültige Terminart in einem Knopf.');
+			}
 			$sourceStatus = strtoupper((string)($action['sourceStatusAfter'] ?? ''));
 			if ($sourceStatus !== '' && !in_array($sourceStatus, array_slice(self::STATUSES, 1), true)) {
 				throw new \InvalidArgumentException('Ungültiger Folgestatus der Ausgangsaufgabe.');
@@ -536,9 +631,15 @@ class ProcessActionService {
 			$labelValue = strtoupper(trim((string)($action['labelValue'] ?? '')));
 			$labelMode = strtoupper(trim((string)($action['labelMode'] ?? 'SET')));
 			if ($type === 'LABEL') {
-				if (!ProcessRules::isLabelKey($labelKey)) throw new \InvalidArgumentException('Für „Marker setzen/entfernen“ muss ein Marker gewählt werden.');
-				if (!in_array($labelMode, ['SET', 'REMOVE'], true)) throw new \InvalidArgumentException('Ungültige Marker-Aktion.');
-				if ($labelValue !== '' && !ProcessRules::isLabelValue($labelValue)) throw new \InvalidArgumentException('Ungültiger Markerwert in einem Knopf.');
+				if (!ProcessRules::isLabelKey($labelKey)) {
+					throw new \InvalidArgumentException('Für „Marker setzen/entfernen“ muss ein Marker gewählt werden.');
+				}
+				if (!in_array($labelMode, ['SET', 'REMOVE'], true)) {
+					throw new \InvalidArgumentException('Ungültige Marker-Aktion.');
+				}
+				if ($labelValue !== '' && !ProcessRules::isLabelValue($labelValue)) {
+					throw new \InvalidArgumentException('Ungültiger Markerwert in einem Knopf.');
+				}
 			}
 			if ($type === 'CASE_STATUS' && $caseStatus === '') {
 				throw new \InvalidArgumentException('Für den Fallstatuswechsel muss ein Zielstatus gewählt werden.');
@@ -600,10 +701,14 @@ class ProcessActionService {
 		$expectedKeys = $action['type'] === 'DOCUMENT_BUNDLE'
 			? array_values(array_unique(array_filter(array_map('strval', (array)($action['templateKeys'] ?? [])))))
 			: array_values(array_filter([(string)($action['templateKey'] ?? '')]));
-		if ($entries === [] || $expectedKeys === []) return false;
+		if ($entries === [] || $expectedKeys === []) {
+			return false;
+		}
 
 		$userId = trim((string)($run['by'] ?? ''));
-		if ($userId === '') return false;
+		if ($userId === '') {
+			return false;
+		}
 		try {
 			$userFolder = $this->storage->baseFolder($userId);
 		} catch (\Throwable) {
@@ -617,11 +722,15 @@ class ProcessActionService {
 			? (int)($source['id'] ?? 0)
 			: (int)($source['data']['sourceScheduleId'] ?? $source['data']['link']['sourceScheduleId'] ?? 0);
 		foreach ($entries as $entry) {
-			if (!is_array($entry)) continue;
+			if (!is_array($entry)) {
+				continue;
+			}
 			$file = is_array($entry['file'] ?? null) ? $entry['file'] : $entry;
 			$record = is_array($entry['record'] ?? null) ? $entry['record'] : [];
 			$templateKey = strtoupper(trim((string)($file['templateKey'] ?? '')));
-			if ($templateKey === '' || !in_array($templateKey, array_map('strtoupper', $expectedKeys), true)) continue;
+			if ($templateKey === '' || !in_array($templateKey, array_map('strtoupper', $expectedKeys), true)) {
+				continue;
+			}
 			$storedTemplateHash = trim((string)($file['templateSource']['sha256'] ?? ''));
 			try {
 				$templateFingerprints[$templateKey] ??= $this->documents->templateFingerprint($templateKey, $userId);
@@ -629,14 +738,20 @@ class ProcessActionService {
 			} catch (\Throwable) {
 				continue;
 			}
-			if ($storedTemplateHash === '' || $currentTemplateHash === '' || !hash_equals($currentTemplateHash, $storedTemplateHash)) continue;
+			if ($storedTemplateHash === '' || $currentTemplateHash === '' || !hash_equals($currentTemplateHash, $storedTemplateHash)) {
+				continue;
+			}
 			if ($isCondolence && (
 				$expectedScheduleId <= 0
 				|| (int)($file['sourceScheduleId'] ?? 0) !== $expectedScheduleId
 				|| (string)($file['documentContextKey'] ?? '') !== 'schedule:' . $expectedScheduleId
-			)) continue;
+			)) {
+				continue;
+			}
 			$recordId = (int)($record['id'] ?? 0);
-			if ($recordId <= 0 || !$this->documentRecordExists($recordId, $caseId)) continue;
+			if ($recordId <= 0 || !$this->documentRecordExists($recordId, $caseId)) {
+				continue;
+			}
 			$fileIds = array_values(array_unique(array_filter([
 				(int)($file['fileId'] ?? 0),
 				(int)($file['pdf']['fileId'] ?? 0),
@@ -644,15 +759,22 @@ class ProcessActionService {
 			$fileExists = false;
 			foreach ($fileIds as $fileId) {
 				try {
-					if ($userFolder->getById($fileId) !== []) { $fileExists = true; break; }
+					if ($userFolder->getById($fileId) !== []) {
+						$fileExists = true;
+						break;
+					}
 				} catch (\Throwable) {
 					// Missing/inaccessible nodes make the durable action output incomplete.
 				}
 			}
-			if ($fileExists) $validKeys[$templateKey] = true;
+			if ($fileExists) {
+				$validKeys[$templateKey] = true;
+			}
 		}
 		foreach ($expectedKeys as $expectedKey) {
-			if (!isset($validKeys[strtoupper($expectedKey)])) return false;
+			if (!isset($validKeys[strtoupper($expectedKey)])) {
+				return false;
+			}
 		}
 		return true;
 	}
@@ -689,7 +811,9 @@ class ProcessActionService {
 			->where($query->expr()->eq('id', $query->createNamedParameter($runId)))
 			->andWhere($query->expr()->eq('run_status', $query->createNamedParameter($expectedStatus)))
 			->executeStatement();
-		if ($affected !== 1) throw new \InvalidArgumentException('Der Stand des Knopfs hat sich zwischenzeitlich geändert. Bitte die Aufgabe neu öffnen.');
+		if ($affected !== 1) {
+			throw new \InvalidArgumentException('Der Stand des Knopfs hat sich zwischenzeitlich geändert. Bitte die Aufgabe neu öffnen.');
+		}
 	}
 
 	private function claimExecution(int $recordId, string $actionKey, bool $repeatable): int {
@@ -721,7 +845,9 @@ class ProcessActionService {
 			$this->safeRollback();
 			if (!$repeatable) {
 				$retryRunId = $this->restartExecutionClaim($executionKey, $user->getUID());
-				if ($retryRunId > 0) return $retryRunId;
+				if ($retryRunId > 0) {
+					return $retryRunId;
+				}
 			}
 			if (!$repeatable && $this->executionClaimExists($executionKey)) {
 				throw new \InvalidArgumentException('Dieser Knopf wurde bereits begonnen. Bitte den Stand der Aufgabe prüfen, bevor er erneut ausgeführt wird.', 0, $error);
@@ -735,7 +861,9 @@ class ProcessActionService {
 		$row = $query->select('id', 'run_status')->from('bestatter_action_runs')
 			->where($query->expr()->eq('execution_key', $query->createNamedParameter($executionKey)))
 			->setMaxResults(1)->executeQuery()->fetchAssociative();
-		if ($row === false || !in_array((string)$row['run_status'], ['FAILED', 'SUPERSEDED'], true)) return 0;
+		if ($row === false || !in_array((string)$row['run_status'], ['FAILED', 'SUPERSEDED'], true)) {
+			return 0;
+		}
 		$update = $this->db->getQueryBuilder();
 		$affected = $update->update('bestatter_action_runs')
 			->set('run_status', $update->createNamedParameter('RUNNING'))
@@ -809,7 +937,9 @@ class ProcessActionService {
 	private function expand(string $value, array $context): string {
 		$source = $context['source'];
 		$case = $context['case'];
-		if (!str_contains($value, '{{')) return $value;
+		if (!str_contains($value, '{{')) {
+			return $value;
+		}
 		$master = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$replacements = [
 			'{{source.title}}' => (string)$source['title'],
@@ -853,7 +983,9 @@ class ProcessActionService {
 	private function branchRow(string $branchKey): array {
 		$query = $this->db->getQueryBuilder();
 		$query->select('*')->from('bestatter_branches');
-		if ($branchKey !== '') $query->where($query->expr()->eq('branch_key', $query->createNamedParameter($branchKey)));
+		if ($branchKey !== '') {
+			$query->where($query->expr()->eq('branch_key', $query->createNamedParameter($branchKey)));
+		}
 		$row = $query->orderBy('sort_order', 'ASC')->setMaxResults(1)->executeQuery()->fetchAssociative();
 		return $row === false ? [] : $row;
 	}
@@ -864,7 +996,9 @@ class ProcessActionService {
 
 	private function germanDate(string $value): string {
 		$value = trim($value);
-		if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $value, $match)) return $value;
+		if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $value, $match)) {
+			return $value;
+		}
 		return $match[3] . '.' . $match[2] . '.' . $match[1];
 	}
 }

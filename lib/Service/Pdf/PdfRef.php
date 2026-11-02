@@ -6,5 +6,9 @@ namespace OCA\Bestatter\Service\Pdf;
 
 /** Indirect reference „n g R“. */
 final class PdfRef {
-	public function __construct(public readonly int $num, public readonly int $gen = 0) {}
+	public function __construct(
+		public readonly int $num,
+		public readonly int $gen = 0,
+	) {
+	}
 }

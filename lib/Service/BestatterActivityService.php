@@ -25,10 +25,13 @@ class BestatterActivityService {
 		private TeamService $team,
 		private InstallationConfigService $installationConfig,
 		private IGroupManager $groupManager,
-	) {}
+	) {
+	}
 
 	public function publishAuditEvent(int $caseId, string $objectType, ?int $objectId, string $action, mixed $before, mixed $after): void {
-		if ($caseId <= 0) return;
+		if ($caseId <= 0) {
+			return;
+		}
 		try {
 			$this->route($caseId, strtoupper($objectType), $objectId, strtoupper($action), $this->data($before), $this->data($after));
 		} catch (\Throwable $error) {
@@ -70,7 +73,9 @@ class BestatterActivityService {
 				$this->publish('bestatter_task_changed', 'task_changed', [$oldAssignee], $caseId, $objectId, $case, $actor, $title);
 				return;
 			}
-			if (!$this->recordContentChanged($before, $after)) return;
+			if (!$this->recordContentChanged($before, $after)) {
+				return;
+			}
 			$subject = strtoupper((string)($after['status'] ?? '')) === 'ERLEDIGT' ? 'task_completed' : 'task_changed';
 			$this->publish('bestatter_task_changed', $subject, [$newAssignee], $caseId, $objectId, $case, $actor, $title);
 			return;
@@ -80,7 +85,9 @@ class BestatterActivityService {
 			$remoteDeleted = $action === 'UPDATED'
 				&& (string)($before['data']['nextcloud']['remoteDeletedAt'] ?? '') === ''
 				&& (string)($after['data']['nextcloud']['remoteDeletedAt'] ?? '') !== '';
-			if ($action === 'UPDATED' && !$remoteDeleted && !$this->recordContentChanged($before, $after)) return;
+			if ($action === 'UPDATED' && !$remoteDeleted && !$this->recordContentChanged($before, $after)) {
+				return;
+			}
 			$beforeRecipients = $this->scheduleAssignees($before);
 			$afterRecipients = $this->scheduleAssignees($after);
 			$recipients = $action === 'CREATED' ? $afterRecipients : array_values(array_unique(array_merge($beforeRecipients, $afterRecipients)));
@@ -97,14 +104,18 @@ class BestatterActivityService {
 
 		if ($type === 'INVOICE' && in_array($action, ['STATUS_FREIGEGEBEN', 'STATUS_VERSENDET'], true)) {
 			$invoiceTitle = trim((string)($after['invoiceNumber'] ?? $before['invoiceNumber'] ?? $title));
-			if ($invoiceTitle === '') $invoiceTitle = 'Rechnung';
+			if ($invoiceTitle === '') {
+				$invoiceTitle = 'Rechnung';
+			}
 			$this->publish('bestatter_document_finalized', 'invoice_finalized', [$case['responsible']], $caseId, $objectId, $case, $actor, $invoiceTitle);
 			return;
 		}
 
 		if ($type === 'PROCESS_ACTION' && $action === 'FAILED') {
 			$actionTitle = trim((string)($after['action'] ?? $title));
-			if ($actionTitle === '') $actionTitle = 'Ablaufaktion';
+			if ($actionTitle === '') {
+				$actionTitle = 'Ablaufaktion';
+			}
 			$this->publish('bestatter_process_attention', 'action_failed', [$case['responsible']], $caseId, $objectId, $case, $actor, $actionTitle);
 		}
 	}
@@ -118,7 +129,11 @@ class BestatterActivityService {
 			$recipients = [];
 			foreach ([...$this->installationConfig->adminGroups(), 'admin'] as $groupName) {
 				$group = $this->groupManager->get($groupName);
-				if ($group !== null) foreach ($group->getUsers() as $user) $recipients[$user->getUID()] = true;
+				if ($group !== null) {
+					foreach ($group->getUsers() as $user) {
+						$recipients[$user->getUID()] = true;
+					}
+				}
 			}
 			foreach (array_keys($recipients) as $recipient) {
 				$event = $this->activityManager->generateEvent();
@@ -138,7 +153,9 @@ class BestatterActivityService {
 	private function publish(string $activityType, string $subject, array $recipients, int $caseId, ?int $objectId, array $case, string $actor, string $title = ''): void {
 		$recipients = array_values(array_unique(array_filter(array_map('strval', $recipients))));
 		foreach ($recipients as $recipient) {
-			if ($recipient === $actor || !$this->team->hasBestatterRole($recipient) || $this->userManager->get($recipient) === null) continue;
+			if ($recipient === $actor || !$this->team->hasBestatterRole($recipient) || $this->userManager->get($recipient) === null) {
+				continue;
+			}
 			$event = $this->activityManager->generateEvent();
 			$event->setApp(Application::APP_ID)
 				->setType($activityType)
@@ -150,7 +167,9 @@ class BestatterActivityService {
 				])
 				->setObject('bestatter_case', $caseId, $case['label'])
 				->setTimestamp(time());
-			if ($actor !== 'system' && $this->userManager->get($actor) !== null) $event->setAuthor($actor);
+			if ($actor !== 'system' && $this->userManager->get($actor) !== null) {
+				$event->setAuthor($actor);
+			}
 			$this->activityManager->publish($event);
 		}
 	}
@@ -160,7 +179,9 @@ class BestatterActivityService {
 		$row = $query->select('case_number', 'first_name', 'last_name', 'responsible_employee')
 			->from('bestatter_cases')->where($query->expr()->eq('id', $query->createNamedParameter($caseId)))
 			->executeQuery()->fetchAssociative();
-		if ($row === false) return ['label' => 'Fall #' . $caseId, 'responsible' => ''];
+		if ($row === false) {
+			return ['label' => 'Fall #' . $caseId, 'responsible' => ''];
+		}
 		$name = trim((string)$row['first_name'] . ' ' . (string)$row['last_name']);
 		$number = trim((string)$row['case_number']);
 		return [
@@ -179,9 +200,13 @@ class BestatterActivityService {
 
 	private function scheduleAssignees(array $data): array {
 		$uids = $data['data']['assigneeUids'] ?? $data['assigneeUids'] ?? [];
-		if (!is_array($uids)) $uids = [];
+		if (!is_array($uids)) {
+			$uids = [];
+		}
 		$single = $this->recordAssignee($data);
-		if ($single !== '') $uids[] = $single;
+		if ($single !== '') {
+			$uids[] = $single;
+		}
 		return $uids;
 	}
 

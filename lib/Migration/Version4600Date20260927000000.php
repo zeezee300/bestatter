@@ -26,7 +26,10 @@ use OCP\Migration\SimpleMigrationStep;
 class Version4600Date20260927000000 extends SimpleMigrationStep {
 	private const DROPPED = ['bestatter_workflow_runs', 'bestatter_workflows', 'bestatter_checklist_items', 'bestatter_checklist_templates', 'bestatter_case_automation'];
 
-	public function __construct(private IConfig $config) {}
+	public function __construct(
+		private IConfig $config,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
@@ -47,7 +50,9 @@ class Version4600Date20260927000000 extends SimpleMigrationStep {
 			$t->addUniqueIndex(['execution_key'], 'bestatter_action_execution');
 		}
 		foreach (self::DROPPED as $table) {
-			if ($schema->hasTable($table)) $schema->dropTable($table);
+			if ($schema->hasTable($table)) {
+				$schema->dropTable($table);
+			}
 		}
 		return $schema;
 	}

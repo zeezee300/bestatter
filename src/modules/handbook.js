@@ -8,8 +8,8 @@ export const handbookSlug = (text) => String(text).toLowerCase()
 	.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export const HANDBOOK_VIEWS = {
-	dashboard: 'dashboard', capture: 'schnellerfassung', cases: 'fallakte', task: 'aufgaben-termine', schedule: 'aufgaben-termine',
-	document: 'dokumente', inbox: 'belegeingang', administration: 'administration', customizing: 'customizing',
+	dashboard: 'dashboard', capture: 'schnellerfassung', cases: 'fallakte', orders: 'auftraege-vorsorgen', precare: 'auftraege-vorsorgen', task: 'aufgaben-termine', schedule: 'aufgaben-termine',
+	document: 'dokumente', inbox: 'belegeingang', accounting: 'buchhaltung', administration: 'administration', customizing: 'customizing',
 }
 export const HANDBOOK_CASE_TABS = {
 	overview: 'fallakte-reiter-uebersicht', master: 'stammdaten', order: 'auftrag', 'side-orders': 'nebenauftraege', contact: 'kontakte',
@@ -23,7 +23,8 @@ export const HANDBOOK_ADMIN_TABS = {
 }
 export const HANDBOOK_CUSTOMIZING_TABS = {
 	processes: 'customizing-ablaeufe', 'value-lists': 'customizing-wertelisten', 'burial-rules': 'customizing-variantenregeln', surcharges: 'customizing-zuschlagsstaffeln',
-	scheduling: 'customizing-terminplanung', documents: 'customizing-dokumentvorlagen', deregistration: 'customizing-abmeldungen', labels: 'customizing-marker', 'document-kinds': 'customizing-dokumentarten',
+	scheduling: 'customizing-terminplanung', documents: 'customizing-dokumentvorlagen', deregistration: 'customizing-abmeldungen', labels: 'customizing-marker', 'document-kinds': 'customizing-dokumentarten', 'order-choices': 'customizing-ankreuzfelder', 'mail-templates': 'customizing-e-mail-vorlagen',
+	'order-types': 'customizing-auftragsarten', precare: 'customizing-vorsorge',
 }
 
 export function handbookUrl() {
@@ -43,3 +44,9 @@ export const handbookLink = (state) => `${handbookUrl()}${handbookAnchor(state) 
 
 /** Link auf den Kasten „Kurz erklärt“, aus dem eine Antwort der Bedienhilfe stammt. */
 export const handbookHelpLink = (heading) => `${handbookUrl()}#h-${handbookSlug(heading)}`
+
+/** 0.89.6: dezenter Textlink am Ende einer Seitenbeschreibung (nur an Seiten mit Regelpflege). */
+export const handbookMoreLink = (anchor, esc) => ` <a class="bp-more-link" href="${esc(`${handbookUrl()}#${anchor}`)}" target="_blank" rel="noopener">Mehr im Handbuch</a>`
+
+/** 0.89.6: „Was bedeutet das?“ an Hinweisen – öffnet die Bedienhilfe mit dem Hilfetext (Kennung h-…). */
+export const helpExplainButton = (helpId, esc, label = 'Was bedeutet das?') => ` <button type="button" class="bp-link-button" data-help-open="${esc(helpId)}">${esc(label)}</button>`

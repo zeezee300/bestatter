@@ -1,5 +1,16 @@
+import { handbookMoreLink } from './handbook.js'
+import { createOrderChoiceFieldsModule } from './order-choice-fields.js'
+import { createMailTemplatesModule } from './mail-templates.js'
+import { createTypicalCostsModule } from './typical-costs.js'
+import { createCaseKindSettingsModule } from './case-kind-settings.js'
+import { REFERENCE_TABS, referenceNotice } from './catalog-references.js'
+
 export function createCustomizingModule(ctx) {
 	const { root, urls, apiBase, state } = ctx
+	const orderChoiceFields = createOrderChoiceFieldsModule(ctx) // 0.89.3: Customizing → Ankreuzfelder
+	const mailTemplates = createMailTemplatesModule(ctx) // 0.89.3: Customizing → E-Mail-Vorlagen
+	const typicalCosts = createTypicalCostsModule(ctx) // 0.89.5: Customizing → Fremdkosten
+	const caseKindSettings = createCaseKindSettingsModule(ctx) // 0.89.7: Auftragsarten, Vorsorge
 	const api = (...args) => ctx.api(...args)
 	const branchUrl = (...args) => ctx.branchUrl(...args)
 	const deliveryChannels = (...args) => ctx.deliveryChannels(...args)
@@ -177,7 +188,7 @@ export function createCustomizingModule(ctx) {
 	function surchargeView() {
 		const articles = (state.articles || []).filter((item) => item.active && item.itemType !== 'PACKAGE')
 		const row = (item = {}, isNew = false) => `<tr data-surcharge-rule="${Number(item.id || 0)}"><td><input data-rule-key value="${esc(item.ruleKey || '')}" ${isNew ? 'placeholder="automatisch aus Bezeichnung" required' : 'readonly'}></td><td><input data-label value="${esc(item.label || '')}" required></td><td><select data-dimension>${[['PICKUP','Abholzeit'],['HEIGHT_CM','Größe (cm)'],['WEIGHT_KG','Gewicht (kg)'],['OTHER','Weitere']].map(([key,label])=>`<option value="${key}" ${key===item.dimension?'selected':''}>${label}</option>`).join('')}</select></td><td><input data-from type="number" min="0" step="1" value="${item.thresholdFrom ?? ''}" aria-label="Staffel von"></td><td><input data-to type="number" min="0" step="1" value="${item.thresholdTo ?? ''}" aria-label="Staffel bis"></td><td><select data-article><option value="">Noch keine Katalogleistung</option>${articles.map((article)=>`<option value="${Number(article.id)}" ${Number(article.id)===Number(item.articleId)?'selected':''}>${esc(article.articleNumber)} · ${esc(article.shortName)} · ${Number(article.salesPriceCents || 0) / 100} €</option>`).join('')}</select></td><td><label class="bp-inline-check"><input data-active type="checkbox" ${item.active?'checked':''}> Aktiv</label></td><td><input data-sort type="number" min="0" value="${Number(item.sortOrder || 0)}" aria-label="Sortierung"></td><td><button type="button" class="bp-secondary save-surcharge-rule">Speichern</button></td></tr>`
-		return `<section class="bp-panel bp-custom-table bp-surcharge-admin"><div class="bp-panel-head"><div><h3>Zuschlagsstaffeln</h3><p class="bp-muted">Staffeln und feste Katalogleistungen pflegen. Die Abholzeit-, Größen- und Gewichtswerte können bereits im Fall erfasst werden. Die Leistungs- und Zuschlagsprüfung im Ablauf (Knopf im Schritt bzw. Zusatzablauf 1) schlägt zutreffende Staffeln vor; übernommen wird bewusst über den Leistungsdialog. Änderungen nach Beauftragung erfolgen nur über den Nachtragsprozess.</p></div><button type="button" class="bp-primary" id="new-surcharge-rule">+ Staffel</button></div><div class="bp-table-scroll"><table><thead><tr><th>Schlüssel</th><th>Bezeichnung</th><th>Merkmal</th><th>Von</th><th>Bis</th><th>Katalogleistung / Preis</th><th>Status</th><th>Sortierung</th><th>Aktion</th></tr></thead><tbody id="surcharge-rule-rows">${(state.surchargeRules || []).map((item)=>row(item)).join('')}</tbody></table></div><template id="new-surcharge-template">${row({},true)}</template></section>`
+		return `<section class="bp-panel bp-custom-table bp-surcharge-admin"><div class="bp-panel-head"><div><h3>Zuschlagsstaffeln</h3><p class="bp-muted">Staffeln und feste Katalogleistungen pflegen. Die Abholzeit-, Größen- und Gewichtswerte können bereits im Fall erfasst werden. Die Leistungs- und Zuschlagsprüfung im Ablauf (Knopf im Schritt bzw. Zusatzablauf 1) schlägt zutreffende Staffeln vor; übernommen wird bewusst über den Leistungsdialog. Änderungen nach Beauftragung erfolgen nur über den Nachtragsprozess.${handbookMoreLink('customizing-zuschlagsstaffeln', esc)}</p></div><button type="button" class="bp-primary" id="new-surcharge-rule">+ Staffel</button></div><div class="bp-table-scroll"><table><thead><tr><th>Schlüssel</th><th>Bezeichnung</th><th>Merkmal</th><th>Von</th><th>Bis</th><th>Katalogleistung / Preis</th><th>Status</th><th>Sortierung</th><th>Aktion</th></tr></thead><tbody id="surcharge-rule-rows">${(state.surchargeRules || []).map((item)=>row(item)).join('')}</tbody></table></div><template id="new-surcharge-template">${row({},true)}</template></section>`
 	}
 
 	function burialRuleView() {
@@ -185,7 +196,7 @@ export function createCustomizingModule(ctx) {
 		const articles = (state.articles || []).filter((item) => item.active && item.itemType !== 'PACKAGE')
 		const articleOptions = (selected) => `<option value="">– keine –</option>${articles.map((article) => `<option value="${Number(article.id)}" ${Number(selected)===Number(article.id)?'selected':''}>${esc(article.articleNumber)} · ${esc(article.shortName)}</option>`).join('')}`
 		const row = (item = {}, isNew = false) => `<tr data-burial-rule="${Number(item.id || 0)}"><td><select data-variant><option value="">Variante wählen</option>${variants.map((variant)=>`<option value="${esc(variant.value)}" ${variant.value===item.variantCode?'selected':''}>${esc(variant.label)} (${esc(variant.value)})</option>`).join('')}</select></td><td><select data-type>${[['MANDATORY_ARTICLE_GROUP','Gruppe erforderlich'],['MANDATORY_ARTICLE_GROUP_WITH_DEFAULT','Gruppe mit Standardartikel'],['SUGGESTED_ARTICLE','Artikel vorschlagen'],['EXCLUDED_ARTICLE_GROUP','Gruppe ausgeschlossen']].map(([key,label])=>`<option value="${key}" ${key===(item.ruleType||'MANDATORY_ARTICLE_GROUP')?'selected':''}>${label}</option>`).join('')}</select></td><td><select data-group><option value="">– keine –</option>${(state.catalogGroups || []).map((group)=>`<option value="${esc(group.key)}" ${group.key===item.articleGroup?'selected':''}>${esc(group.key)} · ${esc(group.name)}</option>`).join('')}</select></td><td><select data-article>${articleOptions(item.articleId)}</select></td><td><select data-default>${articleOptions(item.defaultArticleId)}</select></td><td><input data-note value="${esc(item.note || '')}" placeholder="Konkreter interner Hinweis"></td><td><label class="bp-inline-check"><input data-active type="checkbox" ${item.active?'checked':''}> Aktiv</label></td><td><input data-sort type="number" min="0" value="${Number(item.sortOrder || 0)}" aria-label="Sortierung"></td><td><button type="button" class="bp-secondary save-burial-rule">Speichern</button></td></tr>`
-		return `<section class="bp-panel bp-custom-table"><div class="bp-panel-head"><div><h3>Varianten- und Leistungsregeln</h3><p class="bp-muted">Pflege von Pflicht-Warengruppen, Standards und Vorschlägen je Bestattungsvariante. Regeln verweisen auf den Warengruppen-Schlüssel des Leistungskatalogs. Ungeklärte Varianten können nicht aktiviert werden.</p></div><button type="button" class="bp-primary" id="new-burial-rule">+ Regel</button></div><div class="bp-table-scroll"><table><thead><tr><th>Variante</th><th>Regel</th><th>Warengruppe</th><th>Artikel</th><th>Standardartikel</th><th>Interner Hinweis</th><th>Status</th><th>Sort.</th><th>Aktion</th></tr></thead><tbody id="burial-rule-rows">${(state.burialVariantRules || []).map((item)=>row(item)).join('')}</tbody></table></div><template id="new-burial-rule-template">${row({},true)}</template></section>`
+		return `<section class="bp-panel bp-custom-table"><div class="bp-panel-head"><div><h3>Varianten- und Leistungsregeln</h3><p class="bp-muted">Pflege von Pflicht-Warengruppen, Standards und Vorschlägen je Bestattungsvariante. Regeln verweisen auf den Warengruppen-Schlüssel des Leistungskatalogs. Ungeklärte Varianten können nicht aktiviert werden.${handbookMoreLink('customizing-variantenregeln', esc)}</p></div><button type="button" class="bp-primary" id="new-burial-rule">+ Regel</button></div><div class="bp-table-scroll"><table><thead><tr><th>Variante</th><th>Regel</th><th>Warengruppe</th><th>Artikel</th><th>Standardartikel</th><th>Interner Hinweis</th><th>Status</th><th>Sort.</th><th>Aktion</th></tr></thead><tbody id="burial-rule-rows">${(state.burialVariantRules || []).map((item)=>row(item)).join('')}</tbody></table></div><template id="new-burial-rule-template">${row({},true)}</template></section>`
 	}
 
 	/**
@@ -215,8 +226,18 @@ export function createCustomizingModule(ctx) {
 		})
 	}
 
+	/** 0.89.5: Verweisprüfung je Reiter; neu geladen beim Reiterwechsel und nach dem Speichern (state.catalogReferences = undefined). */
+	function catalogReferences(area) {
+		if (state.catalogReferences === undefined || state.catalogReferencesTab !== state.customizingTab) {
+			state.catalogReferences = null; state.catalogReferencesTab = state.customizingTab
+			api(`${apiBase}/catalog-references`, { feedback: false }).then((result) => { state.catalogReferences = result; if (state.view === 'customizing') render() }).catch(() => { state.catalogReferences = { error: true } })
+			return ''
+		}
+		return referenceNotice(state.catalogReferences, esc, area)
+	}
+
 	function customizing() {
-		const tabs = [['processes', 'Abläufe'], ['labels', 'Marker'], ['document-kinds', 'Dokumentarten'], ['value-lists', 'Wertelisten'], ['burial-rules', 'Variantenregeln'], ['surcharges', 'Zuschlagsstaffeln'], ['scheduling', 'Terminplanung'], ['documents', 'Dokumentvorlagen'], ['deregistration', 'Abmeldungen']]
+		const tabs = [['processes', 'Abläufe'], ['labels', 'Marker'], ['document-kinds', 'Dokumentarten'], ['value-lists', 'Wertelisten'], ['burial-rules', 'Variantenregeln'], ['surcharges', 'Zuschlagsstaffeln'], ['scheduling', 'Terminplanung'], ['documents', 'Dokumentvorlagen'], ['order-choices', 'Ankreuzfelder'], ['typical-costs', 'Fremdkosten'], ['mail-templates', 'E-Mail-Vorlagen'], ['deregistration', 'Abmeldungen'], ['order-types', 'Auftragsarten'], ['precare', 'Vorsorge']]
 		let body = ''
 		if (state.customizingTab === 'processes') body = ctx.processAdminView ? ctx.processAdminView() : ''
 		else if (state.customizingTab === 'labels') body = ctx.labelsAdminView ? ctx.labelsAdminView() : ''
@@ -233,18 +254,27 @@ export function createCustomizingModule(ctx) {
 		else if (state.customizingTab === 'surcharges') body = surchargeView()
 		else if (state.customizingTab === 'scheduling') body = schedulingView()
 		else if (state.customizingTab === 'documents') body = documentTemplatesView()
+		else if (state.customizingTab === 'order-choices') body = orderChoiceFields.view()
+		else if (state.customizingTab === 'mail-templates') body = mailTemplates.view()
+		else if (state.customizingTab === 'typical-costs') body = typicalCosts.view()
 		else if (state.customizingTab === 'deregistration') body = deregistrationTemplatesView()
+		else if (['order-types', 'precare'].includes(state.customizingTab)) body = caseKindSettings.view(state.customizingTab)
+		if (REFERENCE_TABS[state.customizingTab]) body = catalogReferences(REFERENCE_TABS[state.customizingTab]) + body
 		return `<div class="bp-page-head"><div><p class="bp-eyebrow">Administration</p><h2>Customizing</h2></div></div><div class="bp-subtabs">${tabs.map((tab) => `<button class="${state.customizingTab === tab[0] ? 'active' : ''}" data-customizing-tab="${tab[0]}">${tab[1]}</button>`).join('')}</div>${body}`
 	}
 
 	function bindCustomizing() {
+		orderChoiceFields.bind()
+		mailTemplates.bind()
+		typicalCosts.bind()
+		caseKindSettings.bind()
 		bindAutoKeys()
 		bindScheduling()
 		const bindBurialRule = (row) => row.querySelector('.save-burial-rule')?.addEventListener('click', async () => {
 			const id = Number(row.dataset.burialRule || 0)
 			const rule = { variantCode: row.querySelector('[data-variant]').value, ruleType: row.querySelector('[data-type]').value, articleGroup: row.querySelector('[data-group]').value.trim(), articleId: row.querySelector('[data-article]').value, defaultArticleId: row.querySelector('[data-default]').value, note: row.querySelector('[data-note]').value.trim(), active: row.querySelector('[data-active]').checked, sortOrder: row.querySelector('[data-sort]').value }
 			const button = row.querySelector('.save-burial-rule'); button.disabled = true
-			try { await api(`${apiBase}/customizing/burial-rules${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: new URLSearchParams({rule: JSON.stringify(rule)}) }); state.burialVariantRules = await api(`${apiBase}/customizing/burial-rules`); render(); notifySuccess('Variantenregel gespeichert.') }
+			try { await api(`${apiBase}/customizing/burial-rules${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: new URLSearchParams({rule: JSON.stringify(rule)}) }); state.burialVariantRules = await api(`${apiBase}/customizing/burial-rules`); state.catalogReferences = undefined; render(); notifySuccess('Variantenregel gespeichert.') }
 			catch (error) { notifyError(error.message); button.disabled = false }
 		})
 		root.querySelectorAll('[data-burial-rule]').forEach(bindBurialRule)
@@ -253,7 +283,7 @@ export function createCustomizingModule(ctx) {
 			const id = Number(row.dataset.surchargeRule || 0)
 			const rule = { ruleKey: row.querySelector('[data-rule-key]').value.trim(), label: row.querySelector('[data-label]').value.trim(), dimension: row.querySelector('[data-dimension]').value, thresholdFrom: row.querySelector('[data-from]').value, thresholdTo: row.querySelector('[data-to]').value, articleId: row.querySelector('[data-article]').value, active: row.querySelector('[data-active]').checked, sortOrder: row.querySelector('[data-sort]').value }
 			const button = row.querySelector('.save-surcharge-rule'); button.disabled = true
-			try { await api(`${apiBase}/customizing/surcharges${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: new URLSearchParams({rule: JSON.stringify(rule)}) }); state.surchargeRules = await api(`${apiBase}/customizing/surcharges`); render(); notifySuccess('Zuschlagsstaffel gespeichert.') }
+			try { await api(`${apiBase}/customizing/surcharges${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: new URLSearchParams({rule: JSON.stringify(rule)}) }); state.surchargeRules = await api(`${apiBase}/customizing/surcharges`); state.catalogReferences = undefined; render(); notifySuccess('Zuschlagsstaffel gespeichert.') }
 			catch (error) { notifyError(error.message); button.disabled = false }
 		})
 		root.querySelectorAll('[data-surcharge-rule]').forEach(bindSurchargeRow)

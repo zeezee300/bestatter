@@ -13,13 +13,18 @@ use OCP\Server;
  * Zuständigen). Gemeinsam genutzt von Fall löschen, Aufbewahrung und dem vollständigen Entfernen der App.
  */
 class AppCalendarObjects {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	/** @return list<array{calendarId:int,uri:string}> */
 	public function targets(?int $caseId = null): array {
 		$query = $this->db->getQueryBuilder();
 		$query->select('payload', 'nextcloud_calendar_key', 'nextcloud_uri')->from('bestatter_records');
-		if ($caseId !== null) $query->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)));
+		if ($caseId !== null) {
+			$query->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)));
+		}
 		return $this->collect($query);
 	}
 
@@ -29,7 +34,9 @@ class AppCalendarObjects {
 	 * @return list<array{calendarId:int,uri:string}>
 	 */
 	public function targetsForRecordIds(array $recordIds): array {
-		if ($recordIds === []) return [];
+		if ($recordIds === []) {
+			return [];
+		}
 		$query = $this->db->getQueryBuilder();
 		$query->select('payload', 'nextcloud_calendar_key', 'nextcloud_uri')->from('bestatter_records')
 			->where($query->expr()->in('id', $query->createNamedParameter($recordIds, IQueryBuilder::PARAM_INT_ARRAY)));
@@ -44,7 +51,9 @@ class AppCalendarObjects {
 			$payload = json_decode((string)($row['payload'] ?? '{}'), true) ?: [];
 			$nextcloud = (array)($payload['nextcloud'] ?? []);
 			$this->add($targets, (int)($nextcloud['calendarKey'] ?? 0), (string)($nextcloud['uri'] ?? ''));
-			foreach ((array)($payload['nextcloudCopies'] ?? []) as $copy) $this->add($targets, (int)($copy['calendarKey'] ?? 0), (string)($copy['uri'] ?? ''));
+			foreach ((array)($payload['nextcloudCopies'] ?? []) as $copy) {
+				$this->add($targets, (int)($copy['calendarKey'] ?? 0), (string)($copy['uri'] ?? ''));
+			}
 		}
 		return array_values($targets);
 	}
@@ -56,11 +65,15 @@ class AppCalendarObjects {
 	 */
 	public function delete(array $targets): array {
 		$result = ['planned' => count($targets), 'deleted' => 0, 'missing' => 0, 'errors' => []];
-		if ($targets === []) return $result;
+		if ($targets === []) {
+			return $result;
+		}
 		try {
 			$backend = $this->backend();
 		} catch (\Throwable $error) {
-			foreach ($targets as $target) $result['errors'][] = ['uri' => $target['uri'], 'message' => $error->getMessage()];
+			foreach ($targets as $target) {
+				$result['errors'][] = ['uri' => $target['uri'], 'message' => $error->getMessage()];
+			}
 			return $result;
 		}
 		foreach ($targets as $target) {
@@ -69,8 +82,11 @@ class AppCalendarObjects {
 				$backend->deleteCalendarObject($target['calendarId'], $target['uri'], 0, true);
 				$result['deleted']++;
 			} catch (\Throwable $error) {
-				if (str_contains(strtolower($error->getMessage()), 'not found') || str_contains($error->getMessage(), '404')) $result['missing']++;
-				else $result['errors'][] = ['uri' => $target['uri'], 'message' => $error->getMessage()];
+				if (str_contains(strtolower($error->getMessage()), 'not found') || str_contains($error->getMessage(), '404')) {
+					$result['missing']++;
+				} else {
+					$result['errors'][] = ['uri' => $target['uri'], 'message' => $error->getMessage()];
+				}
 			}
 		}
 		return $result;
@@ -78,12 +94,16 @@ class AppCalendarObjects {
 
 	/** @param array<string,array{calendarId:int,uri:string}> $targets */
 	private function add(array &$targets, int $calendarId, string $uri): void {
-		if ($calendarId > 0 && trim($uri) !== '') $targets[$calendarId . ':' . $uri] = ['calendarId' => $calendarId, 'uri' => $uri];
+		if ($calendarId > 0 && trim($uri) !== '') {
+			$targets[$calendarId . ':' . $uri] = ['calendarId' => $calendarId, 'uri' => $uri];
+		}
 	}
 
 	private function backend(): object {
 		$class = '\\OCA\\DAV\\CalDAV\\CalDavBackend';
-		if (!class_exists($class)) throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		if (!class_exists($class)) {
+			throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		}
 		return Server::get($class);
 	}
 }

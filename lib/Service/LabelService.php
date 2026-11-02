@@ -14,8 +14,8 @@ use OCP\IUserSession;
  *
  * - Definitionen pflegen Bestatter-Administratoren unter Customizing → Marker (Ja/Nein oder Liste,
  *   Farbe aus fester Palette, Symbol aus fester Auswahl, stabiler technischer Schlüssel).
- * - Mitgelieferte Marker (resources/labels.json) entstehen inaktiv und werden bei der Einrichtung
- *   ausgewählt; sie lassen sich nur deaktivieren, nicht löschen.
+ * - Marker-Vorschläge kommen seit 0.89.5 mit dem Einrichtungspaket (bis 0.89.4: resources/labels.json, inaktiv angelegt);
+ *   bei der Einrichtung werden sie ausgewählt. Früher mitgelieferte Marker lassen sich nur deaktivieren, nicht löschen.
  * - Gesetzt werden Marker von jedem Mitglied der Bestatter-Gruppe; jede Änderung steht im Fall-Verlauf.
  * - Automatische Hinweise (LabelRules::HINTS) werden nur angezeigt und nie gespeichert.
  * - 0.77.0: Je gesetztem Marker eine interne Notiz (höchstens 500 Zeichen). Sie steht im Fall-Verlauf, im
@@ -35,18 +35,27 @@ class LabelService {
 		private TeamService $team,
 		private IUserSession $userSession,
 		private IUserManager $users,
-	) {}
+	) {
+	}
 
 	// ------------------------------------------------------------------ Definitionen
 
 	public function ensureSeedData(): void {
-		if ($this->seeded) return;
+		if ($this->seeded) {
+			return;
+		}
 		$this->seeded = true;
+		// 0.89.5: Marker-Vorschläge kommen mit dem Einrichtungspaket; die App liefert keine Datei mehr mit.
+		if (!is_file(LabelRules::BUNDLE_FILE)) {
+			return;
+		}
 		$bundle = json_decode((string)file_get_contents(LabelRules::BUNDLE_FILE), true, 512, JSON_THROW_ON_ERROR);
 		$existing = $this->rowsByKey();
-		$sort = $existing === [] ? 0 : max(array_map(static fn(array $row): int => (int)$row['sort_order'], $existing));
+		$sort = $existing === [] ? 0 : max(array_map(static fn (array $row): int => (int)$row['sort_order'], $existing));
 		foreach ((array)($bundle['labels'] ?? []) as $label) {
-			if (isset($existing[strtoupper((string)$label['key'])])) continue;
+			if (isset($existing[strtoupper((string)$label['key'])])) {
+				continue;
+			}
 			$definition = LabelRules::normalizeDefinition($label + ['active' => false]);
 			$sort += 10;
 			$this->insertDefinition($definition, 'BUNDLED', $sort);
@@ -59,14 +68,14 @@ class LabelService {
 		$this->ensureSeedData();
 		$all = array_values($this->definitionMap());
 		$usage = $this->usageCounts();
-		$all = array_map(static fn(array $definition): array => $definition + ['usage' => $usage[$definition['id']] ?? 0], $all);
-		return $activeOnly ? array_values(array_filter($all, static fn(array $definition): bool => $definition['active'])) : $all;
+		$all = array_map(static fn (array $definition): array => $definition + ['usage' => $usage[$definition['id']] ?? 0], $all);
+		return $activeOnly ? array_values(array_filter($all, static fn (array $definition): bool => $definition['active'])) : $all;
 	}
 
 	/** Klartextnamen je Schlüssel (für Abläufe; ohne Nutzungszählung). @return array<string,string> */
 	public function names(): array {
 		$this->ensureSeedData();
-		return array_map(static fn(array $definition): string => $definition['name'], $this->definitionMap());
+		return array_map(static fn (array $definition): string => $definition['name'], $this->definitionMap());
 	}
 
 	/** Antwort für GET /api/labels: Definitionen, Palette, Symbolauswahl und automatische Hinweise. */
@@ -77,7 +86,7 @@ class LabelService {
 			'kinds' => LabelRules::KINDS,
 			'noteModes' => LabelRules::NOTE_MODES,
 			'noteMax' => LabelRules::NOTE_MAX,
-			'hints' => array_map(static fn(string $key, array $hint): array => ['key' => $key] + $hint, array_keys(LabelRules::HINTS), LabelRules::HINTS),
+			'hints' => array_map(static fn (string $key, array $hint): array => ['key' => $key] + $hint, array_keys(LabelRules::HINTS), LabelRules::HINTS),
 			'maxActive' => LabelRules::MAX_ACTIVE,
 			'canEdit' => $this->team->isBestatterAdmin(),
 			// Symbolauswahl (resources/label-icons.json): einzige Quelle für Oberfläche und Prüfung im Server.
@@ -89,10 +98,12 @@ class LabelService {
 		$this->team->requireBestatterAdmin();
 		$this->ensureSeedData();
 		$definition = LabelRules::normalizeDefinition($input);
-		if (isset($this->definitionMap()[$definition['key']])) throw new \InvalidArgumentException('Einen Marker mit dem Schlüssel „' . $definition['key'] . '“ gibt es bereits.');
+		if (isset($this->definitionMap()[$definition['key']])) {
+			throw new \InvalidArgumentException('Einen Marker mit dem Schlüssel „' . $definition['key'] . '“ gibt es bereits.');
+		}
 		$this->assertUniqueName($definition['name'], '');
 		$rows = $this->rowsByKey();
-		$sort = ($rows === [] ? 0 : max(array_map(static fn(array $row): int => (int)$row['sort_order'], $rows))) + 10;
+		$sort = ($rows === [] ? 0 : max(array_map(static fn (array $row): int => (int)$row['sort_order'], $rows))) + 10;
 		$this->insertDefinition($definition, 'CUSTOM', $sort);
 		$this->definitionCache = null;
 		$created = $this->definition($definition['key']);
@@ -120,7 +131,9 @@ class LabelService {
 				->set('updated_at', $query->createNamedParameter(date('c')))
 				->where($query->expr()->eq('id', $query->createNamedParameter($existing['id'], IQueryBuilder::PARAM_INT)))
 				->executeStatement();
-			if ($existing['kind'] === 'LIST') $this->replaceValues($existing['id'], $definition['values'], $existing['values']);
+			if ($existing['kind'] === 'LIST') {
+				$this->replaceValues($existing['id'], $definition['values'], $existing['values']);
+			}
 			$this->db->commit();
 		} catch (\Throwable $error) {
 			$this->db->rollBack();
@@ -136,8 +149,12 @@ class LabelService {
 	public function delete(string $key): void {
 		$this->team->requireBestatterAdmin();
 		$existing = $this->definition($key);
-		if ($existing['origin'] === 'BUNDLED') throw new \InvalidArgumentException('Mitgelieferte Marker können nur deaktiviert werden.');
-		if (($this->usageCounts(true)[$existing['id']] ?? 0) > 0) throw new \InvalidArgumentException('Der Marker wurde schon in Fällen verwendet und kann nur deaktiviert werden.');
+		if ($existing['origin'] === 'BUNDLED') {
+			throw new \InvalidArgumentException('Mitgelieferte Marker können nur deaktiviert werden.');
+		}
+		if (($this->usageCounts(true)[$existing['id']] ?? 0) > 0) {
+			throw new \InvalidArgumentException('Der Marker wurde schon in Fällen verwendet und kann nur deaktiviert werden.');
+		}
 		$this->db->beginTransaction();
 		try {
 			foreach (['bestatter_label_values' => 'label_id', 'bestatter_case_labels' => 'label_id', 'bestatter_labels' => 'id'] as $table => $column) {
@@ -159,21 +176,31 @@ class LabelService {
 	 * @return list<string> tatsächlich aktivierte Schlüssel
 	 */
 	public function activate(array $keys, bool $requireAdmin = true): array {
-		if ($requireAdmin) $this->team->requireBestatterAdmin();
+		if ($requireAdmin) {
+			$this->team->requireBestatterAdmin();
+		}
 		$this->ensureSeedData();
 		$map = $this->definitionMap();
-		if (in_array('*', $keys, true)) $keys = array_keys(array_filter($map, static fn(array $definition): bool => $definition['origin'] === 'BUNDLED'));
+		if (in_array('*', $keys, true)) {
+			$keys = array_keys(array_filter($map, static fn (array $definition): bool => $definition['origin'] === 'BUNDLED'));
+		}
 		$activated = [];
-		foreach (array_unique(array_map(static fn(mixed $key): string => strtoupper(trim((string)$key)), $keys)) as $key) {
-			if (!isset($map[$key])) throw new \InvalidArgumentException('Unbekannter Marker „' . $key . '“.');
-			if ($map[$key]['active']) continue;
+		foreach (array_unique(array_map(static fn (mixed $key): string => strtoupper(trim((string)$key)), $keys)) as $key) {
+			if (!isset($map[$key])) {
+				throw new \InvalidArgumentException('Unbekannter Marker „' . $key . '“.');
+			}
+			if ($map[$key]['active']) {
+				continue;
+			}
 			$query = $this->db->getQueryBuilder();
 			$query->update('bestatter_labels')->set('active', $query->createNamedParameter(1, IQueryBuilder::PARAM_INT))->set('updated_at', $query->createNamedParameter(date('c')))
 				->where($query->expr()->eq('id', $query->createNamedParameter($map[$key]['id'], IQueryBuilder::PARAM_INT)))->executeStatement();
 			$activated[] = $key;
 		}
 		$this->definitionCache = null;
-		if ($activated !== []) $this->audit->logSystem('LABEL_DEFINITION', 'ACTIVATED', ['keys' => $activated]);
+		if ($activated !== []) {
+			$this->audit->logSystem('LABEL_DEFINITION', 'ACTIVATED', ['keys' => $activated]);
+		}
 		return $activated;
 	}
 
@@ -182,8 +209,10 @@ class LabelService {
 		$this->team->requireBestatterAdmin();
 		$map = $this->definitionMap();
 		$position = 0;
-		foreach (array_values(array_unique(array_map(static fn(mixed $key): string => strtoupper(trim((string)$key)), $keys))) as $key) {
-			if (!isset($map[$key])) continue;
+		foreach (array_values(array_unique(array_map(static fn (mixed $key): string => strtoupper(trim((string)$key)), $keys))) as $key) {
+			if (!isset($map[$key])) {
+				continue;
+			}
 			$position += 10;
 			$query = $this->db->getQueryBuilder();
 			$query->update('bestatter_labels')->set('sort_order', $query->createNamedParameter($position, IQueryBuilder::PARAM_INT))
@@ -215,9 +244,13 @@ class LabelService {
 	 */
 	public function forCases(array $caseIds): array {
 		$caseIds = array_values(array_unique(array_filter(array_map('intval', $caseIds))));
-		if ($caseIds === []) return [];
+		if ($caseIds === []) {
+			return [];
+		}
 		$byId = [];
-		foreach ($this->definitionMap() as $definition) $byId[$definition['id']] = $definition;
+		foreach ($this->definitionMap() as $definition) {
+			$byId[$definition['id']] = $definition;
+		}
 		$result = [];
 		foreach (array_chunk($caseIds, 500) as $chunk) {
 			$query = $this->db->getQueryBuilder();
@@ -227,11 +260,15 @@ class LabelService {
 				->executeQuery()->fetchAllAssociative();
 			foreach ($rows as $row) {
 				$definition = $byId[(int)$row['label_id']] ?? null;
-				if ($definition === null) continue;
+				if ($definition === null) {
+					continue;
+				}
 				$result[(int)$row['case_id']][] = $this->assignmentView($definition, $row);
 			}
 		}
-		foreach ($result as &$labels) usort($labels, static fn(array $left, array $right): int => [$left['sortOrder'], $left['name']] <=> [$right['sortOrder'], $right['name']]);
+		foreach ($result as &$labels) {
+			usort($labels, static fn (array $left, array $right): int => [$left['sortOrder'], $left['name']] <=> [$right['sortOrder'], $right['name']]);
+		}
 		unset($labels);
 		return $result;
 	}
@@ -243,13 +280,18 @@ class LabelService {
 	 */
 	public function hintsForCases(array $caseIds): array {
 		$caseIds = array_values(array_unique(array_filter(array_map('intval', $caseIds))));
-		if ($caseIds === []) return [];
+		if ($caseIds === []) {
+			return [];
+		}
 		$today = (new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin')))->format('Y-m-d');
-		$masters = []; $overdue = [];
+		$masters = [];
+		$overdue = [];
 		foreach (array_chunk($caseIds, 500) as $chunk) {
 			$query = $this->db->getQueryBuilder();
 			foreach ($query->select('id', 'master_data', 'anonymized_at')->from('bestatter_cases')->where($query->expr()->in('id', $query->createNamedParameter($chunk, IQueryBuilder::PARAM_INT_ARRAY)))->executeQuery()->fetchAllAssociative() as $row) {
-				if (trim((string)($row['anonymized_at'] ?? '')) !== '') continue;
+				if (trim((string)($row['anonymized_at'] ?? '')) !== '') {
+					continue;
+				}
 				$masters[(int)$row['id']] = json_decode((string)($row['master_data'] ?? '{}'), true) ?: [];
 			}
 			$invoices = $this->db->getQueryBuilder();
@@ -261,13 +303,17 @@ class LabelService {
 			foreach ($rows as $row) {
 				$snapshot = json_decode((string)($row['payment_snapshot'] ?? ''), true);
 				$term = is_array($snapshot) && isset($snapshot['paymentTermDays']) ? (int)$snapshot['paymentTermDays'] : 14;
-				if (LabelRules::invoiceOverdue($this->localDate((string)$row['created_at']), $term, $today)) $overdue[(int)$row['case_id']] = true;
+				if (LabelRules::invoiceOverdue($this->localDate((string)$row['created_at']), $term, $today)) {
+					$overdue[(int)$row['case_id']] = true;
+				}
 			}
 		}
 		$result = [];
 		foreach ($masters as $caseId => $master) {
 			$hints = LabelRules::hints($master, isset($overdue[$caseId]));
-			if ($hints !== []) $result[$caseId] = $hints;
+			if ($hints !== []) {
+				$result[$caseId] = $hints;
+			}
 		}
 		return $result;
 	}
@@ -279,12 +325,20 @@ class LabelService {
 	public function set(int $caseId, string $key, string $valueKey = '', ?string $note = null): array {
 		$case = $this->writableCase($caseId);
 		$definition = $this->definition($key);
-		if (!$definition['active']) throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist deaktiviert.');
+		if (!$definition['active']) {
+			throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist deaktiviert.');
+		}
 		$valueKey = strtoupper(trim($valueKey));
 		$valueName = '';
 		if ($definition['kind'] === 'LIST') {
-			foreach ($definition['values'] as $value) if ($value['key'] === $valueKey && $value['active']) $valueName = $value['name'];
-			if ($valueName === '') throw new \InvalidArgumentException('Bitte einen gültigen Wert für „' . $definition['name'] . '“ wählen.');
+			foreach ($definition['values'] as $value) {
+				if ($value['key'] === $valueKey && $value['active']) {
+					$valueName = $value['name'];
+				}
+			}
+			if ($valueName === '') {
+				throw new \InvalidArgumentException('Bitte einen gültigen Wert für „' . $definition['name'] . '“ wählen.');
+			}
 		} else {
 			$valueKey = '';
 		}
@@ -293,7 +347,9 @@ class LabelService {
 		$newNote = $note === null ? ($before['note'] ?? '') : LabelRules::normalizeNote($note);
 		$noteChanged = $newNote !== ($before['note'] ?? '');
 		$valueChanged = $before === null || (string)($existing['value_key'] ?? '') !== $valueKey;
-		if (!$valueChanged && !$noteChanged) return $this->forCase($caseId);
+		if (!$valueChanged && !$noteChanged) {
+			return $this->forCase($caseId);
+		}
 		$this->assertNoteAllowed($definition, $newNote);
 		$now = date('c');
 		$uid = $this->uid();
@@ -319,7 +375,9 @@ class LabelService {
 				->set('note_by', $query->createNamedParameter($noteBy))
 				->set('note_at', $query->createNamedParameter($noteAt));
 			// Eine reine Notizänderung lässt „gesetzt von/am“ stehen.
-			if ($valueChanged) $query->set('set_at', $query->createNamedParameter($now))->set('set_by', $query->createNamedParameter($uid));
+			if ($valueChanged) {
+				$query->set('set_at', $query->createNamedParameter($now))->set('set_by', $query->createNamedParameter($uid));
+			}
 			$query->set('removed_at', $query->createNamedParameter(null))
 				->set('removed_by', $query->createNamedParameter(null))
 				->where($query->expr()->eq('id', $query->createNamedParameter((int)$existing['id'], IQueryBuilder::PARAM_INT)))
@@ -335,8 +393,12 @@ class LabelService {
 		$this->writableCase($caseId);
 		$definition = $this->definition($key);
 		$existing = $this->assignmentRow($caseId, $definition['id']);
-		if ($existing === null || $existing['removed_at'] !== null) throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist an diesem Fall nicht gesetzt.');
-		if (!$definition['active']) throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist deaktiviert.');
+		if ($existing === null || $existing['removed_at'] !== null) {
+			throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist an diesem Fall nicht gesetzt.');
+		}
+		if (!$definition['active']) {
+			throw new \InvalidArgumentException('Der Marker „' . $definition['name'] . '“ ist deaktiviert.');
+		}
 		return $this->set($caseId, $definition['key'], (string)($existing['value_key'] ?? ''), $note);
 	}
 
@@ -348,9 +410,14 @@ class LabelService {
 	public function setInitial(int $caseId, array $labels): array {
 		$warnings = [];
 		foreach ($labels as $label) {
-			if (!is_array($label)) continue;
-			try { $this->set($caseId, (string)($label['key'] ?? ''), (string)($label['value'] ?? ''), isset($label['note']) ? (string)$label['note'] : null); }
-			catch (\InvalidArgumentException $error) { $warnings[] = $error->getMessage(); }
+			if (!is_array($label)) {
+				continue;
+			}
+			try {
+				$this->set($caseId, (string)($label['key'] ?? ''), (string)($label['value'] ?? ''), isset($label['note']) ? (string)$label['note'] : null);
+			} catch (\InvalidArgumentException $error) {
+				$warnings[] = $error->getMessage();
+			}
 		}
 		return $warnings;
 	}
@@ -359,7 +426,9 @@ class LabelService {
 		$case = $this->writableCase($caseId);
 		$definition = $this->definition($key);
 		$existing = $this->assignmentRow((int)$case['id'], $definition['id']);
-		if ($existing === null || $existing['removed_at'] !== null) return $this->forCase($caseId);
+		if ($existing === null || $existing['removed_at'] !== null) {
+			return $this->forCase($caseId);
+		}
 		$before = $this->assignmentView($definition, $existing);
 		$query = $this->db->getQueryBuilder();
 		$query->update('bestatter_case_labels')
@@ -381,21 +450,29 @@ class LabelService {
 	 * @return list<int>|null
 	 */
 	public function caseIdsForFilter(array $filters): ?array {
-		if ($filters === []) return null;
+		if ($filters === []) {
+			return null;
+		}
 		$this->ensureSeedData();
 		$map = $this->definitionMap();
 		$ids = [];
 		foreach (array_values($filters) as $index => $filter) {
 			$definition = $map[$filter['key']] ?? null;
-			if ($definition === null) return [];
+			if ($definition === null) {
+				return [];
+			}
 			$query = $this->db->getQueryBuilder();
 			$query->select('case_id')->from('bestatter_case_labels')
 				->where($query->expr()->eq('label_id', $query->createNamedParameter($definition['id'], IQueryBuilder::PARAM_INT)))
 				->andWhere($query->expr()->isNull('removed_at'));
-			if ($filter['value'] !== '') $query->andWhere($query->expr()->eq('value_key', $query->createNamedParameter($filter['value'])));
+			if ($filter['value'] !== '') {
+				$query->andWhere($query->expr()->eq('value_key', $query->createNamedParameter($filter['value'])));
+			}
 			$found = array_map('intval', $query->executeQuery()->fetchFirstColumn());
 			$ids = $index === 0 ? $found : array_values(array_intersect($ids, $found));
-			if ($ids === []) return [];
+			if ($ids === []) {
+				return [];
+			}
 		}
 		return array_values(array_unique($ids));
 	}
@@ -409,7 +486,9 @@ class LabelService {
 		$result = [];
 		foreach ($terms as $term) {
 			$term = trim($term);
-			if ($term === '' || isset($result[$term])) continue;
+			if ($term === '' || isset($result[$term])) {
+				continue;
+			}
 			$query = $this->db->getQueryBuilder();
 			$query->selectDistinct('case_id')->from('bestatter_case_labels')
 				->where($query->expr()->isNull('removed_at'))
@@ -427,32 +506,46 @@ class LabelService {
 	public function processFacts(int $caseId): array {
 		$this->ensureSeedData();
 		$byId = [];
-		foreach ($this->definitionMap() as $definition) $byId[$definition['id']] = $definition;
+		foreach ($this->definitionMap() as $definition) {
+			$byId[$definition['id']] = $definition;
+		}
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_case_labels')->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->executeQuery()->fetchAllAssociative();
-		$labels = []; $removed = [];
+		$labels = [];
+		$removed = [];
 		foreach ($rows as $row) {
 			$definition = $byId[(int)$row['label_id']] ?? null;
-			if ($definition === null) continue;
-			if ($row['removed_at'] === null) $labels[$definition['key']] = ['value' => (string)($row['value_key'] ?? ''), 'setAt' => $this->localDate((string)$row['set_at']), 'note' => (string)($row['note'] ?? ''), 'name' => $definition['name']];
-			else $removed[$definition['key']] = $this->localDate((string)$row['removed_at']);
+			if ($definition === null) {
+				continue;
+			}
+			if ($row['removed_at'] === null) {
+				$labels[$definition['key']] = ['value' => (string)($row['value_key'] ?? ''), 'setAt' => $this->localDate((string)$row['set_at']), 'note' => (string)($row['note'] ?? ''), 'name' => $definition['name']];
+			} else {
+				$removed[$definition['key']] = $this->localDate((string)$row['removed_at']);
+			}
 		}
 		return ['labels' => $labels, 'removedLabels' => $removed];
 	}
 
 	/** Platzhalter für Dokumentvorlagen: {{marker}} und {{marker.SCHLUESSEL}} (ja / Wert / leer). */
 	public function placeholderValues(int $caseId): array {
-		if ($caseId <= 0) return [];
+		if ($caseId <= 0) {
+			return [];
+		}
 		$this->ensureSeedData();
 		$set = [];
-		foreach ($this->forCases([$caseId])[$caseId] ?? [] as $label) $set[$label['key']] = $label;
-		$values = ['{{marker}}' => implode(', ', array_map(static fn(array $label): string => $label['text'], array_values($set)))];
+		foreach ($this->forCases([$caseId])[$caseId] ?? [] as $label) {
+			$set[$label['key']] = $label;
+		}
+		$values = ['{{marker}}' => implode(', ', array_map(static fn (array $label): string => $label['text'], array_values($set)))];
 		foreach ($this->definitionMap() as $definition) {
 			$label = $set[$definition['key']] ?? null;
 			$values['{{marker.' . $definition['key'] . '}}'] = $label === null ? '' : ($definition['kind'] === 'LIST' ? $label['valueName'] : 'ja');
 		}
 		// 0.77.1: Umbenennung „Etiketten“ → „Marker“ – die bisherigen Platzhalter funktionieren weiter.
-		foreach ($values as $placeholder => $value) $values[self::legacyPlaceholder($placeholder)] = $value;
+		foreach ($values as $placeholder => $value) {
+			$values[self::legacyPlaceholder($placeholder)] = $value;
+		}
 		return $values;
 	}
 
@@ -463,7 +556,7 @@ class LabelService {
 	 */
 	public function legacyPlaceholders(): array {
 		$this->ensureSeedData();
-		return array_merge(['{{etiketten}}'], array_map(static fn(string $key): string => '{{etikett.' . $key . '}}', array_keys($this->definitionMap())));
+		return array_merge(['{{etiketten}}'], array_map(static fn (string $key): string => '{{etikett.' . $key . '}}', array_keys($this->definitionMap())));
 	}
 
 	private static function legacyPlaceholder(string $placeholder): string {
@@ -474,7 +567,9 @@ class LabelService {
 	public function placeholderCatalog(): array {
 		$this->ensureSeedData();
 		$result = [['placeholder' => '{{marker}}', 'name' => 'Gesetzte Marker (kommagetrennt)', 'source' => 'Marker']];
-		foreach ($this->definitionMap() as $definition) $result[] = ['placeholder' => '{{marker.' . $definition['key'] . '}}', 'name' => 'Marker „' . $definition['name'] . '“ (' . ($definition['kind'] === 'LIST' ? 'gewählter Wert' : '„ja“') . ' oder leer)', 'source' => 'Marker'];
+		foreach ($this->definitionMap() as $definition) {
+			$result[] = ['placeholder' => '{{marker.' . $definition['key'] . '}}', 'name' => 'Marker „' . $definition['name'] . '“ (' . ($definition['kind'] === 'LIST' ? 'gewählter Wert' : '„ja“') . ' oder leer)', 'source' => 'Marker'];
+		}
 		return $result;
 	}
 
@@ -482,7 +577,9 @@ class LabelService {
 	public function exportRows(int $caseId): array {
 		$this->ensureSeedData();
 		$byId = [];
-		foreach ($this->definitionMap() as $definition) $byId[$definition['id']] = $definition;
+		foreach ($this->definitionMap() as $definition) {
+			$byId[$definition['id']] = $definition;
+		}
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_case_labels')->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
 		return array_map(static function (array $row) use ($byId): array {
@@ -496,7 +593,7 @@ class LabelService {
 	 * die Benutzerkennungen und immer ihre Notiz (Freitext). Entfernte (historische) Zuordnungen werden immer gelöscht.
 	 */
 	public function anonymizeCase(int $caseId): int {
-		$keep = array_map(static fn(array $definition): int => $definition['id'], array_filter($this->definitionMap(), static fn(array $definition): bool => $definition['keepOnAnonymize']));
+		$keep = array_map(static fn (array $definition): int => $definition['id'], array_filter($this->definitionMap(), static fn (array $definition): bool => $definition['keepOnAnonymize']));
 		$query = $this->db->getQueryBuilder();
 		$query->delete('bestatter_case_labels')->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)));
 		$query->andWhere($query->expr()->orX(
@@ -516,11 +613,11 @@ class LabelService {
 	public const EXCHANGE_FORMAT = 'bestatter-labels';
 
 	public function exportExchange(): string {
-		$labels = array_map(static fn(array $definition): array => [
+		$labels = array_map(static fn (array $definition): array => [
 			'key' => $definition['key'], 'name' => $definition['name'], 'description' => $definition['description'], 'kind' => $definition['kind'],
 			'color' => $definition['color'], 'icon' => $definition['icon'], 'active' => $definition['active'], 'keepOnAnonymize' => $definition['keepOnAnonymize'],
 			'noteMode' => $definition['noteMode'], 'noteHint' => $definition['noteHint'],
-			'values' => array_map(static fn(array $value): array => ['key' => $value['key'], 'name' => $value['name'], 'active' => $value['active']], $definition['values']),
+			'values' => array_map(static fn (array $value): array => ['key' => $value['key'], 'name' => $value['name'], 'active' => $value['active']], $definition['values']),
 		], $this->definitions());
 		return json_encode(['format' => self::EXCHANGE_FORMAT, 'formatVersion' => 1, 'labels' => $labels], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 	}
@@ -529,13 +626,21 @@ class LabelService {
 	public function parseExchange(string $content): array {
 		$this->ensureSeedData();
 		$data = json_decode($content, true);
-		if (!is_array($data) || ($data['format'] ?? '') !== self::EXCHANGE_FORMAT) throw new \InvalidArgumentException('Keine Marker im erwarteten Format.');
-		$labels = []; $new = 0; $existing = 0;
+		if (!is_array($data) || ($data['format'] ?? '') !== self::EXCHANGE_FORMAT) {
+			throw new \InvalidArgumentException('Keine Marker im erwarteten Format.');
+		}
+		$labels = [];
+		$new = 0;
+		$existing = 0;
 		$map = $this->definitionMap();
 		foreach ((array)($data['labels'] ?? []) as $raw) {
-			if (!is_array($raw)) continue;
+			if (!is_array($raw)) {
+				continue;
+			}
 			$current = $map[strtoupper((string)($raw['key'] ?? ''))] ?? null;
-			if ($current !== null && $current['kind'] !== strtoupper((string)($raw['kind'] ?? ''))) throw new \InvalidArgumentException('Der Marker „' . $current['key'] . '“ hat hier eine andere Art (Ja/Nein bzw. Liste).');
+			if ($current !== null && $current['kind'] !== strtoupper((string)($raw['kind'] ?? ''))) {
+				throw new \InvalidArgumentException('Der Marker „' . $current['key'] . '“ hat hier eine andere Art (Ja/Nein bzw. Liste).');
+			}
 			$labels[] = LabelRules::normalizeDefinition($raw, $current);
 			$current === null ? $new++ : $existing++;
 		}
@@ -547,10 +652,16 @@ class LabelService {
 		$this->team->requireBestatterAdmin();
 		$this->ensureSeedData();
 		$parsed = $this->parseExchange($content);
-		$created = 0; $updated = 0;
+		$created = 0;
+		$updated = 0;
 		foreach ($parsed['labels'] as $definition) {
-			if (isset($this->definitionMap()[$definition['key']])) { $this->update($definition['key'], $definition); $updated++; }
-			else { $this->create($definition); $created++; }
+			if (isset($this->definitionMap()[$definition['key']])) {
+				$this->update($definition['key'], $definition);
+				$updated++;
+			} else {
+				$this->create($definition);
+				$created++;
+			}
 		}
 		return ['created' => $created, 'updated' => $updated];
 	}
@@ -559,7 +670,9 @@ class LabelService {
 
 	/** @return array<string,array> nach Schlüssel */
 	private function definitionMap(): array {
-		if ($this->definitionCache !== null) return $this->definitionCache;
+		if ($this->definitionCache !== null) {
+			return $this->definitionCache;
+		}
 		$rows = $this->rowsByKey();
 		$values = [];
 		if ($rows !== []) {
@@ -570,7 +683,7 @@ class LabelService {
 		}
 		$icons = LabelRules::iconKeys();
 		$map = [];
-		uasort($rows, static fn(array $left, array $right): int => [(int)$left['sort_order'], (string)$left['name']] <=> [(int)$right['sort_order'], (string)$right['name']]);
+		uasort($rows, static fn (array $left, array $right): int => [(int)$left['sort_order'], (string)$left['name']] <=> [(int)$right['sort_order'], (string)$right['name']]);
 		foreach ($rows as $row) {
 			$icon = (string)$row['icon'];
 			$map[(string)$row['label_key']] = [
@@ -589,7 +702,9 @@ class LabelService {
 	private function rowsByKey(): array {
 		$query = $this->db->getQueryBuilder();
 		$rows = [];
-		foreach ($query->select('*')->from('bestatter_labels')->executeQuery()->fetchAllAssociative() as $row) $rows[(string)$row['label_key']] = $row;
+		foreach ($query->select('*')->from('bestatter_labels')->executeQuery()->fetchAllAssociative() as $row) {
+			$rows[(string)$row['label_key']] = $row;
+		}
 		return $rows;
 	}
 
@@ -622,7 +737,9 @@ class LabelService {
 	 */
 	private function replaceValues(int $labelId, array $values, array $previous): void {
 		$known = [];
-		foreach ($previous as $value) $known[$value['key']] = $value;
+		foreach ($previous as $value) {
+			$known[$value['key']] = $value;
+		}
 		$wanted = [];
 		foreach ($values as $index => $value) {
 			$wanted[$value['key']] = true;
@@ -643,15 +760,20 @@ class LabelService {
 			])->executeStatement();
 		}
 		foreach ($known as $key => $value) {
-			if (isset($wanted[$key])) continue;
+			if (isset($wanted[$key])) {
+				continue;
+			}
 			$used = $this->db->getQueryBuilder();
 			$count = (int)$used->select($used->func()->count('*', 'n'))->from('bestatter_case_labels')
 				->where($used->expr()->eq('label_id', $used->createNamedParameter($labelId, IQueryBuilder::PARAM_INT)))
 				->andWhere($used->expr()->eq('value_key', $used->createNamedParameter($key)))->executeQuery()->fetchOne();
 			$query = $this->db->getQueryBuilder();
 			// Verwendete Werte bleiben (deaktiviert, ans Ende sortiert) stehen, damit gesetzte Marker ihren Klartext behalten.
-			if ($count > 0) $query->update('bestatter_label_values')->set('active', $query->createNamedParameter(0, IQueryBuilder::PARAM_INT))->set('sort_order', $query->createNamedParameter(9000, IQueryBuilder::PARAM_INT));
-			else $query->delete('bestatter_label_values');
+			if ($count > 0) {
+				$query->update('bestatter_label_values')->set('active', $query->createNamedParameter(0, IQueryBuilder::PARAM_INT))->set('sort_order', $query->createNamedParameter(9000, IQueryBuilder::PARAM_INT));
+			} else {
+				$query->delete('bestatter_label_values');
+			}
 			$query->where($query->expr()->eq('label_id', $query->createNamedParameter($labelId, IQueryBuilder::PARAM_INT)))
 				->andWhere($query->expr()->eq('value_key', $query->createNamedParameter($key)))->executeStatement();
 		}
@@ -659,7 +781,9 @@ class LabelService {
 
 	private function assertUniqueName(string $name, string $ownKey): void {
 		foreach ($this->definitionMap() as $definition) {
-			if ($definition['key'] !== $ownKey && mb_strtolower($definition['name']) === mb_strtolower($name)) throw new \InvalidArgumentException('Einen Marker mit dem Namen „' . $name . '“ gibt es bereits.');
+			if ($definition['key'] !== $ownKey && mb_strtolower($definition['name']) === mb_strtolower($name)) {
+				throw new \InvalidArgumentException('Einen Marker mit dem Namen „' . $name . '“ gibt es bereits.');
+			}
 		}
 	}
 
@@ -667,9 +791,13 @@ class LabelService {
 	private function usageCounts(bool $includeRemoved = false): array {
 		$query = $this->db->getQueryBuilder();
 		$query->select('label_id', $query->func()->count('*', 'n'))->from('bestatter_case_labels');
-		if (!$includeRemoved) $query->where($query->expr()->isNull('removed_at'));
+		if (!$includeRemoved) {
+			$query->where($query->expr()->isNull('removed_at'));
+		}
 		$result = [];
-		foreach ($query->groupBy('label_id')->executeQuery()->fetchAllAssociative() as $row) $result[(int)$row['label_id']] = (int)$row['n'];
+		foreach ($query->groupBy('label_id')->executeQuery()->fetchAllAssociative() as $row) {
+			$result[(int)$row['label_id']] = (int)$row['n'];
+		}
 		return $result;
 	}
 
@@ -685,8 +813,14 @@ class LabelService {
 	private function assignmentView(array $definition, array $row): array {
 		$valueKey = (string)($row['value_key'] ?? '');
 		$valueName = '';
-		foreach ($definition['values'] as $value) if ($value['key'] === $valueKey) $valueName = $value['name'];
-		if ($valueName === '' && $valueKey !== '') $valueName = $valueKey;
+		foreach ($definition['values'] as $value) {
+			if ($value['key'] === $valueKey) {
+				$valueName = $value['name'];
+			}
+		}
+		if ($valueName === '' && $valueKey !== '') {
+			$valueName = $valueKey;
+		}
 		$setBy = (string)($row['set_by'] ?? '');
 		$noteBy = (string)($row['note_by'] ?? '');
 		return [
@@ -702,8 +836,12 @@ class LabelService {
 
 	/** Pflichtnotiz bzw. „keine Notiz“ der Definition durchsetzen. */
 	private function assertNoteAllowed(array $definition, string $note): void {
-		if ($definition['noteMode'] === 'NONE' && $note !== '') throw new \InvalidArgumentException('Zum Marker „' . $definition['name'] . '“ sind keine Notizen vorgesehen.');
-		if ($definition['noteMode'] === 'REQUIRED' && $note === '') throw new \InvalidArgumentException('Zum Marker „' . $definition['name'] . '“ ist eine Notiz erforderlich' . ($definition['noteHint'] !== '' ? ' (' . rtrim($definition['noteHint'], '?.') . ')' : '') . '.');
+		if ($definition['noteMode'] === 'NONE' && $note !== '') {
+			throw new \InvalidArgumentException('Zum Marker „' . $definition['name'] . '“ sind keine Notizen vorgesehen.');
+		}
+		if ($definition['noteMode'] === 'REQUIRED' && $note === '') {
+			throw new \InvalidArgumentException('Zum Marker „' . $definition['name'] . '“ ist eine Notiz erforderlich' . ($definition['noteHint'] !== '' ? ' (' . rtrim($definition['noteHint'], '?.') . ')' : '') . '.');
+		}
 	}
 
 	/** Protokollstand einer Zuordnung (Fall-Verlauf). */
@@ -714,13 +852,17 @@ class LabelService {
 	private function writableCase(int $caseId): array {
 		$query = $this->db->getQueryBuilder();
 		$row = $query->select('id', 'status', 'anonymized_at')->from('bestatter_cases')->where($query->expr()->eq('id', $query->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))->executeQuery()->fetchAssociative();
-		if ($row === false) throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
-		if (trim((string)($row['anonymized_at'] ?? '')) !== '' || strtoupper((string)$row['status']) === 'ANONYMISIERT') throw new \InvalidArgumentException('Anonymisierte Fälle können keine Marker erhalten.');
+		if ($row === false) {
+			throw new \InvalidArgumentException('Fall wurde nicht gefunden.');
+		}
+		if (trim((string)($row['anonymized_at'] ?? '')) !== '' || strtoupper((string)$row['status']) === 'ANONYMISIERT') {
+			throw new \InvalidArgumentException('Anonymisierte Fälle können keine Marker erhalten.');
+		}
 		return $row;
 	}
 
 	private function auditDefinition(array $definition): array {
-		return ['key' => $definition['key'], 'name' => $definition['name'], 'kind' => $definition['kind'], 'color' => $definition['color'], 'icon' => $definition['icon'], 'active' => $definition['active'], 'keepOnAnonymize' => $definition['keepOnAnonymize'], 'noteMode' => $definition['noteMode'], 'noteHint' => $definition['noteHint'], 'values' => array_map(static fn(array $value): string => $value['key'] . '=' . $value['name'] . ($value['active'] ? '' : ' (inaktiv)'), $definition['values'])];
+		return ['key' => $definition['key'], 'name' => $definition['name'], 'kind' => $definition['kind'], 'color' => $definition['color'], 'icon' => $definition['icon'], 'active' => $definition['active'], 'keepOnAnonymize' => $definition['keepOnAnonymize'], 'noteMode' => $definition['noteMode'], 'noteHint' => $definition['noteHint'], 'values' => array_map(static fn (array $value): string => $value['key'] . '=' . $value['name'] . ($value['active'] ? '' : ' (inaktiv)'), $definition['values'])];
 	}
 
 	private function uid(): string {
@@ -729,7 +871,9 @@ class LabelService {
 
 	private function localDate(string $value): string {
 		$value = trim($value);
-		if ($value === '') return '';
+		if ($value === '') {
+			return '';
+		}
 		try {
 			return (new \DateTimeImmutable($value, new \DateTimeZone('UTC')))->setTimezone(new \DateTimeZone('Europe/Berlin'))->format('Y-m-d');
 		} catch (\Throwable) {

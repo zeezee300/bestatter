@@ -16,7 +16,8 @@ class CalendarObjectChangedListener implements IEventListener {
 	public function __construct(
 		private GroupwareService $groupware,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	public function handle(Event $event): void {
 		if (!$event instanceof AbstractCalendarObjectEvent) {

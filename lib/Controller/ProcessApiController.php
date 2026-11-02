@@ -13,19 +13,30 @@ use OCP\IRequest;
 
 /** Ablaufvorlagen (Customizing) und Ablauf im Fall (Phasenleiste, Schritte, Abschluss) – 0.66.0. */
 class ProcessApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private ProcessService $process, private TeamService $teamService) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private ProcessService $process,
+		private TeamService $teamService,
+	) {
 		parent::__construct($appName, $request);
 	}
 
 	/** 0.88.1: Unbesetzte Rollen der Abläufe (zentraler Hinweis bei Fallanlage und auf der Startseite). */
 	#[NoAdminRequired]
-	public function processRoleStatus(): DataResponse { return new DataResponse($this->process->roleStatus()); }
+	public function processRoleStatus(): DataResponse {
+		return new DataResponse($this->process->roleStatus());
+	}
 
 	#[NoAdminRequired]
-	public function caseProcess(int $caseId): DataResponse { return new DataResponse($this->process->overview($caseId)); }
+	public function caseProcess(int $caseId): DataResponse {
+		return new DataResponse($this->process->overview($caseId));
+	}
 
 	#[NoAdminRequired]
-	public function addProcessStep(int $caseId, int $stepId): DataResponse { return new DataResponse($this->process->addStep($caseId, $stepId), 201); }
+	public function addProcessStep(int $caseId, int $stepId): DataResponse {
+		return new DataResponse($this->process->addStep($caseId, $stepId), 201);
+	}
 
 	#[NoAdminRequired]
 	public function saveProcessAttributes(int $caseId, string $attributes = '{}', string $expectedUpdatedAt = ''): DataResponse {
@@ -34,22 +45,34 @@ class ProcessApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function processClosure(int $caseId): DataResponse { return new DataResponse($this->process->closureCheck($caseId)); }
+	public function processClosure(int $caseId): DataResponse {
+		return new DataResponse($this->process->closureCheck($caseId));
+	}
 
 	#[NoAdminRequired]
-	public function closeCaseProcess(int $caseId, string $note = ''): DataResponse { return new DataResponse($this->process->closeCase($caseId, $note)); }
+	public function closeCaseProcess(int $caseId, string $note = ''): DataResponse {
+		return new DataResponse($this->process->closeCase($caseId, $note));
+	}
 
 	#[NoAdminRequired]
-	public function processSuggestions(int $caseId): DataResponse { return new DataResponse($this->process->suggestions($caseId)); }
+	public function processSuggestions(int $caseId): DataResponse {
+		return new DataResponse($this->process->suggestions($caseId));
+	}
 
 	#[NoAdminRequired]
-	public function completeProcessRun(int $runId): DataResponse { return new DataResponse($this->process->completeRun($runId)); }
+	public function completeProcessRun(int $runId): DataResponse {
+		return new DataResponse($this->process->completeRun($runId));
+	}
 
 	#[NoAdminRequired]
-	public function skipProcessRun(int $runId, string $reason = ''): DataResponse { return new DataResponse($this->process->skipRun($runId, $reason)); }
+	public function skipProcessRun(int $runId, string $reason = ''): DataResponse {
+		return new DataResponse($this->process->skipRun($runId, $reason));
+	}
 
 	#[NoAdminRequired]
-	public function reopenProcessRun(int $runId): DataResponse { return new DataResponse($this->process->reopenRun($runId)); }
+	public function reopenProcessRun(int $runId): DataResponse {
+		return new DataResponse($this->process->reopenRun($runId));
+	}
 
 	#[NoAdminRequired]
 	public function processTemplates(): DataResponse {
@@ -77,12 +100,6 @@ class ProcessApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function restoreProcessTemplate(string $key): DataResponse {
-		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->process->restoreBundled($key));
-	}
-
-	#[NoAdminRequired]
 	public function exportProcessTemplate(string $key): DataDownloadResponse {
 		$this->teamService->requireBestatterAdmin();
 		$export = $this->process->exportCsv($key);
@@ -107,7 +124,9 @@ class ProcessApiController extends ApiController {
 	#[NoAdminRequired]
 	public function importProcessTemplate(string $key, string $content = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		if (strlen($content) > 2 * 1024 * 1024) throw new \InvalidArgumentException('Die CSV-Datei ist zu groß (höchstens 2 MB).');
+		if (strlen($content) > 2 * 1024 * 1024) {
+			throw new \InvalidArgumentException('Die CSV-Datei ist zu groß (höchstens 2 MB).');
+		}
 		return new DataResponse($this->process->importCsv($key, $content));
 	}
 }

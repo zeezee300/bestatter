@@ -15,10 +15,13 @@ use Psr\Log\LoggerInterface;
 class PermanentDeletion {
 	private const TRASH_MANAGER = 'OCA\\Files_Trashbin\\Trash\\ITrashManager';
 
-	public function __construct(private LoggerInterface $logger) {}
+	public function __construct(
+		private LoggerInterface $logger,
+	) {
+	}
 
 	public function delete(Node $node): void {
-		$this->withoutTrash(static fn() => $node->delete());
+		$this->withoutTrash(static fn () => $node->delete());
 	}
 
 	/**
@@ -28,16 +31,22 @@ class PermanentDeletion {
 	 */
 	public function withoutTrash(callable $callback): mixed {
 		$manager = $this->trashManager();
-		if ($manager !== null) $manager->pauseTrash();
+		if ($manager !== null) {
+			$manager->pauseTrash();
+		}
 		try {
 			return $callback();
 		} finally {
-			if ($manager !== null) $manager->resumeTrash();
+			if ($manager !== null) {
+				$manager->resumeTrash();
+			}
 		}
 	}
 
 	private function trashManager(): ?object {
-		if (!interface_exists(self::TRASH_MANAGER)) return null;
+		if (!interface_exists(self::TRASH_MANAGER)) {
+			return null;
+		}
 		try {
 			$manager = Server::get(self::TRASH_MANAGER);
 			return is_object($manager) && method_exists($manager, 'pauseTrash') && method_exists($manager, 'resumeTrash') ? $manager : null;

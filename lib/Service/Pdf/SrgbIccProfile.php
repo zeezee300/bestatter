@@ -36,13 +36,17 @@ final class SrgbIccProfile {
 		foreach ($tags as $signature => $data) {
 			$hash = md5($data);
 			if (!isset($shared[$hash])) {
-				while (($offset + strlen($body)) % 4 !== 0) $body .= "\0";
+				while (($offset + strlen($body)) % 4 !== 0) {
+					$body .= "\0";
+				}
 				$shared[$hash] = $offset + strlen($body);
 				$body .= $data;
 			}
 			$table .= $signature . pack('N', $shared[$hash]) . pack('N', strlen($data));
 		}
-		while ((128 + $tableSize + strlen($body)) % 4 !== 0) $body .= "\0";
+		while ((128 + $tableSize + strlen($body)) % 4 !== 0) {
+			$body .= "\0";
+		}
 		$size = 128 + $tableSize + strlen($body);
 		$header = pack('N', $size)
 			. "\0\0\0\0"                     // preferred CMM

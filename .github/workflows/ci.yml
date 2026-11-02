@@ -32,6 +32,21 @@ jobs:
       - name: Alle PHP-Dateien prüfen
         run: find appinfo lib templates tools -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
 
+  codestyle:
+    name: Code-Style (Nextcloud-Coding-Standard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer
+      - name: Abhängigkeiten installieren
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: php-cs-fixer (nur prüfen)
+        run: composer cs:check
+
   phpstan:
     name: PHPStan gegen Nextcloud ${{ matrix.nextcloud }}
     runs-on: ubuntu-latest
@@ -76,7 +91,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
       - name: Gegen die Schemas von Nextcloud 34 und 35 prüfen
         run: |
-          # Lizenz AGPL-3.0-only: ausdrücklich nur Version 3, nicht „or-later“.
+          # Lizenz AGPL-3.0-only (Entscheidung 05.10.2026): ausdrücklich nur Version 3, nicht „or-later“.
           grep -q '<licence>AGPL-3.0-only</licence>' appinfo/info.xml || { echo "info.xml: <licence>AGPL-3.0-only</licence> fehlt" >&2; exit 1; }
           grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE || { echo "LICENSE enthält nicht den AGPL-3.0-Text" >&2; exit 1; }
           for v in 34 35; do
@@ -111,7 +126,7 @@ jobs:
   package:
     name: Installationspaket bauen (nur Artefakt, unsigniert)
     runs-on: ubuntu-latest
-    needs: [php-lint, phpstan, appinfo, frontend]
+    needs: [php-lint, codestyle, phpstan, appinfo, frontend]
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2

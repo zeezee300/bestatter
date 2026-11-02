@@ -17,6 +17,9 @@ use OCP\Server;
  */
 class DevelopmentResetService {
 	private const OPERATIONAL_TABLES = [
+		'bestatter_acct_export_items',
+		'bestatter_acct_exports',
+		'bestatter_debtors',
 		'bestatter_integration_jobs',
 		'bestatter_capture_imports',
 		'bestatter_order_form_entries',
@@ -35,6 +38,8 @@ class DevelopmentResetService {
 		'bestatter_dereg_mail_outbox',
 		'bestatter_record_assignees',
 		'bestatter_case_labels',
+		'bestatter_precare_funding',
+		'bestatter_precare',
 		'bestatter_records',
 		'bestatter_cases',
 		'bestatter_invoice_sequences',
@@ -47,7 +52,8 @@ class DevelopmentResetService {
 		private IConfig $config,
 		private InstallationConfigService $installationConfig,
 		private CaseStorageService $storage,
-	) {}
+	) {
+	}
 
 	public function preview(): array {
 		$records = $this->recordRows();
@@ -116,8 +122,12 @@ class DevelopmentResetService {
 			$path = $dataDirectory . DIRECTORY_SEPARATOR . 'bestatter-development-reset-' . date('Ymd-His') . '.json';
 		}
 		$directory = dirname($path);
-		if (!is_dir($directory) || !is_writable($directory)) throw new \RuntimeException('Das Sicherungsverzeichnis ist nicht beschreibbar: ' . $directory);
-		if (file_exists($path)) throw new \RuntimeException('Die Sicherungsdatei existiert bereits: ' . $path);
+		if (!is_dir($directory) || !is_writable($directory)) {
+			throw new \RuntimeException('Das Sicherungsverzeichnis ist nicht beschreibbar: ' . $directory);
+		}
+		if (file_exists($path)) {
+			throw new \RuntimeException('Die Sicherungsdatei existiert bereits: ' . $path);
+		}
 		$data = [
 			'createdAt' => date('c'),
 			'appVersion' => \OCA\Bestatter\AppInfo\Application::VERSION,
@@ -128,22 +138,29 @@ class DevelopmentResetService {
 			$data['tables'][$table] = $query->select('*')->from($table)->executeQuery()->fetchAllAssociative();
 		}
 		$json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-		if (file_put_contents($path, $json, LOCK_EX) === false) throw new \RuntimeException('Die Sicherungsdatei konnte nicht geschrieben werden.');
+		if (file_put_contents($path, $json, LOCK_EX) === false) {
+			throw new \RuntimeException('Die Sicherungsdatei konnte nicht geschrieben werden.');
+		}
 		@chmod($path, 0600);
 		return $path;
 	}
 
 	private function deleteCalendarObjects(array $records): array {
 		$targets = $this->calendarTargets($records);
-		$deleted = 0; $alreadyMissing = 0; $errors = [];
+		$deleted = 0;
+		$alreadyMissing = 0;
+		$errors = [];
 		foreach ($targets as $target) {
 			try {
 				$this->calDavBackend()->deleteCalendarObject((int)$target['calendarId'], (string)$target['uri'], 0, true);
 				$deleted++;
 			} catch (\Throwable $error) {
 				$message = $error->getMessage();
-				if (str_contains(strtolower($message), 'not found') || str_contains($message, '404')) $alreadyMissing++;
-				else $errors[] = ['calendarId' => $target['calendarId'], 'uri' => $target['uri'], 'message' => $message];
+				if (str_contains(strtolower($message), 'not found') || str_contains($message, '404')) {
+					$alreadyMissing++;
+				} else {
+					$errors[] = ['calendarId' => $target['calendarId'], 'uri' => $target['uri'], 'message' => $message];
+				}
 			}
 		}
 		return ['planned' => count($targets), 'deleted' => $deleted, 'alreadyMissing' => $alreadyMissing, 'errors' => $errors];
@@ -164,35 +181,74 @@ class DevelopmentResetService {
 	}
 
 	private function addCalendarTarget(array &$targets, int $calendarId, string $uri): void {
-		if ($calendarId <= 0 || trim($uri) === '') return;
+		if ($calendarId <= 0 || trim($uri) === '') {
+			return;
+		}
 		$targets[$calendarId . ':' . $uri] = ['calendarId' => $calendarId, 'uri' => $uri];
 	}
 
-	private function deleteCaseFolders(): array { return $this->deleteManaged($this->installationConfig->casesPath()); }
+	private function deleteCaseFolders(): array {
+		// 0.89.7: Oberordner aller Vorgangsarten (Fälle, Aufträge, Vorsorgen).
+		$result = ['deleted' => [], 'missing' => [], 'errors' => []];
+		foreach ($this->installationConfig->allCasesPaths() as $path) {
+			foreach ($this->deleteManaged($path) as $key => $items) {
+				$result[$key] = [...$result[$key], ...$items];
+			}
+		}
+		return $result;
+	}
 
-	private function deleteCaptureInboxes(): array { return $this->deleteManaged($this->installationConfig->captureInboxPath()); }
+	private function deleteCaptureInboxes(): array {
+		return $this->deleteManaged($this->installationConfig->captureInboxPath());
+	}
 
 	/** 0.70.0: zentrale Ablage und persönliche Altbestände, freigegebene Ordner nur einmal. */
 	private function deleteManaged(string $relativePath): array {
 		$result = ['deleted' => [], 'missing' => [], 'errors' => []];
-		try { $entries = $this->storage->existingFolders($relativePath); } catch (\Throwable $error) { $result['errors'][] = ['path' => $relativePath, 'message' => $error->getMessage()]; return $result; }
-		if ($entries === []) $result['missing'][] = $relativePath;
+		try {
+			$entries = $this->storage->existingFolders($relativePath);
+		} catch (\Throwable $error) {
+			$result['errors'][] = ['path' => $relativePath, 'message' => $error->getMessage()];
+			return $result;
+		}
+		if ($entries === []) {
+			$result['missing'][] = $relativePath;
+		}
 		foreach ($entries as $entry) {
-			try { $entry['folder']->delete(); $result['deleted'][] = $entry['label']; } catch (\Throwable $error) { $result['errors'][] = ['path' => $entry['label'], 'message' => $error->getMessage()]; }
+			try {
+				$entry['folder']->delete();
+				$result['deleted'][] = $entry['label'];
+			} catch (\Throwable $error) {
+				$result['errors'][] = ['path' => $entry['label'], 'message' => $error->getMessage()];
+			}
 		}
 		return $result;
 	}
 
 	private function caseFolders(): array {
-		try { return array_map(static fn(array $entry): string => $entry['label'], $this->storage->existingFolders($this->installationConfig->casesPath())); } catch (\Throwable) { return []; }
+		$labels = [];
+		foreach ($this->installationConfig->allCasesPaths() as $path) {
+			try {
+				foreach ($this->storage->existingFolders($path) as $entry) {
+					$labels[] = $entry['label'];
+				}
+			} catch (\Throwable) {
+				continue;
+			}
+		}
+		return $labels;
 	}
 
 	private function bestatterUserIds(): array {
 		$uids = [];
 		foreach (array_unique([$this->installationConfig->memberGroup(), ...$this->installationConfig->adminGroups()]) as $groupName) {
 			$group = $this->groupManager->get($groupName);
-			if ($group === null) continue;
-			foreach ($group->getUsers() as $user) $uids[$user->getUID()] = $user->getUID();
+			if ($group === null) {
+				continue;
+			}
+			foreach ($group->getUsers() as $user) {
+				$uids[$user->getUID()] = $user->getUID();
+			}
 		}
 		$uids = array_values($uids);
 		sort($uids, SORT_NATURAL | SORT_FLAG_CASE);
@@ -202,9 +258,13 @@ class DevelopmentResetService {
 	private function existingPath(Folder $base, string $relativePath): ?Folder {
 		$folder = $base;
 		foreach (explode('/', trim($relativePath, '/')) as $name) {
-			if ($name === '' || !$folder->nodeExists($name)) return null;
+			if ($name === '' || !$folder->nodeExists($name)) {
+				return null;
+			}
 			$node = $folder->get($name);
-			if (!$node instanceof Folder) return null;
+			if (!$node instanceof Folder) {
+				return null;
+			}
 			$folder = $node;
 		}
 		return $folder;
@@ -223,7 +283,9 @@ class DevelopmentResetService {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('record_type', $query->func()->count('id', 'count'))->from('bestatter_records')->groupBy('record_type')->executeQuery()->fetchAllAssociative();
 		$result = [];
-		foreach ($rows as $row) $result[(string)$row['record_type']] = (int)$row['count'];
+		foreach ($rows as $row) {
+			$result[(string)$row['record_type']] = (int)$row['count'];
+		}
 		return $result;
 	}
 
@@ -234,11 +296,16 @@ class DevelopmentResetService {
 
 	private function calDavBackend(): object {
 		$class = '\\OCA\\DAV\\CalDAV\\CalDavBackend';
-		if (!class_exists($class)) throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		if (!class_exists($class)) {
+			throw new \RuntimeException('Das Nextcloud-DAV-Backend ist nicht verfügbar.');
+		}
 		return Server::get($class);
 	}
 
 	private function safeRollback(): void {
-		try { $this->db->rollBack(); } catch (\Throwable) {}
+		try {
+			$this->db->rollBack();
+		} catch (\Throwable) {
+		}
 	}
 }

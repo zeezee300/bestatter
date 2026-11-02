@@ -24,14 +24,21 @@ use OCP\Migration\SimpleMigrationStep;
 class Version4501Date20260926000000 extends SimpleMigrationStep {
 	private const CLOSING_ACTIONS = ['KONDOLENZLISTEN_PAKET', 'ZAHLUNGSAUFFORDERUNG', 'ERINNERUNG', 'MAHNUNG_TEXT', 'KONTAKT_URNE', 'BEWERTUNG_TEXT'];
 
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if (!$schema->hasTable('bestatter_process_steps')) return null;
+		if (!$schema->hasTable('bestatter_process_steps')) {
+			return null;
+		}
 		$table = $schema->getTable('bestatter_process_steps');
-		if ($table->hasColumn('introduced_at')) return null;
+		if ($table->hasColumn('introduced_at')) {
+			return null;
+		}
 		$table->addColumn('introduced_at', 'string', ['length' => 40, 'notnull' => false]);
 		return $schema;
 	}
@@ -44,7 +51,9 @@ class Version4501Date20260926000000 extends SimpleMigrationStep {
 			->executeQuery()->fetchAllAssociative();
 		foreach ($rows as $row) {
 			$actions = json_decode((string)$row['actions_json'], true);
-			if (!is_array($actions)) continue;
+			if (!is_array($actions)) {
+				continue;
+			}
 			$changed = false;
 			foreach ($actions as &$action) {
 				if (in_array((string)($action['key'] ?? ''), self::CLOSING_ACTIONS, true) && in_array((string)($action['sourceStatusAfter'] ?? ''), ['', 'IN_BEARBEITUNG'], true)) {
@@ -53,7 +62,9 @@ class Version4501Date20260926000000 extends SimpleMigrationStep {
 				}
 			}
 			unset($action);
-			if (!$changed) continue;
+			if (!$changed) {
+				continue;
+			}
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_process_steps')->set('actions_json', $update->createNamedParameter(json_encode($actions, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)))
 				->where($update->expr()->eq('id', $update->createNamedParameter((int)$row['id'])))->executeStatement();

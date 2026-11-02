@@ -14,7 +14,8 @@ class OperationsCockpitService {
 		private IDBConnection $db,
 		private IConfig $config,
 		private RetentionPolicyService $retention,
-	) {}
+	) {
+	}
 
 	public function report(): array {
 		$failedWorkflows = $this->failedWorkflows();
@@ -33,29 +34,29 @@ class OperationsCockpitService {
 		$overall = ($failedWorkflowCount + $failedPaperless) > 0 ? 'ERROR' : (($openPaperless + $retentionCount + count($inconsistentCases) + ($maintenanceStale ? 1 : 0)) > 0 ? 'WARN' : 'OK');
 
 		return [
-			'version'=>Application::VERSION,
-			'generatedAt'=>date('c'),
-			'overall'=>$overall,
-			'summary'=>[
-				'failedWorkflows'=>$failedWorkflowCount,
-				'openPaperlessJobs'=>$openPaperless,
-				'failedPaperlessJobs'=>$failedPaperless,
-				'unassignedPaperlessDocuments'=>$this->countUnassignedPaperless(),
-				'retentionDue'=>$retentionCount,
-				'inconsistentSideOrderCases'=>count($inconsistentCases),
+			'version' => Application::VERSION,
+			'generatedAt' => date('c'),
+			'overall' => $overall,
+			'summary' => [
+				'failedWorkflows' => $failedWorkflowCount,
+				'openPaperlessJobs' => $openPaperless,
+				'failedPaperlessJobs' => $failedPaperless,
+				'unassignedPaperlessDocuments' => $this->countUnassignedPaperless(),
+				'retentionDue' => $retentionCount,
+				'inconsistentSideOrderCases' => count($inconsistentCases),
 			],
-			'workflowRuns'=>['items'=>$failedWorkflows, 'truncated'=>$failedWorkflowCount > count($failedWorkflows)],
-			'paperless'=>['counts'=>$paperlessCounts, 'items'=>$paperlessJobs, 'truncated'=>array_sum($paperlessCounts) > count($paperlessJobs)],
-			'retention'=>[
-				'enabled'=>(bool)($retention['settings']['enabled'] ?? false),
-				'mode'=>(string)($retention['settings']['mode'] ?? 'ANONYMIZE'),
-				'cutoff'=>(string)($retention['cutoff'] ?? ''),
-				'items'=>array_slice($retention['cases'] ?? [], 0, 25),
-				'truncated'=>$retentionCount > 25,
+			'workflowRuns' => ['items' => $failedWorkflows, 'truncated' => $failedWorkflowCount > count($failedWorkflows)],
+			'paperless' => ['counts' => $paperlessCounts, 'items' => $paperlessJobs, 'truncated' => array_sum($paperlessCounts) > count($paperlessJobs)],
+			'retention' => [
+				'enabled' => (bool)($retention['settings']['enabled'] ?? false),
+				'mode' => (string)($retention['settings']['mode'] ?? 'ANONYMIZE'),
+				'cutoff' => (string)($retention['cutoff'] ?? ''),
+				'items' => array_slice($retention['cases'] ?? [], 0, 25),
+				'truncated' => $retentionCount > 25,
 			],
-			'maintenance'=>['lastRun'=>$maintenanceLastRun, 'status'=>$maintenanceStatus, 'stale'=>$maintenanceStale],
-			'inconsistentSideOrderCases'=>['items'=>$inconsistentCases, 'truncated'=>false],
-			'readOnly'=>true,
+			'maintenance' => ['lastRun' => $maintenanceLastRun, 'status' => $maintenanceStatus, 'stale' => $maintenanceStale],
+			'inconsistentSideOrderCases' => ['items' => $inconsistentCases, 'truncated' => false],
+			'readOnly' => true,
 		];
 	}
 
@@ -66,7 +67,7 @@ class OperationsCockpitService {
 			->where($query->expr()->eq('c.status', $query->createNamedParameter('ABGESCHLOSSEN')))
 			->andWhere($query->expr()->in('so.status', $query->createNamedParameter(['ENTWURF', 'BEAUFTRAGT'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))
 			->orderBy('c.case_number', 'ASC')->setMaxResults(100)->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => ['id'=>(int)$row['id'], 'caseNumber'=>(string)$row['case_number'], 'sideOrderNumber'=>(string)$row['side_order_number'], 'status'=>(string)$row['status']], $rows);
+		return array_map(static fn (array $row): array => ['id' => (int)$row['id'], 'caseNumber' => (string)$row['case_number'], 'sideOrderNumber' => (string)$row['side_order_number'], 'status' => (string)$row['status']], $rows);
 	}
 
 	private function failedWorkflows(): array {
@@ -79,10 +80,10 @@ class OperationsCockpitService {
 			->orderBy('wr.created_at', 'DESC')->setMaxResults(25)->executeQuery()->fetchAllAssociative();
 		return array_map(static function (array $row): array {
 			$result = json_decode((string)($row['result_json'] ?? '{}'), true) ?: [];
-			return ['id'=>(int)$row['id'], 'caseId'=>$row['case_id'] !== null ? (int)$row['case_id'] : null,
-				'caseNumber'=>(string)($row['case_number'] ?? ''), 'sourceTitle'=>(string)($row['title'] ?? ''),
-				'actionKey'=>(string)$row['action_key'], 'error'=>mb_substr((string)($result['error']['message'] ?? 'Ablaufaktion fehlgeschlagen.'), 0, 500),
-				'createdAt'=>(string)$row['created_at']];
+			return ['id' => (int)$row['id'], 'caseId' => $row['case_id'] !== null ? (int)$row['case_id'] : null,
+				'caseNumber' => (string)($row['case_number'] ?? ''), 'sourceTitle' => (string)($row['title'] ?? ''),
+				'actionKey' => (string)$row['action_key'], 'error' => mb_substr((string)($result['error']['message'] ?? 'Ablaufaktion fehlgeschlagen.'), 0, 500),
+				'createdAt' => (string)$row['created_at']];
 		}, $rows);
 	}
 
@@ -95,12 +96,12 @@ class OperationsCockpitService {
 			->where($query->expr()->eq('j.provider', $query->createNamedParameter('PAPERLESS')))
 			->andWhere($query->expr()->neq('j.job_status', $query->createNamedParameter('DONE')))
 			->orderBy('j.updated_at', 'DESC')->setMaxResults(50)->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => [
-			'id'=>(int)$row['id'], 'caseId'=>$row['case_id'] !== null ? (int)$row['case_id'] : null,
-			'caseNumber'=>(string)($row['case_number'] ?? ''), 'externalDocumentId'=>$row['external_document_id'] !== null ? (string)$row['external_document_id'] : null,
-			'title'=>(string)($row['title'] ?? ''), 'operation'=>(string)$row['operation'], 'status'=>(string)$row['job_status'],
-			'attempts'=>(int)$row['attempts'], 'nextAttemptAt'=>(string)($row['next_attempt_at'] ?? ''),
-			'error'=>mb_substr((string)($row['last_error'] ?? ''), 0, 500), 'updatedAt'=>(string)$row['updated_at'],
+		return array_map(static fn (array $row): array => [
+			'id' => (int)$row['id'], 'caseId' => $row['case_id'] !== null ? (int)$row['case_id'] : null,
+			'caseNumber' => (string)($row['case_number'] ?? ''), 'externalDocumentId' => $row['external_document_id'] !== null ? (string)$row['external_document_id'] : null,
+			'title' => (string)($row['title'] ?? ''), 'operation' => (string)$row['operation'], 'status' => (string)$row['job_status'],
+			'attempts' => (int)$row['attempts'], 'nextAttemptAt' => (string)($row['next_attempt_at'] ?? ''),
+			'error' => mb_substr((string)($row['last_error'] ?? ''), 0, 500), 'updatedAt' => (string)$row['updated_at'],
 		], $rows);
 	}
 
@@ -111,7 +112,9 @@ class OperationsCockpitService {
 			->andWhere($query->expr()->neq('job_status', $query->createNamedParameter('DONE')))
 			->groupBy('job_status')->executeQuery()->fetchAllAssociative();
 		$result = [];
-		foreach ($rows as $row) $result[(string)$row['job_status']] = (int)$row['count'];
+		foreach ($rows as $row) {
+			$result[(string)$row['job_status']] = (int)$row['count'];
+		}
 		ksort($result);
 		return $result;
 	}

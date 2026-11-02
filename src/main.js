@@ -1,15 +1,15 @@
 /* global OC */ import { createCasesModule } from './modules/cases.js'; import { createRecordsModule } from './modules/records.js'; import { createCommercialModule } from './modules/commercial.js'; import { createDocumentsModule } from './modules/documents.js'; import { createAdministrationModule } from './modules/administration.js'; import { createCustomizingModule } from './modules/customizing.js'; import { createUi } from './modules/ui.js'; import { createAssistantModule } from './modules/assistant.js'; import { readWorkspace, rememberWorkspace, restoreWorkspace } from './modules/workspace.js'
 import { createPaperlessModule } from './modules/paperless.js'
 import { createOrderFormModule } from './modules/order-form.js'
-import { createSetupPackageModule } from './modules/setup-package.js'
+import { createSetupPackageModule } from './modules/setup-package.js'; import { createAccountingModule } from './modules/accounting.js'
 import { prepareDocumentMail, printNextcloudPdf } from './modules/document-actions.js'
 import { createHelpModule } from './modules/help.js'
 import { createProcessModule } from './modules/process.js'
-import { createLabelsModule } from './modules/labels.js'
+import { createLabelsModule } from './modules/labels.js'; import { createPrecareModule } from './modules/precare.js'
 import { createDocumentKindsModule } from './modules/document-kinds.js'
 import { createNavigation } from './modules/navigation.js'
-import { createCaseGuidance } from './modules/case-guidance.js'; import { createDocumentTemplatesModule } from './modules/document-templates.js'
-import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
+import { createCaseGuidance } from './modules/case-guidance.js'; import { createCaseDeletion } from './modules/case-deletion.js'; import { createDocumentTemplatesModule } from './modules/document-templates.js'; import { createOrderSignature } from './modules/order-signature.js'
+import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; import { caseKindForView, viewForCaseKind, CASE_LIST_VIEWS, CASE_KIND_LABELS, caseKindOf, caseEyebrow, caseDisplayName, masterNamesMissing, masterNameNotice } from './modules/case-kinds.js'
 (function () {
 	'use strict'; const root = document.getElementById('bestatter-app'); if (!root) return
 	const appVersion = root.dataset.appVersion || ''; const urls = {
@@ -90,7 +90,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		caseCreationToken: null,
 		createInFlight: false,
 		showCompletedTasks: false,
-		showCompletedSchedules: false,
+		showCompletedSchedules: false, showTechnicalHistory: false, showTechnicalFiles: false,
 		taskFilters: { caseId: 'ALL', branch: 'ALL', assignee: 'ALL', status: 'ALL', role: 'ALL' },
 		taskSort: 'DUE_ASC',
 		scheduleFilters: { caseId: 'ALL', branch: 'ALL', status: 'ALL', kind: 'ALL' },
@@ -98,7 +98,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		documentFilters: { caseId: 'ALL', branch: 'ALL', status: 'ALL', title: 'ALL', query: '' },
 		documentSort: 'DATE_DESC',
 		query: '',
-		caseSearch: { items: [], total: 0, limit: 25, offset: 0, view: 'ALL', branch: 'ALL', sideOrders: 'ALL', labels: [] },
+		caseSearch: { items: [], total: 0, limit: 25, offset: 0, view: 'ALL', branch: 'ALL', sideOrders: 'ALL', labels: [], kind: caseKindForView(savedWorkspace.view) || 'STERBEFALL' },
 		labels: null,
 		reportFilters: { from: '', to: '', branch: 'ALL' },
 		reportSummary: null,
@@ -131,7 +131,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 				const requestId = plain.match(/Request ID:\s*([A-Za-z0-9_-]+)/i)?.[1]
 				throw new Error(response.ok ? (plain || 'Ungültige Antwort der Nextcloud-App.') : `Serverfehler (HTTP ${response.status})${requestId ? ` · Request-ID ${requestId}` : ''}.`)
 			}
-			if (!response.ok) throw new Error(data.message || 'Die Anfrage konnte nicht verarbeitet werden.')
+			if (!response.ok) throw Object.assign(new Error(data.message || 'Die Anfrage konnte nicht verarbeitet werden.'), { status: response.status })
 			const method = String(requestOptions.method || 'GET').toUpperCase()
 			if (feedback !== false && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
 				notifySuccess(typeof feedback === 'string' ? feedback : (method === 'DELETE' ? 'Eintrag wurde gelöscht.' : 'Änderungen wurden gespeichert.'))
@@ -159,9 +159,9 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		return api(caseFilesUrl(state.currentCase.id), { method: 'POST', body })
 	}
 	const mainNavigation = [
-		['dashboard', 'Dashboard'], ['capture', 'Schnellerfassung'], ['cases', 'Fälle'], ['task', 'Aufgaben'],
+		['dashboard', 'Dashboard'], ['capture', 'Schnellerfassung'], ['cases', 'Sterbefälle'], ['orders', 'Aufträge'], ['precare', 'Vorsorgen'], ['task', 'Aufgaben'],
 		['schedule', 'Termine'], ['document', 'Dokumente'],
-		['inbox', 'Belegeingang'],
+		['inbox', 'Belegeingang'], ['accounting', 'Buchhaltung'],
 		['customizing', 'Customizing'],
 		['administration', 'Administration'],
 	]
@@ -252,15 +252,16 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const context = {
 		root, urls, apiBase, appVersion, state, applyCatalog, mainNavigation, recordLabels, sections, labels, listMap, fixedOptions, api, download, ui, notifySuccess, notifyError, notifyWarning, confirmAction, promptAction, title, render, loadRecordType, loadSideOrders, loadCaseFiles, loadAllCaseFiles, uploadCaseFile, syncGroupware, refreshGroupwareSilently, bind, bindMasterForm, bindOrderForm, bindCommercial, showNewCase, openDeepLinkedTask, recordUrl, recordItemUrl, articleUrl, caseServicesUrl, sideOrdersUrl, commercialUrl, schedulePresetsUrl, schedulingUrl, documentTemplateUrl, documentTemplateOptionsUrl, deregistrationTemplateUrl, deregistrationUrl, documentUrl, caseFilesUrl, allCaseFilesUrl, branchUrl, invoiceSettingsUrl, actionsUrl, executeActionUrl, esc, recordCaseNumber, recordAssigneeUid, recordAssigneeName, recordCase, recordBranch, createToken,
 	}
-	const caseGuidance = createCaseGuidance(context); const documentTemplatesModule = createDocumentTemplatesModule(context)
+	const caseGuidance = createCaseGuidance(context); const documentTemplatesModule = createDocumentTemplatesModule(context); const orderSignature = createOrderSignature(context)
 	Object.assign(context, caseGuidance, documentTemplatesModule)
 	const assistantModule = createAssistantModule(context)
 	Object.assign(context, assistantModule)
 	const { guidedCaptureView, assistantSidebarView, bindAssistant, initializeAssistantCapture } = assistantModule
-	const { helpView, bindHelp } = createHelpModule(context)
+	const helpModule = createHelpModule(context); Object.assign(context, helpModule); const { helpView, bindHelp } = helpModule
 	const casesModule = createCasesModule(context)
 	Object.assign(context, casesModule)
 	const { currentUser, assigneeOptions, listOptions, contactsByCategory, fieldType, field, masterDataForm, caseList, overview, dashboardView, caseOverview, sideOrdersPanel, loadCaseSearch, bindCaseSearch, bindSideOrders } = casesModule
+	const caseDeletion = createCaseDeletion(context, { loadCaseSearch, caseGuidance })
 	const labelsModule = createLabelsModule(context)
 	Object.assign(context, labelsModule)
 	const { loadLabels, bindLabels } = labelsModule
@@ -282,6 +283,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const setupPackageModule = createSetupPackageModule(context)
 	Object.assign(context, setupPackageModule)
 	const { loadBranchLogos, bindBranchLogos, bindSetupPackage } = setupPackageModule
+	const accountingModule = createAccountingModule(context); Object.assign(context, accountingModule); const { accountingView, bindAccounting, loadAccounting } = accountingModule // 0.90.0: Buchhaltungsexport (DATEV)
 	const administrationModule = createAdministrationModule(context)
 	Object.assign(context, administrationModule)
 	const { branchesView, invoiceSettingsView, assistantSettingsView, reportingView, loadReportingSummary, loadOperationsCockpit, bindOperationsCockpit, bindReporting, loadCommercial, commercialVersionPanel, financesPanel, administration, articleOptions, packageComponentRows, supplierOptions, showArticleForm, bindArticleAdministration, bindIncomingInvoices, bindAssistantSettings, loadSystemCheck, bindSystemCheck, loadBackups, bindBackupRestore, loadOnboarding, bindOnboarding } = administrationModule
@@ -291,6 +293,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const paperlessModule = createPaperlessModule(context)
 	Object.assign(context, paperlessModule)
 	const { loadPaperlessInbox, loadPaperlessConfiguration, paperlessInboxView, bindPaperlessInbox, bindPaperlessSettings } = paperlessModule
+	Object.assign(context, createPrecareModule(context)) // 0.89.7: Vorsorge, Einlösen, Auftrag als Sterbefall weiterführen
 	const processModule = createProcessModule(context)
 	Object.assign(context, processModule, { runProcessStepAction: processModule.runStepAction })
 	const { loadProcess, loadProcessAdmin, bindProcess, bindProcessAdmin } = processModule
@@ -298,7 +301,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	const navigationModule = createNavigation(context)
 	Object.assign(context, navigationModule)
 	function title() {
-		if (state.view === 'case-detail') return 'Fallakte'
+		if (state.view === 'case-detail') return caseKindOf(state.currentCase) === 'STERBEFALL' ? 'Fallakte' : CASE_KIND_LABELS[caseKindOf(state.currentCase)]
 		return mainNavigation.find((item) => item[0] === state.view)?.[1] || 'Bestatter'
 	}
 	let renderedLocationKey = ''
@@ -320,14 +323,15 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		const scrollPosition = scrollPositions.get(nextLocationKey) || null
 		let content = dashboardView()
 		if (state.view === 'capture') content = guidedCaptureView()
-		else if (state.view === 'cases') content = caseList()
+		else if (CASE_LIST_VIEWS.includes(state.view)) content = caseList()
 		else if (state.view === 'case-detail') content = caseDetail()
 		else if (state.view === 'inbox') content = paperlessInboxView()
 		else if (recordLabels[state.view]) content = recordsView(state.view)
 		else if (state.view === 'customizing') content = customizing()
 		else if (state.view === 'administration') content = administration()
+		else if (state.view === 'accounting' && state.team?.canUseAccounting) content = accountingView()
 		const setupNotice = Boolean(state.team.isBestatterAdmin && state.onboarding?.ready === false)
-		root.innerHTML = `<div class="${navigationModule.shellClass()}">${navigationModule.navigationView()}<main class="bp-main${setupNotice ? ' bp-main-with-notice' : ''}">${navigationModule.mobileBarView(title())}${setupNotice ? '<aside class="bp-warning"><b>Einrichtungshinweis:</b> Mindestens eine Bereitschaftsprüfung ist noch offen. Der laufende Fachbetrieb bleibt zugänglich; Details stehen unter Administration → Ersteinrichtung.</aside>' : ''}<h1 class="hidden-visually">${esc(title())}</h1><section class="bp-content"><div class="bp-workspace bp-view-${esc(state.view)}">${content}</div></section></main></div>${assistantSidebarView()}${helpView()}`
+		root.innerHTML = `<div class="${navigationModule.shellClass()}">${navigationModule.navigationView()}<main class="bp-main${setupNotice ? ' bp-main-with-notice' : ''}">${navigationModule.mobileBarView(title())}${setupNotice ? '<aside class="bp-warning"><b>Einrichtungshinweis:</b> Mindestens eine Bereitschaftsprüfung ist noch offen. Der laufende Fachbetrieb bleibt zugänglich; Details stehen unter Administration → Ersteinrichtung. <button type="button" class="bp-link-button" data-help-open="h-ersteinrichtung-durchfuehren">Was bedeutet das?</button></aside>' : ''}<h1 class="hidden-visually">${esc(title())}</h1><section class="bp-content"><div class="bp-workspace bp-view-${esc(state.view)}">${content}</div></section></main></div>${assistantSidebarView()}${helpView()}`
 		renderedLocationKey = nextLocationKey
 		rememberWorkspace(state)
 		bind()
@@ -356,7 +360,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	}
 	let backgroundSyncInFlight = false
 	async function refreshGroupwareSilently() {
-		if (backgroundSyncInFlight || state.view === 'customizing' || root.querySelector('.bp-modal, form:focus-within, .is-dirty')) return
+		if (backgroundSyncInFlight || state.view === 'customizing' || root.querySelector('.bp-modal, [data-order-signature], form:focus-within, .is-dirty')) return // 0.89.1: nie während der Unterschrift am Tablet
 		backgroundSyncInFlight = true
 		try {
 			await Promise.allSettled([
@@ -368,7 +372,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			state.personalDay = await api(`${apiBase}/dashboard/personal-day`, { feedback: false })
 			// Eine während der Synchronisation begonnene Eingabe darf nicht durch
 			// den abschließenden Neuaufbau der Ansicht verloren gehen.
-			if (root.querySelector('.bp-modal, form:focus-within, .is-dirty')) return
+			if (root.querySelector('.bp-modal, [data-order-signature], form:focus-within, .is-dirty')) return
 			render()
 		} finally {
 			backgroundSyncInFlight = false
@@ -389,22 +393,23 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		root.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', async () => {
 			navigationModule.closeNavigationDrawer()
 			state.view = button.dataset.view
-			if (state.view === 'cases') await loadCaseSearch(true)
+			if (CASE_LIST_VIEWS.includes(state.view)) { state.caseSearch.kind = caseKindForView(state.view); await Promise.all([loadCaseSearch(true), context.loadOrderTypes()]) }
 			if (recordLabels[state.view]) await loadRecordType(state.view)
 			if (state.view === 'document') await loadAllCaseFiles()
 			if (state.view === 'inbox') await loadPaperlessInbox()
+			if (state.view === 'accounting') await loadAccounting().catch((error) => notifyError(error.message))
 			if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch((error) => notifyError(error.message))
 			if (state.view === 'administration') { applyCatalog(await api(articleUrl())); state.branches = await api(branchUrl()); if (['branches', 'setup'].includes(state.administrationTab)) await loadBranchLogos(); if (state.administrationTab === 'system') await loadSystemCheck(); if (state.administrationTab === 'cockpit') await loadOperationsCockpit(); if (state.administrationTab === 'backup') await loadBackups(); if (state.administrationTab === 'paperless') await loadPaperlessConfiguration() }
 			render()
 		}))
-		const openCase = async (caseId, sideOrderId = 0) => { state.currentCase = await api(`${urls.cases}/${caseId}`); state.currentCaseId = Number(caseId); state.caseCompleteness = await api(`${apiBase}/cases/${caseId}/completeness`); await loadSideOrders(state.currentCase.id); state.activeSideOrderId = Number(sideOrderId); await Promise.all([loadCaseServices(), loadProcess(caseId)]); state.sideOrderView = sideOrderId ? 'header' : 'list'; state.assistantSidebar.caseId = Number(caseId); globalThis.localStorage?.setItem('bestatter-assistant-case-id', String(state.assistantSidebar.caseId)); state.view = 'case-detail'; state.caseTab = sideOrderId ? 'side-orders' : 'overview'; render() }
+		const openCase = context.openCaseById = async (caseId, sideOrderId = 0) => { state.currentCase = await api(`${urls.cases}/${caseId}`); state.currentCaseId = Number(caseId); state.caseCompleteness = await api(`${apiBase}/cases/${caseId}/completeness`); await loadSideOrders(state.currentCase.id); state.activeSideOrderId = Number(sideOrderId); await Promise.all([loadCaseServices(), loadProcess(caseId), context.loadCaseKindData(caseId)]); state.sideOrderView = sideOrderId ? 'header' : 'list'; state.assistantSidebar.caseId = Number(caseId); globalThis.localStorage?.setItem('bestatter-assistant-case-id', String(state.assistantSidebar.caseId)); state.view = 'case-detail'; state.caseTab = sideOrderId ? 'side-orders' : 'overview'; render() }
 		root.querySelectorAll('tr[data-case-id]').forEach((row) => {
-			const open = async () => openCase(row.dataset.caseId)
+			const open = async () => openCase(row.dataset.caseId).catch((error) => caseDeletion.openFailed(row.dataset.caseId, error))
 			row.addEventListener('click', open)
 			row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open() } })
 		})
 		root.querySelectorAll('[data-expand-case]').forEach((button)=>button.addEventListener('click',(event)=>{event.stopPropagation();const id=Number(button.dataset.expandCase);state.expandedCaseIds[id]=!state.expandedCaseIds[id];render()}))
-		root.querySelectorAll('[data-open-side-order]').forEach((button)=>button.addEventListener('click',async(event)=>{event.stopPropagation();await openCase(button.dataset.sideOrderCase,button.dataset.openSideOrder)}))
+		root.querySelectorAll('[data-open-side-order]').forEach((button)=>button.addEventListener('click',async(event)=>{event.stopPropagation();await openCase(button.dataset.sideOrderCase,button.dataset.openSideOrder).catch((error)=>caseDeletion.openFailed(button.dataset.sideOrderCase,error))}))
 		root.querySelectorAll('[data-case-tab]').forEach((button) => button.addEventListener('click', async () => {
 			// 0.79.3: Neuer, noch nicht gespeicherter Fall – nur Stammdaten (kein Aufruf mit „undefined“ als Fallnummer).
 			if (button.disabled || (isUnsavedCase(state) && !UNSAVED_CASE_TABS.includes(button.dataset.caseTab))) return
@@ -422,6 +427,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			if (state.caseTab === 'contact') await Promise.all([loadRecordType('contact'), loadRecordType('case_contact', state.currentCase.id)])
 			if (state.caseTab === 'deregistration') await Promise.all([loadRecordType('contact'), loadRecordType('document', state.currentCase.id), loadCaseFiles(state.currentCase.id), api(deregistrationUrl(state.currentCase.id)).then((items) => { state.records.deregistration = items }), api(deregistrationTemplateUrl()).then((items) => { state.deregistrationTemplates = items }), api(`${apiBase}/cases/${state.currentCase.id}/business-mail/availability`).then((result) => { state.businessMailAvailability = result }), api(`${apiBase}/cases/${state.currentCase.id}/deregistrations/mail`, { feedback: false }).then((items) => { state.deregistrationMailHistory = items; state.deregistrationMailCaseId = Number(state.currentCase.id) }).catch(() => { state.deregistrationMailHistory = []; state.deregistrationMailCaseId = Number(state.currentCase.id) })])
 			if (['order', 'services', 'finances'].includes(state.caseTab)) await loadCommercial()
+			if (['overview', 'precare', 'funding'].includes(state.caseTab)) await context.loadCaseKindData(state.currentCase.id)
 			render()
 		}))
 		root.querySelectorAll('[data-burial-defer]').forEach((button) => button.addEventListener('click', async () => {
@@ -454,23 +460,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		}))
 		bindCaseSearch()
 		document.getElementById('new-case')?.addEventListener('click', () => showNewCase())
-		document.getElementById('delete-case')?.addEventListener('click', async () => {
-			// 0.75.2: Hinweise statt Sperre – laufende Aufbewahrungsfristen (Archivierung z. B. in DATEV) und Paperless-Kopien
-			// werden angezeigt und müssen bestätigt werden. Ein Legal Hold bleibt eine Sperre.
-			const item = state.currentCase
-			let check
-			try { check = await api(`${urls.cases}/${item.id}/deletion-check`, { feedback: false, loadingLabel: 'Löschen wird vorbereitet …' }) } catch (error) { notifyError(error.message); return }
-			if (check.legalHold) { notifyError('Für diesen Fall ist ein Legal Hold gesetzt. Bitte zuerst die Löschsperre aufheben.'); return }
-			const notices = (check.notices || []).map((notice) => notice.text)
-			const details = [...notices, 'Gelöscht werden alle Falldaten, der Fallordner (ohne Papierkorb, nicht wiederherstellbar) sowie die Termine und Aufgaben dieses Falls in den Kalendern. Das Änderungsprotokoll behält nur einen Nachweis ohne Inhalte.']
-			if (!await confirmAction(`Fall ${item.caseNumber} endgültig löschen?`, { title: notices.length ? 'Fall löschen – bitte Hinweise prüfen' : 'Fall löschen', confirmLabel: notices.length ? 'Hinweise gelesen – endgültig löschen' : 'Endgültig löschen', danger: true, details })) return
-			try {
-				const result = await api(`${urls.cases}/${item.id}?confirmed=1`, { method: 'DELETE', feedback: `Fall ${item.caseNumber} wurde gelöscht.` })
-				const calendarErrors = result?.calendar?.errors?.length || 0
-				if (calendarErrors) notifyWarning(`${calendarErrors} Kalendereintrag/-einträge konnten nicht entfernt werden – bitte im Kalender löschen.`)
-			} catch (error) { notifyError(error.message); return }
-			state.cases = await api(urls.cases); state.currentCase = null; state.currentCaseId = 0; state.view = 'cases'; render()
-		})
+		document.getElementById('delete-case')?.addEventListener('click', () => caseDeletion.deleteCurrentCase()) // 0.89.7: Aufräumen und Neuaufbau in modules/case-deletion.js
 		document.getElementById('export-case')?.addEventListener('click', async () => {
 			try { await download(`${apiBase}/cases/${state.currentCase.id}/export.json`, `Bestatter-Fallexport-${state.currentCase.caseNumber || state.currentCase.id}.json`) }
 			catch (error) { notifyError(error.message) }
@@ -478,6 +468,8 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		document.getElementById('toggle-retention-hold')?.addEventListener('click', showRetentionHoldDialog)
 		document.getElementById('show-completed-tasks')?.addEventListener('change', (event) => { state.showCompletedTasks = event.target.checked; render() })
 		document.getElementById('show-completed-schedules')?.addEventListener('change', (event) => { state.showCompletedSchedules = event.target.checked; render() })
+		document.getElementById('show-technical-history')?.addEventListener('change', (event) => { state.showTechnicalHistory = event.target.checked; render() })
+		document.getElementById('show-technical-files')?.addEventListener('change', (event) => { state.showTechnicalFiles = event.target.checked; render() })
 		root.querySelectorAll('[data-task-filter]').forEach((select) => select.addEventListener('change', () => { state.taskFilters[select.dataset.taskFilter] = select.value; render() }))
 		document.getElementById('task-sort')?.addEventListener('change', (event) => { state.taskSort = event.target.value; render() })
 		root.querySelectorAll('[data-record-filter]').forEach((select) => select.addEventListener('change', () => {
@@ -522,7 +514,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 				notifyError(error.message)
 			}
 		}))
-		bindCaseContacts()
+		bindCaseContacts(); context.bindCaseKinds()
 		document.getElementById('new-deregistration')?.addEventListener('click', () => showDeregistrationForm())
 		root.querySelectorAll('.edit-deregistration').forEach((button) => button.addEventListener('click', () => showDeregistrationForm((state.records.deregistration || []).find((entry) => entry.id === Number(button.dataset.id)))))
 		root.querySelectorAll('.preview-deregistration').forEach((button) => button.addEventListener('click', async () => { const item = (state.records.deregistration || []).find((entry) => entry.id === Number(button.dataset.id)); if(!item)return; const preview=await api(`${deregistrationUrl(state.currentCase.id)}/preview`,{method:'POST',body:new URLSearchParams({deregistration:JSON.stringify(item.data||{})})}); if(preview.previewMode==='LETTER')showLetterPreview(preview);else showTextPreview(item.title,preview.subject,preview.body,preview.missingFields) }))
@@ -569,9 +561,9 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		caseGuidance.bindCaseGuidance(); documentTemplatesModule.bindDocumentTemplates()
 		bindCommercial()
 		bindServiceSelection()
-		bindOrderFormEntry(); bindOrderFormAdmin(); bindBranchLogos(); bindSetupPackage()
+		bindOrderFormEntry(); bindOrderFormAdmin(); bindBranchLogos(); bindSetupPackage(); bindAccounting()
 		bindArticleAdministration(); bindIncomingInvoices()
-		bindAssistantSettings()
+		bindAssistantSettings(); context.bindHelpFeedback?.()
 		bindSystemCheck()
 		bindBackupRestore()
 		bindOnboarding()
@@ -588,13 +580,14 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 	}
 	function bindMasterForm() {
 		const form = document.getElementById('case-form'); if (!form) return
-		const stateLabel = document.getElementById('case-save-state'); let timer = null
-		const save = async () => {
+		const stateLabel = document.getElementById('case-save-state'); let timer = null; const boundCaseId = Number(state.currentCase?.id || 0)
+		const namesMissing = (data) => masterNamesMissing(caseKindOf(state.currentCase), data); const nameNotice = (final) => { /* 0.89.7: Hinweis beim Tippen, Fehler erst beim Verlassen des Formulars */ const notice = masterNameNotice(caseKindOf(state.currentCase), state.newCase, final); stateLabel.textContent = notice.text; stateLabel.dataset.state = notice.state }
+		const save = async (final = false) => {
 			clearTimeout(timer); caseGuidance.clearPendingSave('case')
-			if (state.createInFlight) return
+			if (state.createInFlight || !state.currentCase || (boundCaseId && Number(state.currentCase.id) !== boundCaseId)) return // 0.89.7: nie gegen einen gelöschten oder anderen Fall
 			const formData = Object.fromEntries(new FormData(form))
 			const data = { ...(state.currentCase.masterData || {}), ...formData }
-			if (!data.first_name || !data.last_name) { stateLabel.textContent = 'Vor- und Nachname sind erforderlich.'; stateLabel.dataset.state = 'error'; return }
+			if (namesMissing(data)) { nameNotice(final === true); return }
 			stateLabel.textContent = 'Speichert …'; stateLabel.dataset.state = 'saving'
 			state.createInFlight = state.newCase
 			try {
@@ -608,7 +601,8 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 				if (created) { await caseGuidance.afterCaseCreated(); /* 0.88.1: Hinweis auf die entstandenen Aufgaben */ rerenderKeepingCaseForm(stateLabel.textContent, stateLabel.dataset.state) }
 			} catch (error) { stateLabel.textContent = error.message; stateLabel.dataset.state = 'error' } finally { state.createInFlight = false }
 		}
-		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550); caseGuidance.registerPendingSave('case', save) })))
+		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550); caseGuidance.registerPendingSave('case', () => save(true)) })))
+		form.addEventListener('focusout', () => setTimeout(() => { if (form.isConnected && !form.contains(document.activeElement) && namesMissing({ ...(state.currentCase?.masterData || {}), ...Object.fromEntries(new FormData(form)) })) nameNotice(true) }, 250))
 		form.querySelectorAll('[data-burial-level]').forEach((select) => select.addEventListener('change', async () => {
 			const depth = Number(select.dataset.burialLevel || 0)
 			const parentCode = depth ? form.querySelector(`[data-burial-level="${depth - 1}"]`)?.value || '' : ''
@@ -627,19 +621,15 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		const form = document.getElementById('order-form')
 		if (!form) return
 		const status = document.getElementById('order-save-state')
-		let timer = null
-		const save = async (signed = false) => {
-			clearTimeout(timer); caseGuidance.clearPendingSave('order')
+		let timer = null; const boundCaseId = Number(state.currentCase?.id || 0)
+		const save = async () => {
+			clearTimeout(timer); caseGuidance.clearPendingSave('order'); if (!state.currentCase || (boundCaseId && Number(state.currentCase.id) !== boundCaseId)) return
 			const data = Object.fromEntries(new FormData(form))
 			delete data.order_mode_choice // reine UI-Auswahl; fachlich gilt order_mode
 			data.order_mode = form.elements.order_mode.value
 			data.invoice_same_as_client = form.elements.invoice_same_as_client?.checked ? 'JA' : 'NEIN'
 			if (data.invoice_same_as_client === 'JA') {
 				for (const field of ['salutation', 'name', 'first_name', 'relation', 'street', 'postal_city', 'country', 'phone', 'mobile', 'email']) data[`invoice_${field}`] = data[`order_client_${field}`] || ''
-			}
-			if (signed) {
-				data.order_signature_name = data.order_client_name || currentUser()
-				data.order_signature_date = new Date().toISOString()
 			}
 			for (const name of ['order_client_email', 'invoice_email']) {
 				const input = form.elements[name]
@@ -654,7 +644,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			try {
 				const masterData = { ...(state.currentCase.masterData || {}), ...data }
 				state.currentCase = await caseGuidance.trackSave(api(`${urls.cases}/${state.currentCase.id}/master-data`, { method: 'PUT', feedback: false, body: new URLSearchParams({ masterData: JSON.stringify(masterData), firstName: state.currentCase.firstName, lastName: state.currentCase.lastName, expectedUpdatedAt: state.currentCase.updatedAt || '' }) }))
-				status.textContent = signed ? 'Digital best\u00e4tigt und gespeichert.' : 'Gespeichert'
+				status.textContent = 'Gespeichert'
 				status.dataset.state = 'saved'
 				return true
 			} catch (error) {
@@ -728,7 +718,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 				render()
 			} catch (error) { notifyError(error.message) }
 		})
-		document.getElementById('sign-order').onclick = async () => { if (await confirmAction('Den Auftrag digital bestätigen?', { title: 'Auftrag bestätigen', confirmLabel: 'Bestätigen' }) && await save(true)) render() }
+		document.getElementById('sign-order')?.addEventListener('click', () => orderSignature.open()) // 0.89.0: Unterschrift am Tablet
 		document.getElementById('preview-order-docs').onclick = async (event) => {
 			const button = event.currentTarget; button.disabled = true
 			try {
@@ -742,6 +732,14 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		document.getElementById('back-to-side-orders-finances')?.addEventListener('click', () => { state.activeSideOrderId = 0; state.caseTab = 'side-orders'; state.sideOrderView = 'list'; render() })
 		document.getElementById('freeze-quote')?.addEventListener('click', () => finalizeCommercialDocument('QUOTE'))
 		document.getElementById('freeze-order')?.addEventListener('click', () => finalizeCommercialDocument('ORDER'))
+		root.querySelectorAll('.create-commercial-pdf').forEach((button) => button.addEventListener('click', async () => {
+			try {
+				button.disabled = true
+				await api(`${commercialUrl(state.currentCase.id)}/documents/${button.dataset.documentId}/pdf`, { method: 'POST', feedback: false, loadingLabel: 'PDF wird erzeugt …' })
+				await Promise.all([loadCaseFiles(state.currentCase.id), loadRecordType('document', state.currentCase.id), loadCommercial()])
+				notifySuccess('Die PDF wurde erzeugt und im Fallordner abgelegt.'); render()
+			} catch (error) { button.disabled = false; notifyError(error.message) }
+		}))
 		root.querySelectorAll('.convert-quote').forEach((button) => button.addEventListener('click', async () => {
 			if (!await confirmAction('Diesen festgeschriebenen KVA jetzt einmalig und unverändert in den verbindlichen Auftrag übernehmen? Diese Aktion kann nicht wiederholt werden.', { title: 'KVA in Auftrag übernehmen', confirmLabel: 'Einmalig übernehmen' })) return
 			try {
@@ -780,7 +778,8 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		root.querySelectorAll('.generate-invoice-document').forEach((button) => button.addEventListener('click', async () => {
 			try {
 				const invoiceId=button.dataset.invoiceId
-				const result=await api(`${apiBase}/commercial/invoices/${invoiceId}/document`,{method:'POST',feedback:false,loadingLabel:'Rechnungs-Prüfdokument und Zahlungs-QR werden erzeugt …',body:new URLSearchParams({createPdf:'true'})});await Promise.all([loadCaseFiles(state.currentCase.id),loadRecordType('document',state.currentCase.id)])
+				const correction=(state.commercial?.invoices||[]).some((item)=>String(item.id)===String(invoiceId)&&(item.documentKind||'INVOICE')!=='INVOICE')
+				const result=await api(`${apiBase}/commercial/invoices/${invoiceId}/document`,{method:'POST',feedback:false,loadingLabel:correction?'Prüfdokument des Korrekturbelegs wird erzeugt …':'Rechnungs-Prüfdokument und Zahlungs-QR werden erzeugt …',body:new URLSearchParams({createPdf:'true'})});await Promise.all([loadCaseFiles(state.currentCase.id),loadRecordType('document',state.currentCase.id)])
 				if(result.file?.pdfWarning)notifyWarning(result.file.pdfWarning);else {
 					const qrState=result.file?.paymentQr?.rendering
 					const qrNote=qrState==='SERVER_RENDERED_PNG'?' Der EPC-SEPA-Zahlcode wurde serverseitig erzeugt und in DOCX und PDF eingebettet.':qrState==='SUPPRESSED_FOR_DIRECT_DEBIT'?' Bei SEPA-Lastschrift wird bestimmungsgemäß kein Überweisungs-QR ausgegeben.':qrState==='DISABLED_BY_CONFIGURATION'?' Der Zahlungs-QR ist in den Rechnungseinstellungen oder im Niederlassungsprofil deaktiviert.':' Der Status der Zahlungs-QR-Ausgabe konnte nicht ermittelt werden.'
@@ -813,12 +812,12 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 		root.querySelectorAll('#case-area-select option:disabled').forEach((option) => { option.disabled = false })
 		root.querySelector('.bp-case-unsaved-hint')?.remove()
 		const eyebrow = root.querySelector('.bp-page-head .bp-eyebrow')
-		if (eyebrow && state.currentCase?.caseNumber) eyebrow.textContent = `Fallakte ${state.currentCase.caseNumber}`
+		if (eyebrow && state.currentCase?.caseNumber) eyebrow.textContent = caseEyebrow(state.currentCase)
 	}
 	// 0.82.1: Name im Seitenkopf nach dem Speichern nachziehen (das Formular wird beim automatischen Speichern nicht neu aufgebaut).
 	function updateCaseHeading() {
 		const heading = root.querySelector('.bp-view-case-detail .bp-page-head h2')
-		if (heading && state.currentCase) heading.textContent = `${state.currentCase.lastName || ''}, ${state.currentCase.firstName || ''}`
+		if (heading && state.currentCase) heading.textContent = caseDisplayName(state.currentCase)
 	}
 	function rerenderKeepingCaseForm(saveText = '', saveState = '') {
 		const form = document.getElementById('case-form')
@@ -881,13 +880,13 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'
 			return false
 		}
 	}
-	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0`), api(urls.customizing), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false })), api(`${apiBase}/customizing/burial-rules`), api(`${apiBase}/customizing/surcharges`), api(`${apiBase}/assistant/help/availability`, {feedback:false}).catch(() => ({available:false})), api(`${apiBase}/labels`, { feedback: false }).catch(() => null)])
+	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0&kind=${state.caseSearch.kind}`), api(urls.customizing), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false })), api(`${apiBase}/customizing/burial-rules`), api(`${apiBase}/customizing/surcharges`), api(`${apiBase}/assistant/help/availability`, {feedback:false}).catch(() => ({available:false})), api(`${apiBase}/labels`, { feedback: false }).catch(() => null)])
 		.then(async ([dashboard, personalDay, team, caseResult, customizingData, tasks, schedules, contacts, articleData, branches, documentTemplates, documentTemplateOptions, deregistrationTemplates, invoiceSettings, schedulePresets, scheduling, assistantConfiguration, onboarding, burialRules, surcharges, helpAvailability, labelCatalog]) => {
 			state.labels = labelCatalog
 			await loadDocumentKinds().catch(() => {})
-			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; state.help.available = Boolean(helpAvailability?.available); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
+			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; Object.assign(state.help, { available: Boolean(helpAvailability?.available), chat: Boolean(helpAvailability?.chat) }); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
 			initializeAssistantCapture(); await caseGuidance.loadRoleStatus()
-			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await loadProcess(state.currentCase.id); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
+			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await Promise.all([loadProcess(state.currentCase.id), context.loadCaseKindData(state.currentCase.id)]); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
 			refreshGroupwareSilently().catch(() => {})
 		})
 		.catch((error) => { root.innerHTML = `<p class="bp-error">${esc(error.message)}</p>` })

@@ -18,7 +18,12 @@ use Psr\Log\LoggerInterface;
  * TIME_SENSITIVE, damit Nextcloud den Job nicht in ein Wartungsfenster verschiebt – die gewählte Uhrzeit soll gelten.
  */
 class ScheduledBackupJob extends TimedJob {
-	public function __construct(ITimeFactory $time, private BackupService $backup, private BestatterActivityService $activity, private LoggerInterface $logger) {
+	public function __construct(
+		ITimeFactory $time,
+		private BackupService $backup,
+		private BestatterActivityService $activity,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct($time);
 		$this->setInterval(15 * 60);
 		$this->setTimeSensitivity(IJob::TIME_SENSITIVE);
@@ -27,9 +32,14 @@ class ScheduledBackupJob extends TimedJob {
 
 	protected function run($argument): void {
 		$result = $this->backup->runScheduled();
-		if ($result === null) return;
+		if ($result === null) {
+			return;
+		}
 		$context = ['app' => Application::APP_ID, 'file' => $result['file'] ?? '', 'deleted' => count((array)($result['deleted'] ?? []))];
-		if ($result['status'] === 'OK') { $this->logger->info('Automatische Datensicherung erstellt: {file}, {deleted} abgelaufene Sicherung(en) gelöscht.', $context); return; }
+		if ($result['status'] === 'OK') {
+			$this->logger->info('Automatische Datensicherung erstellt: {file}, {deleted} abgelaufene Sicherung(en) gelöscht.', $context);
+			return;
+		}
 		$this->logger->error('Automatische Datensicherung: ' . (string)$result['message'], $context);
 		$this->activity->publishBackupAttention((string)$result['message']);
 	}

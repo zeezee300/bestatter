@@ -36,21 +36,44 @@ class OperationalService {
 		],
 	];
 
+	/**
+	 * 0.89.7: Prüfpunkte für Aufträge ohne Sterbefall und Vorsorgen. Aufträge: Kunde, Leistungen, Auftrag und Abrechnung
+	 * (keine Trauerfeier-Phase); Vorsorgen: Person mit Geburtsdatum, Wünsche und Vorsorgevertrag (keine Abrechnungsphase).
+	 */
+	private const KIND_PHASES = [
+		CaseKinds::ORDER => [
+			'INTAKE' => ['label' => 'Aufnahme', 'navigation' => ['caseTab' => 'master', 'label' => 'Stammdaten ergänzen'],
+				'fields' => ['last_name' => 'Kunde bzw. Name', 'responsible_employee' => 'Zuständiger Mitarbeiter', 'branch' => 'Niederlassung']],
+			'ARRANGEMENT' => ['label' => 'Auftrag', 'navigation' => ['caseTab' => 'order', 'label' => 'Auftrag und Leistungen prüfen'],
+				'fields' => ['order_client_name' => 'Auftraggeber']],
+			'BILLING' => self::PHASES['BILLING'],
+		],
+		CaseKinds::PRECARE => [
+			'INTAKE' => ['label' => 'Erstgespräch', 'navigation' => ['caseTab' => 'master', 'label' => 'Stammdaten ergänzen'],
+				'fields' => ['first_name' => 'Vorname', 'last_name' => 'Nachname', 'date_of_birth' => 'Geburtsdatum', 'responsible_employee' => 'Zuständiger Mitarbeiter', 'branch' => 'Niederlassung']],
+			'ARRANGEMENT' => ['label' => 'Wünsche und Vertrag', 'navigation' => ['caseTab' => 'master', 'label' => 'Wünsche und Vorsorgevertrag prüfen'],
+				'fields' => ['funeral_type' => 'Bestattungsart (Wunsch)', 'order_client_name' => 'Vertragspartner/in']],
+		],
+	];
+
 	public function __construct(
 		private IDBConnection $db,
 		private IUserSession $userSession,
 		private CaseService $cases,
-	) {}
+	) {
+	}
 
 	public function personalDay(string $date = ''): array {
 		$day = $this->validDate($date);
 		$uid = $this->userSession->getUser()?->getUID() ?? '';
-		if ($uid === '') throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		if ($uid === '') {
+			throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		}
 		$records = $this->recordsForUser($uid);
-		$tasks = array_values(array_filter($records, static fn(array $row): bool => $row['type'] === 'task' && $row['status'] !== 'ERLEDIGT'));
-		$schedules = array_values(array_filter($records, static fn(array $row): bool => $row['type'] === 'schedule' && $row['status'] !== 'ERLEDIGT'));
-		$onDay = static fn(array $row): bool => substr((string)$row['date'], 0, 10) === $day;
-		$overdue = static fn(array $row): bool => ($recordDay = substr((string)$row['date'], 0, 10)) !== '' && $recordDay < $day;
+		$tasks = array_values(array_filter($records, static fn (array $row): bool => $row['type'] === 'task' && $row['status'] !== 'ERLEDIGT'));
+		$schedules = array_values(array_filter($records, static fn (array $row): bool => $row['type'] === 'schedule' && $row['status'] !== 'ERLEDIGT'));
+		$onDay = static fn (array $row): bool => substr((string)$row['date'], 0, 10) === $day;
+		$overdue = static fn (array $row): bool => ($recordDay = substr((string)$row['date'], 0, 10)) !== '' && $recordDay < $day;
 		$myCases = $this->cases->searchCases('', 'OPEN', 'ALL', $uid, 100, 0);
 
 		return [
@@ -78,8 +101,18 @@ class OperationalService {
 			'date_of_death' => $case['dateOfDeath'] ?? '', 'funeral_type' => $case['funeralType'] ?? '',
 			'branch' => $case['branch'] ?? '', 'responsible_employee' => $case['responsibleEmployee'] ?? '',
 		];
+		// 0.89.7: Firmenkunden – der Firmenname zählt als Auftraggeber bzw. Rechnungsempfänger.
+		if (trim((string)($data['order_client_name'] ?? '')) === '' && trim((string)($data['order_client_company'] ?? '')) !== '') {
+			$data['order_client_name'] = (string)$data['order_client_company'];
+		}
+		if (trim((string)($data['invoice_name'] ?? '')) === '' && trim((string)($data['invoice_company'] ?? $data['order_client_company'] ?? '')) !== '') {
+			$data['invoice_name'] = (string)($data['invoice_company'] ?? $data['order_client_company']);
+		}
+		$definitions = self::KIND_PHASES[(string)($case['caseKind'] ?? CaseKinds::DEATH)] ?? self::PHASES;
 		$phase = strtoupper(trim($phase));
-		if ($phase !== 'ALL' && !isset(self::PHASES[$phase])) throw new \InvalidArgumentException('Die gewählte Prozessphase ist ungültig.');
+		if ($phase !== 'ALL' && !isset($definitions[$phase])) {
+			throw new \InvalidArgumentException('Die gewählte Prozessphase ist ungültig.');
+		}
 		if ($this->isCancelled($case, $data)) {
 			// Ein stornierter Auftrag/Fall wird bewusst nicht gegen die vier Prozessphasen geprüft:
 			// Keine Leistungen, keinen Termin oder kein festgeschriebenes Auftragsdokument zu haben
@@ -105,17 +138,23 @@ class OperationalService {
 				'ready' => true, 'phases' => [], 'nextActions' => [],
 			];
 		}
-		$phases = $phase === 'ALL' ? array_keys(self::PHASES) : [$phase];
+		$phases = $phase === 'ALL' ? array_keys($definitions) : [$phase];
 		$result = [];
-		foreach ($phases as $key) $result[$key] = $this->phaseResult($caseId, $key, $data);
+		foreach ($phases as $key) {
+			$result[$key] = $this->phaseResult($caseId, $key, $data, $definitions[$key], (string)($case['caseKind'] ?? CaseKinds::DEATH));
+		}
 		$required = array_sum(array_column($result, 'required'));
 		$complete = array_sum(array_column($result, 'complete'));
 		$nextActions = [];
-		foreach ($result as $phaseResult) if (!$phaseResult['ready']) $nextActions[] = [
-			'phase' => $phaseResult['key'], 'label' => $phaseResult['navigation']['label'],
-			'caseTab' => $phaseResult['navigation']['caseTab'],
-			'missing' => array_values(array_map(static fn(array $check): string => $check['label'], array_filter($phaseResult['checks'], static fn(array $check): bool => !$check['complete']))),
-		];
+		foreach ($result as $phaseResult) {
+			if (!$phaseResult['ready']) {
+				$nextActions[] = [
+					'phase' => $phaseResult['key'], 'label' => $phaseResult['navigation']['label'],
+					'caseTab' => $phaseResult['navigation']['caseTab'],
+					'missing' => array_values(array_map(static fn (array $check): string => $check['label'], array_filter($phaseResult['checks'], static fn (array $check): bool => !$check['complete']))),
+				];
+			}
+		}
 		return [
 			'caseId' => $caseId, 'caseNumber' => $case['caseNumber'], 'phase' => $phase,
 			'cancelled' => false, 'closedWithoutInvoice' => false, 'complete' => $complete, 'required' => $required,
@@ -148,15 +187,17 @@ class OperationalService {
 		return trim((string)($data['order_closed_at'] ?? '')) !== '';
 	}
 
-	private function phaseResult(int $caseId, string $phase, array $data): array {
-		$definition = self::PHASES[$phase];
+	private function phaseResult(int $caseId, string $phase, array $data, array $definition, string $kind = CaseKinds::DEATH): array {
 		$checks = [];
 		foreach ($definition['fields'] as $field => $label) {
 			$value = trim((string)($data[$field] ?? ''));
 			$checks[] = ['key' => $field, 'label' => $label, 'complete' => $value !== '', 'kind' => 'FIELD'];
 		}
 		if ($phase === 'ARRANGEMENT') {
-			$checks[] = $this->countCheck($caseId, 'services', 'Mindestens eine beauftragte Leistung', 'bestatter_case_services');
+			$checks[] = $this->countCheck($caseId, 'services', $kind === CaseKinds::PRECARE ? 'Mindestens eine vereinbarte Leistung' : 'Mindestens eine beauftragte Leistung', 'bestatter_case_services');
+			if ($kind === CaseKinds::PRECARE) {
+				$checks[] = $this->commercialCheck($caseId, 'ORDER', 'Vorsorgevertrag festgeschrieben');
+			}
 		}
 		if ($phase === 'CEREMONY') {
 			$checks[] = $this->recordCheck($caseId, 'schedule', 'Mindestens ein externer Termin');
@@ -165,9 +206,11 @@ class OperationalService {
 			$checks[] = $this->countCheck($caseId, 'services', 'Abrechenbare Leistungen vorhanden', 'bestatter_case_services');
 			$checks[] = $this->commercialCheck($caseId, 'ORDER', 'Festgeschriebener Auftrag fehlt');
 			$sideOrderCheck = $this->sideOrderCheck($caseId);
-			if ($sideOrderCheck !== null) $checks[] = $sideOrderCheck;
+			if ($sideOrderCheck !== null) {
+				$checks[] = $sideOrderCheck;
+			}
 		}
-		$complete = count(array_filter($checks, static fn(array $check): bool => $check['complete']));
+		$complete = count(array_filter($checks, static fn (array $check): bool => $check['complete']));
 		return [
 			'key' => $phase, 'label' => $definition['label'], 'complete' => $complete,
 			'required' => count($checks), 'ready' => $complete === count($checks),
@@ -240,16 +283,22 @@ class OperationalService {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('side_order_number', 'status')->from('bestatter_side_orders')
 			->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))->executeQuery()->fetchAllAssociative();
-		if ($rows === []) return null;
-		$open = array_values(array_filter($rows, static fn(array $row): bool => in_array((string)$row['status'], ['ENTWURF', 'BEAUFTRAGT'], true)));
+		if ($rows === []) {
+			return null;
+		}
+		$open = array_values(array_filter($rows, static fn (array $row): bool => in_array((string)$row['status'], ['ENTWURF', 'BEAUFTRAGT'], true)));
 		return ['key' => 'side_orders', 'label' => $open === [] ? 'Alle Nebenaufträge erledigt' : count($open) . ' Nebenauftrag/Nebenaufträge noch offen', 'complete' => $open === [], 'kind' => 'SIDE_ORDER', 'count' => count($rows)];
 	}
 
 	private function validDate(string $date): string {
 		$date = trim($date);
-		if ($date === '') return date('Y-m-d');
+		if ($date === '') {
+			return date('Y-m-d');
+		}
 		$parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
-		if ($parsed === false || $parsed->format('Y-m-d') !== $date) throw new \InvalidArgumentException('Das Datum muss im Format JJJJ-MM-TT angegeben werden.');
+		if ($parsed === false || $parsed->format('Y-m-d') !== $date) {
+			throw new \InvalidArgumentException('Das Datum muss im Format JJJJ-MM-TT angegeben werden.');
+		}
 		return $date;
 	}
 }

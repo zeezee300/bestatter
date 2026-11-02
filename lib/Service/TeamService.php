@@ -14,7 +14,8 @@ class TeamService {
 		private IGroupManager $groups,
 		private IUserSession $userSession,
 		private InstallationConfigService $installationConfig,
-	) {}
+	) {
+	}
 
 	public function overview(): array {
 		$current = $this->currentUser();
@@ -27,7 +28,7 @@ class TeamService {
 		}
 		$members[$current->getUID()] ??= $this->map($current);
 		$members = array_values($members);
-		usort($members, static fn(array $left, array $right): int => strcasecmp($left['displayName'], $right['displayName']));
+		usort($members, static fn (array $left, array $right): int => strcasecmp($left['displayName'], $right['displayName']));
 
 		return [
 			'group' => $this->installationConfig->memberGroup(),
@@ -35,6 +36,7 @@ class TeamService {
 			'adminGroups' => $this->installationConfig->adminGroups(),
 			'currentUid' => $current->getUID(),
 			'isBestatterAdmin' => $this->isBestatterAdmin(),
+			'canUseAccounting' => $this->canUseAccounting(),
 			'members' => $members,
 		];
 	}
@@ -45,9 +47,13 @@ class TeamService {
 	}
 
 	public function hasBestatterAdminRole(string $uid): bool {
-		if ($this->groups->isAdmin($uid)) return true;
+		if ($this->groups->isAdmin($uid)) {
+			return true;
+		}
 		foreach ($this->installationConfig->adminGroups() as $groupName) {
-			if ($this->groups->isInGroup($uid, $groupName)) return true;
+			if ($this->groups->isInGroup($uid, $groupName)) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -58,10 +64,16 @@ class TeamService {
 
 	public function hasBestatterRole(string $uid): bool {
 		$uid = trim($uid);
-		if ($uid === '') return false;
-		if ($this->groups->isAdmin($uid)) return true;
+		if ($uid === '') {
+			return false;
+		}
+		if ($this->groups->isAdmin($uid)) {
+			return true;
+		}
 		foreach (array_unique([$this->installationConfig->memberGroup(), ...$this->installationConfig->adminGroups()]) as $groupName) {
-			if ($this->groups->isInGroup($uid, $groupName)) return true;
+			if ($this->groups->isInGroup($uid, $groupName)) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -73,7 +85,28 @@ class TeamService {
 	}
 
 	public function requireBestatterAdmin(): void {
-		if (!$this->isBestatterAdmin()) throw new BestatterAccessDeniedException('Diese Funktion ist Bestatter-Administratoren vorbehalten.');
+		if (!$this->isBestatterAdmin()) {
+			throw new BestatterAccessDeniedException('Diese Funktion ist Bestatter-Administratoren vorbehalten.');
+		}
+	}
+
+	/**
+	 * 0.90.0 (NFA-05): Buchhaltungsexport nur für Bestatter-Administratoren und Mitglieder der Rollengruppe „Buchhaltung“
+	 * (Installationsparameter → Rollen, Standard „Bestatter-Buchhaltung“). Rechte nur über Nextcloud-Gruppen.
+	 */
+	public function canUseAccounting(): bool {
+		$uid = $this->currentUser()->getUID();
+		if ($this->hasBestatterAdminRole($uid)) {
+			return true;
+		}
+		$group = trim((string)($this->installationConfig->roleGroups()['BUCHHALTUNG'] ?? ''));
+		return $group !== '' && $this->groups->isInGroup($uid, $group);
+	}
+
+	public function requireAccounting(): void {
+		if (!$this->canUseAccounting()) {
+			throw new BestatterAccessDeniedException('Der Buchhaltungsexport ist Bestatter-Administratoren und der Rollengruppe „Buchhaltung“ vorbehalten.');
+		}
 	}
 
 	public function assignee(string $uid = ''): array {

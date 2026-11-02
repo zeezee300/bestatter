@@ -15,7 +15,8 @@ class RecordService {
 		private IDBConnection $db,
 		private IUserSession $userSession,
 		private AuditService $audit,
-	) {}
+	) {
+	}
 
 	public function list(string $type, int $caseId = 0, ?string $ownerUid = null): array {
 		$ownerUid = $this->ownerUid($ownerUid);
@@ -58,7 +59,9 @@ class RecordService {
 	 * (mit erneut ausgelösten Folgeaufgaben).
 	 */
 	public function findCopyOriginal(string $type, string $uid, string $ownerUid): ?array {
-		if ($uid === '' || $ownerUid === '' || !in_array($type, ['task', 'schedule'], true)) return null;
+		if ($uid === '' || $ownerUid === '' || !in_array($type, ['task', 'schedule'], true)) {
+			return null;
+		}
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('id', 'owner_uid', 'payload')
 			->from('bestatter_records')
@@ -68,7 +71,9 @@ class RecordService {
 			->executeQuery()->fetchAllAssociative();
 		foreach ($rows as $row) {
 			$data = json_decode((string)$row['payload'], true);
-			if (!is_array($data) || !self::isCopyOwner($data, $ownerUid)) continue;
+			if (!is_array($data) || !self::isCopyOwner($data, $ownerUid)) {
+				continue;
+			}
 			return $this->get((int)$row['id'], (string)$row['owner_uid']);
 		}
 		return null;
@@ -76,9 +81,17 @@ class RecordService {
 
 	/** Zuständige (Aufgabe: assigneeUid/assigneeUids, Termin: assigneeUids) oder Empfänger einer geschriebenen Kopie. */
 	public static function isCopyOwner(array $data, string $ownerUid): bool {
-		if ((string)($data['assigneeUid'] ?? '') === $ownerUid) return true;
-		if (in_array($ownerUid, array_map('strval', (array)($data['assigneeUids'] ?? [])), true)) return true;
-		foreach ((array)($data['nextcloudCopies'] ?? []) as $copy) if (is_array($copy) && (string)($copy['ownerUid'] ?? '') === $ownerUid) return true;
+		if ((string)($data['assigneeUid'] ?? '') === $ownerUid) {
+			return true;
+		}
+		if (in_array($ownerUid, array_map('strval', (array)($data['assigneeUids'] ?? [])), true)) {
+			return true;
+		}
+		foreach ((array)($data['nextcloudCopies'] ?? []) as $copy) {
+			if (is_array($copy) && (string)($copy['ownerUid'] ?? '') === $ownerUid) {
+				return true;
+			}
+		}
 		return false;
 	}
 
@@ -94,7 +107,7 @@ class RecordService {
 			->orderBy('updated_at', 'ASC')
 			->setMaxResults(max(1, $limit))
 			->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => ['id' => (int)$row['id'], 'ownerUid' => (string)$row['owner_uid']], $rows);
+		return array_map(static fn (array $row): array => ['id' => (int)$row['id'], 'ownerUid' => (string)$row['owner_uid']], $rows);
 	}
 
 	public function findByNextcloudUid(string $type, string $uid, ?string $ownerUid = null): ?array {
@@ -122,10 +135,17 @@ class RecordService {
 		int $caseId = 0,
 		?string $ownerUid = null,
 		bool $allowPaperSignature = false,
+		bool $allowDigitalSignature = false,
 	): array {
 		$payload = $this->validate($title, $data);
-		if ($type === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN') throw new \InvalidArgumentException('Unterschriebene Papierdokumente müssen mit geprüftem Scan bestätigt werden.');
-		if ($type === 'document' && isset($payload['paperSignature']) && !$allowPaperSignature) throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
+		// 0.89.0: Ausnahme nur für die am Tablet unterschriebene PDF (OrderSignatureService, Nachweis in digitalSignature).
+		$digitallySigned = $allowDigitalSignature && is_array($payload['digitalSignature'] ?? null);
+		if ($type === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN' && !$digitallySigned) {
+			throw new \InvalidArgumentException('Unterschriebene Papierdokumente müssen mit geprüftem Scan bestätigt werden.');
+		}
+		if ($type === 'document' && isset($payload['paperSignature']) && !$allowPaperSignature) {
+			throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
+		}
 		$ownerUid = $this->ownerUid($ownerUid);
 		$query = $this->db->getQueryBuilder();
 		$now = date('c');
@@ -155,13 +175,25 @@ class RecordService {
 		$recordId = (int)$this->db->lastInsertId('bestatter_records');
 		$this->syncAssigneeIndex($recordId, $sync, $payload);
 		$created = $this->get($recordId, $ownerUid);
-		if ($type !== 'activity') $this->audit->log($caseId, $type, (int)$created['id'], 'CREATED', null, $created);
+		if ($type !== 'activity') {
+			$this->audit->log($caseId, $type, (int)$created['id'], 'CREATED', null, $created);
+		}
 		return $created;
+	}
+
+	/** 0.89.0: Am Tablet unterschriebener Bestattungsauftrag – immer ein neuer, unveränderlicher Datensatz. */
+	public function saveDigitallySignedDocument(int $caseId, string $title, array $payload): array {
+		if (!is_array($payload['digitalSignature'] ?? null)) {
+			throw new \InvalidArgumentException('Der Nachweis der Unterschrift fehlt.');
+		}
+		return $this->create('document', $title, date('c'), 'UNTERSCHRIEBEN', json_encode($payload, JSON_THROW_ON_ERROR), $caseId, null, false, true);
 	}
 
 	public function saveDocument(int $caseId, string $title, string $status, array $payload, bool $allowInvoiceReplacement = false): array {
 		$key = (string)($payload['templateKey'] ?? '');
-		if ($key === 'BESTATTUNGSAUFTRAG' && strtoupper($status) === 'FINAL') return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
+		if ($key === 'BESTATTUNGSAUFTRAG' && strtoupper($status) === 'FINAL') {
+			return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId);
+		}
 		$contextKey = (string)($payload['documentContextKey'] ?? '');
 		$invoiceId = (int)($payload['invoiceId'] ?? 0);
 		foreach ($this->list('document', $caseId) as $existing) {
@@ -169,8 +201,12 @@ class RecordService {
 			$same = $invoiceId > 0
 				? (int)($data['invoiceId'] ?? 0) === $invoiceId
 				: ($key !== '' && (string)($data['templateKey'] ?? '') === $key && (string)($data['documentContextKey'] ?? '') === $contextKey && (int)($data['invoiceId'] ?? 0) === 0);
-			if (!$same) continue;
-			if ($this->isImmutableDocumentStatus((string)$existing['status']) && !$allowInvoiceReplacement) throw new \InvalidArgumentException('Das Dokument ist final oder versendet und kann nicht ersetzt werden.');
+			if (!$same) {
+				continue;
+			}
+			if ($this->isImmutableDocumentStatus((string)$existing['status']) && !$allowInvoiceReplacement) {
+				throw new \InvalidArgumentException('Das Dokument ist final oder versendet und kann nicht ersetzt werden.');
+			}
 			return $this->update((int)$existing['id'], $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId, null, $allowInvoiceReplacement);
 		}
 		return $this->create('document', $title, date('c'), $status, json_encode($payload, JSON_THROW_ON_ERROR), $caseId, null, isset($payload['paperSignature']));
@@ -190,11 +226,21 @@ class RecordService {
 		$payload = $this->validate($title, $data);
 		$ownerUid = $this->ownerUid($ownerUid);
 		$existing = $this->get($id, $ownerUid);
-		if ($existing['type'] === 'document' && isset($payload['paperSignature']) && !isset($existing['data']['paperSignature']) && !$confirmPaperSignature) throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
-		if ($existing['type'] === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN' && !$confirmPaperSignature) throw new \InvalidArgumentException('Der Status „handschriftlich unterschrieben“ erfordert einen geprüften Scan.');
-		if (is_array($existing['data']['paperSignature'] ?? null) && !$confirmPaperSignature) throw new \InvalidArgumentException('Papierverträge können nur über die Unterschriftenprüfung bestätigt werden.');
-		if ($existing['type'] === 'activity') throw new \InvalidArgumentException('Der Fall-Verlauf ist ein unveränderbares Protokoll.');
-		if ($existing['type'] === 'document' && $this->isImmutableDocumentStatus((string)$existing['status']) && !$allowImmutableDocument) throw new \InvalidArgumentException('Finale oder versendete Dokumente können nicht bearbeitet werden.');
+		if ($existing['type'] === 'document' && isset($payload['paperSignature']) && !isset($existing['data']['paperSignature']) && !$confirmPaperSignature) {
+			throw new \InvalidArgumentException('Papierverträge müssen über den vorgesehenen Scan-Upload erfasst werden.');
+		}
+		if ($existing['type'] === 'document' && strtoupper($status) === 'UNTERSCHRIEBEN' && !$confirmPaperSignature) {
+			throw new \InvalidArgumentException('Der Status „handschriftlich unterschrieben“ erfordert einen geprüften Scan.');
+		}
+		if (is_array($existing['data']['paperSignature'] ?? null) && !$confirmPaperSignature) {
+			throw new \InvalidArgumentException('Papierverträge können nur über die Unterschriftenprüfung bestätigt werden.');
+		}
+		if ($existing['type'] === 'activity') {
+			throw new \InvalidArgumentException('Der Fall-Verlauf ist ein unveränderbares Protokoll.');
+		}
+		if ($existing['type'] === 'document' && $this->isImmutableDocumentStatus((string)$existing['status']) && !$allowImmutableDocument) {
+			throw new \InvalidArgumentException('Finale oder versendete Dokumente können nicht bearbeitet werden.');
+		}
 		$sync = $this->syncColumns($payload);
 		$query = $this->db->getQueryBuilder();
 		$query->update('bestatter_records')
@@ -225,14 +271,24 @@ class RecordService {
 	public function confirmPaperContract(int $id, int $caseId, array $review): array {
 		$existing = $this->get($id);
 		$data = $existing['data'] ?? [];
-		if ($existing['type'] !== 'document' || (int)$existing['caseId'] !== $caseId || $existing['status'] !== 'SIGNATURE_REVIEW' || !is_array($data['paperSignature'] ?? null)) throw new \InvalidArgumentException('Der Papiervertrag ist nicht zur Unterschriftenprüfung vorgemerkt.');
+		if ($existing['type'] !== 'document' || (int)$existing['caseId'] !== $caseId || $existing['status'] !== 'SIGNATURE_REVIEW' || !is_array($data['paperSignature'] ?? null)) {
+			throw new \InvalidArgumentException('Der Papiervertrag ist nicht zur Unterschriftenprüfung vorgemerkt.');
+		}
 		$signers = trim((string)($review['signers'] ?? ''));
-		if ($signers === '' || mb_strlen($signers) > 500) throw new \InvalidArgumentException('Bitte die tatsächlich unterschreibenden Parteien angeben.');
+		if ($signers === '' || mb_strlen($signers) > 500) {
+			throw new \InvalidArgumentException('Bitte die tatsächlich unterschreibenden Parteien angeben.');
+		}
 		$signatureDate = trim((string)($review['signatureDate'] ?? ''));
-		if ($signatureDate !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $signatureDate) || !checkdate((int)substr($signatureDate, 5, 2), (int)substr($signatureDate, 8, 2), (int)substr($signatureDate, 0, 4)))) throw new \InvalidArgumentException('Das Unterschriftsdatum ist ungültig.');
+		if ($signatureDate !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $signatureDate) || !checkdate((int)substr($signatureDate, 5, 2), (int)substr($signatureDate, 8, 2), (int)substr($signatureDate, 0, 4)))) {
+			throw new \InvalidArgumentException('Das Unterschriftsdatum ist ungültig.');
+		}
 		$paperLocation = trim((string)($review['paperLocation'] ?? ''));
-		if (mb_strlen($paperLocation) > 500) throw new \InvalidArgumentException('Der Ablageort des Papieroriginals ist zu lang.');
-		if (empty($review['complete']) || empty($review['signaturesPresent']) || empty($review['contentMatches'])) throw new \InvalidArgumentException('Bitte Vollständigkeit, Unterschriften und Vertragsinhalt ausdrücklich bestätigen.');
+		if (mb_strlen($paperLocation) > 500) {
+			throw new \InvalidArgumentException('Der Ablageort des Papieroriginals ist zu lang.');
+		}
+		if (empty($review['complete']) || empty($review['signaturesPresent']) || empty($review['contentMatches'])) {
+			throw new \InvalidArgumentException('Bitte Vollständigkeit, Unterschriften und Vertragsinhalt ausdrücklich bestätigen.');
+		}
 		$data['paperSignature']['review'] = ['signers' => $signers, 'signatureDate' => $signatureDate, 'paperLocation' => $paperLocation, 'reviewedBy' => $this->actorUid(), 'reviewedAt' => date('c'), 'complete' => true, 'signaturesPresent' => true, 'contentMatches' => true];
 		return $this->update($id, $existing['title'], (string)$existing['date'], 'UNTERSCHRIEBEN', json_encode($data, JSON_THROW_ON_ERROR), $caseId, null, false, true);
 	}
@@ -275,7 +331,9 @@ class RecordService {
 			return null;
 		}
 		$data = $record['data'];
-		if (($data['nextcloud']['remoteDeletedAt'] ?? '') !== '') return $record;
+		if (($data['nextcloud']['remoteDeletedAt'] ?? '') !== '') {
+			return $record;
+		}
 		$data['nextcloud']['stored'] = false;
 		$data['nextcloud']['remoteDeletedAt'] = date('c');
 		$data['nextcloud']['statusBeforeRemoteDeletion'] = (string)$record['status'];
@@ -363,7 +421,9 @@ class RecordService {
 	 * Hauptauftrag oder zu anderen, weiterhin aktiven Nebenaufträgen desselben Falls gehören.
 	 */
 	public function closeFollowUpsForCase(int $caseId, string $trigger): int {
-		if ($caseId <= 0) return 0;
+		if ($caseId <= 0) {
+			return 0;
+		}
 		$trigger = strtoupper(trim($trigger));
 		if ($trigger === 'STORNIERT') {
 			$note = 'Automatisch geschlossen: Der Fall bzw. Auftrag wurde storniert.';
@@ -383,7 +443,9 @@ class RecordService {
 		} else {
 			return 0;
 		}
-		if ($closed > 0) $this->audit->log($caseId, 'CASE', $caseId, $auditAction, null, ['count' => $closed]);
+		if ($closed > 0) {
+			$this->audit->log($caseId, 'CASE', $caseId, $auditAction, null, ['count' => $closed]);
+		}
 		return $closed;
 	}
 
@@ -415,8 +477,12 @@ class RecordService {
 	public function delete(int $id): void {
 		$ownerUid = $this->ownerUid(null);
 		$existing = $this->get($id, $ownerUid);
-		if ($existing['type'] === 'activity') throw new \InvalidArgumentException('Der Fall-Verlauf ist ein unveränderbares Protokoll.');
-		if ($existing['type'] === 'document' && $this->isImmutableDocumentStatus((string)$existing['status'])) throw new \InvalidArgumentException('Finale oder versendete Dokumente können nicht gelöscht werden.');
+		if ($existing['type'] === 'activity') {
+			throw new \InvalidArgumentException('Der Fall-Verlauf ist ein unveränderbares Protokoll.');
+		}
+		if ($existing['type'] === 'document' && $this->isImmutableDocumentStatus((string)$existing['status'])) {
+			throw new \InvalidArgumentException('Finale oder versendete Dokumente können nicht gelöscht werden.');
+		}
 		$query = $this->db->getQueryBuilder();
 		$query->delete('bestatter_records')
 			->where($query->expr()->eq('id', $query->createNamedParameter($id)))
@@ -426,7 +492,9 @@ class RecordService {
 		$this->audit->log((int)($existing['caseId'] ?? 0), (string)$existing['type'], $id, 'DELETED', $existing, null);
 	}
 
-	private function isImmutableDocumentStatus(string $status): bool { return in_array(strtoupper($status), ['FINAL', 'UNTERSCHRIEBEN', 'VERSENDET'], true); }
+	private function isImmutableDocumentStatus(string $status): bool {
+		return in_array(strtoupper($status), ['FINAL', 'UNTERSCHRIEBEN', 'VERSENDET'], true);
+	}
 
 	private function validate(string $title, string $data): array {
 		if (trim($title) === '') {
@@ -506,7 +574,9 @@ class RecordService {
 		}
 		foreach ((array)($payload['assigneeUids'] ?? []) as $candidate) {
 			$candidate = trim((string)$candidate);
-			if ($candidate !== '') $uids[] = $candidate;
+			if ($candidate !== '') {
+				$uids[] = $candidate;
+			}
 		}
 		$this->deleteAssigneeIndex($recordId);
 		foreach (array_unique($uids) as $uid) {
@@ -536,7 +606,9 @@ class RecordService {
 		return $user->getUID();
 	}
 
-	private function actorUid(): string { return $this->userSession->getUser()?->getUID() ?? 'system'; }
+	private function actorUid(): string {
+		return $this->userSession->getUser()?->getUID() ?? 'system';
+	}
 
 	private function map(array $row): array {
 		$data = json_decode((string)($row['payload'] ?? '{}'), true) ?: [];

@@ -18,7 +18,13 @@ use OCP\IRequest;
  * beschränkt; es gibt bewusst keine zusätzliche Prüfung auf eine "zuständige Person" je Fall.
  */
 class DeregistrationMailApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private CaseService $cases, private DeregistrationMailService $mail, private ProcessService $process) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private CaseService $cases,
+		private DeregistrationMailService $mail,
+		private ProcessService $process,
+	) {
 		parent::__construct($appName, $request);
 	}
 
@@ -38,7 +44,9 @@ class DeregistrationMailApiController extends ApiController {
 	public function send(int $caseId, int $recordId, string $mail = '{}'): DataResponse {
 		$case = $this->cases->getCase($caseId);
 		$input = json_decode($mail, true, 512, JSON_THROW_ON_ERROR);
-		if (!is_array($input)) throw new \InvalidArgumentException('Ungültige Versanddaten.');
+		if (!is_array($input)) {
+			throw new \InvalidArgumentException('Ungültige Versanddaten.');
+		}
 		$result = $this->mail->send($case, $recordId, $input);
 		$this->process->reconcileQuietly($caseId);
 		return new DataResponse($result);

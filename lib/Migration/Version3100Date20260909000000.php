@@ -15,7 +15,9 @@ class Version3100Date20260909000000 extends SimpleMigrationStep {
 		$schema = $schemaClosure();
 		if ($schema->hasTable('bestatter_case_services')) {
 			$table = $schema->getTable('bestatter_case_services');
-			if (!$table->hasColumn('position_type')) $table->addColumn('position_type', 'string', ['length' => 2, 'default' => 'EL']);
+			if (!$table->hasColumn('position_type')) {
+				$table->addColumn('position_type', 'string', ['length' => 2, 'default' => 'EL']);
+			}
 		}
 		return $schema;
 	}

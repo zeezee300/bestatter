@@ -58,7 +58,11 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 		'FL-GESTECK' => ['520', 'HANDELSWARE', 'E'], 'PK-FEUER-BASIS' => ['910', 'PAKET', 'V'], 'PK-ERDE-BASIS' => ['910', 'PAKET', 'V'],
 	];
 
-	public function __construct(private IDBConnection $db, private IConfig $config) {}
+	public function __construct(
+		private IDBConnection $db,
+		private IConfig $config,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
@@ -83,7 +87,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			'funeral_scope' => ['string', ['length' => 20, 'default' => 'ALL']],
 			'active' => ['boolean', ['notnull' => false, 'default' => true]],
 		]);
-		if (!$groups->hasIndex('bestatter_group_key')) $groups->addUniqueIndex(['group_key'], 'bestatter_group_key');
+		if (!$groups->hasIndex('bestatter_group_key')) {
+			$groups->addUniqueIndex(['group_key'], 'bestatter_group_key');
+		}
 
 		$articles = $schema->getTable('bestatter_articles');
 		$this->columns($articles, [
@@ -166,7 +172,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			'price_on_entry' => ['boolean', ['notnull' => false, 'default' => false]],
 			'guide_price_cents' => ['integer', ['notnull' => false]],
 		]);
-		if (!$services->hasIndex('bestatter_service_parent')) $services->addIndex(['parent_service_id'], 'bestatter_service_parent');
+		if (!$services->hasIndex('bestatter_service_parent')) {
+			$services->addIndex(['parent_service_id'], 'bestatter_service_parent');
+		}
 
 		$invoiceItems = $schema->getTable('bestatter_invoice_items');
 		$this->columns($invoiceItems, [
@@ -203,7 +211,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			$name = mb_strtolower(trim((string)$row['group_name']));
 			$target = $nameMap[$name] ?? null;
 			if ($target !== null && isset($seedKeys[$target])) {
-				if ((bool)$row['exclusive_selection']) $tighten[$target] = true;
+				if ((bool)$row['exclusive_selection']) {
+					$tighten[$target] = true;
+				}
 				$delete = $this->db->getQueryBuilder();
 				$delete->delete('bestatter_article_groups')->where($delete->expr()->eq('id', $delete->createNamedParameter((int)$row['id'])))->executeStatement();
 				$legacyKeys[$name] = $target;
@@ -211,9 +221,15 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			}
 			$remaining[] = $row;
 		}
-		foreach ((array)($seed['areas'] ?? []) as $area) $this->ensureArea((string)$area['key'], (string)$area['name'], (int)($area['sortOrder'] ?? 0), $now);
-		foreach ((array)($seed['groups'] ?? []) as $group) $this->ensureGroup($group, $now);
-		foreach (array_keys($tighten) as $target) $this->tightenRule((string)$target);
+		foreach ((array)($seed['areas'] ?? []) as $area) {
+			$this->ensureArea((string)$area['key'], (string)$area['name'], (int)($area['sortOrder'] ?? 0), $now);
+		}
+		foreach ((array)($seed['groups'] ?? []) as $group) {
+			$this->ensureGroup($group, $now);
+		}
+		foreach (array_keys($tighten) as $target) {
+			$this->tightenRule((string)$target);
+		}
 		foreach ($remaining as $row) {
 			$name = (string)$row['group_name'];
 			$key = $this->nextTransferKey();
@@ -250,7 +266,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			}
 			[$type, $taxClass] = $this->legacyTypeAndTax($row);
 			$vat = ['V' => 19, 'E' => 7, 'A' => 0][$taxClass];
-			$cost = match ($type) { 'FREMDLEISTUNG' => 'THIRD_PARTY', 'AUSLAGE' => 'EXPENSE', default => 'INTERNAL' };
+			$cost = match ($type) {
+				'FREMDLEISTUNG' => 'THIRD_PARTY', 'AUSLAGE' => 'EXPENSE', default => 'INTERNAL'
+			};
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_articles')
 				->set('article_group', $update->createNamedParameter($groupKey))
@@ -279,10 +297,14 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			$query = $this->db->getQueryBuilder();
 			$components = $query->select('*')->from('bestatter_article_components')->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
 			$byPackage = [];
-			foreach ($components as $component) $byPackage[(int)$component['package_id']][] = $component;
+			foreach ($components as $component) {
+				$byPackage[(int)$component['package_id']][] = $component;
+			}
 			foreach ($byPackage as $packageId => $entries) {
 				$query = $this->db->getQueryBuilder();
-				if ($query->select('id')->from('bestatter_boms')->where($query->expr()->eq('package_article_id', $query->createNamedParameter($packageId)))->executeQuery()->fetchOne() !== false) continue;
+				if ($query->select('id')->from('bestatter_boms')->where($query->expr()->eq('package_article_id', $query->createNamedParameter($packageId)))->executeQuery()->fetchOne() !== false) {
+					continue;
+				}
 				$insert = $this->db->getQueryBuilder();
 				$insert->insert('bestatter_boms')->values([
 					'package_article_id' => $insert->createNamedParameter($packageId), 'pricing' => $insert->createNamedParameter('ITEMS'),
@@ -311,7 +333,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 			$taxClass = strtoupper((string)$row['position_type']) === 'DP' || (int)$row['vat_rate'] === 0 ? 'A' : ((int)$row['vat_rate'] <= 10 ? 'E' : 'V');
 			$status = (string)$row['service_status'];
 			$billability = (string)$row['billability'];
-			if (in_array($status, ['KULANZ', 'NICHT_ABRECHENBAR'], true) && $billability === 'ABRECHENBAR') $billability = $status;
+			if (in_array($status, ['KULANZ', 'NICHT_ABRECHENBAR'], true) && $billability === 'ABRECHENBAR') {
+				$billability = $status;
+			}
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_case_services')
 				->set('article_group_key', $update->createNamedParameter($groupKey))
@@ -326,9 +350,13 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 		$query = $this->db->getQueryBuilder();
 		foreach ($query->select('id', 'article_group')->from('bestatter_burial_variant_rules')->executeQuery()->fetchAllAssociative() as $rule) {
 			$name = trim((string)($rule['article_group'] ?? ''));
-			if ($name === '' || $this->groupExists($name)) continue;
+			if ($name === '' || $this->groupExists($name)) {
+				continue;
+			}
 			$key = $legacyKeys[mb_strtolower($name)] ?? $nameMap[mb_strtolower($name)] ?? null;
-			if ($key === null) continue;
+			if ($key === null) {
+				continue;
+			}
 			$update = $this->db->getQueryBuilder();
 			$update->update('bestatter_burial_variant_rules')->set('article_group', $update->createNamedParameter($key))
 				->where($update->expr()->eq('id', $update->createNamedParameter((int)$rule['id'])))->executeStatement();
@@ -338,7 +366,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 		foreach (['ARTICLE_GROUP', 'ARTICLE_CATEGORY'] as $listKey) {
 			$query = $this->db->getQueryBuilder();
 			$id = $query->select('id')->from('bestatter_choice_lists')->where($query->expr()->eq('list_key', $query->createNamedParameter($listKey)))->executeQuery()->fetchOne();
-			if ($id === false) continue;
+			if ($id === false) {
+				continue;
+			}
 			$delete = $this->db->getQueryBuilder();
 			$delete->delete('bestatter_choice_items')->where($delete->expr()->eq('list_id', $delete->createNamedParameter((int)$id)))->executeStatement();
 			$delete = $this->db->getQueryBuilder();
@@ -351,28 +381,38 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 				$query = $this->db->getQueryBuilder();
 				$exists = $query->select('id')->from('bestatter_choice_items')->where($query->expr()->eq('list_id', $query->createNamedParameter((int)$unitList)))
 					->andWhere($query->expr()->eq('value', $query->createNamedParameter($value)))->executeQuery()->fetchOne();
-				if ($exists !== false) continue;
+				if ($exists !== false) {
+					continue;
+				}
 				$insert = $this->db->getQueryBuilder();
 				$insert->insert('bestatter_choice_items')->values(['list_id' => $insert->createNamedParameter((int)$unitList), 'value' => $insert->createNamedParameter($value), 'label' => $insert->createNamedParameter($label), 'sort_order' => $insert->createNamedParameter($sort)])->executeStatement();
 			}
 		}
 
 		// Der neue Beispielkatalog wird beim nächsten Katalogaufruf angelegt (ArticleService).
-		if ($articles !== []) $this->config->setAppValue('bestatter', 'catalog_sample_pending', '2026');
+		if ($articles !== []) {
+			$this->config->setAppValue('bestatter', 'catalog_sample_pending', '2026');
+		}
 		$output->info('Leistungskatalog auf Warengruppen, Steuerklassen, Preislisten und Stücklisten umgestellt.');
 	}
 
 	private function legacyTypeAndTax(array $row): array {
 		$number = (string)$row['article_number'];
-		if (isset(self::LEGACY_ARTICLES[$number])) return [self::LEGACY_ARTICLES[$number][1], self::LEGACY_ARTICLES[$number][2]];
+		if (isset(self::LEGACY_ARTICLES[$number])) {
+			return [self::LEGACY_ARTICLES[$number][1], self::LEGACY_ARTICLES[$number][2]];
+		}
 		$current = strtoupper((string)($row['article_type'] ?? ''));
-		if ((string)$row['item_type'] === 'PACKAGE') return ['PAKET', 'V'];
+		if ((string)$row['item_type'] === 'PACKAGE') {
+			return ['PAKET', 'V'];
+		}
 		$type = match (strtoupper((string)$row['cost_type'])) {
 			'THIRD_PARTY' => 'FREMDLEISTUNG',
 			'EXPENSE' => 'AUSLAGE',
 			default => in_array((string)$row['category'], ['Lagerartikel', 'Bestellartikel'], true) ? 'HANDELSWARE' : 'DIENSTLEISTUNG',
 		};
-		if ($current !== '' && $current !== 'DIENSTLEISTUNG') $type = $current;
+		if ($current !== '' && $current !== 'DIENSTLEISTUNG') {
+			$type = $current;
+		}
 		$vat = (int)$row['vat_rate'];
 		$tax = $vat === 0 ? 'A' : ($vat <= 10 ? 'E' : 'V');
 		return [$type, $tax];
@@ -380,14 +420,18 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 
 	private function ensureArea(string $key, string $name, int $sort, string $now): void {
 		$query = $this->db->getQueryBuilder();
-		if ($query->select('id')->from('bestatter_article_areas')->where($query->expr()->eq('area_key', $query->createNamedParameter($key)))->executeQuery()->fetchOne() !== false) return;
+		if ($query->select('id')->from('bestatter_article_areas')->where($query->expr()->eq('area_key', $query->createNamedParameter($key)))->executeQuery()->fetchOne() !== false) {
+			return;
+		}
 		$insert = $this->db->getQueryBuilder();
 		$insert->insert('bestatter_article_areas')->values(['area_key' => $insert->createNamedParameter($key), 'name' => $insert->createNamedParameter($name), 'sort_order' => $insert->createNamedParameter($sort), 'created_at' => $insert->createNamedParameter($now), 'updated_at' => $insert->createNamedParameter($now)])->executeStatement();
 	}
 
 	private function ensureGroup(array $group, string $now): void {
 		$key = (string)$group['key'];
-		if ($this->groupExists($key)) return;
+		if ($this->groupExists($key)) {
+			return;
+		}
 		$name = (string)$group['name'];
 		// Ein gleichnamiger Altbestand (ohne Schlüssel) würde den Unique-Index auf group_name verletzen.
 		$query = $this->db->getQueryBuilder();
@@ -410,7 +454,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 	}
 
 	private function groupExists(string $key): bool {
-		if ($key === '') return false;
+		if ($key === '') {
+			return false;
+		}
 		$query = $this->db->getQueryBuilder();
 		return $query->select('id')->from('bestatter_article_groups')->where($query->expr()->eq('group_key', $query->createNamedParameter($key)))->executeQuery()->fetchOne() !== false;
 	}
@@ -425,7 +471,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 	private function nextTransferKey(): string {
 		for ($i = 1; $i < 1000; $i++) {
 			$key = sprintf('X%02d', $i);
-			if (!$this->groupExists($key)) return $key;
+			if (!$this->groupExists($key)) {
+				return $key;
+			}
 		}
 		throw new \RuntimeException('Keine freie Übernahmegruppe verfügbar.');
 	}
@@ -433,7 +481,9 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 	private function ensureStandardPriceList(string $now): int {
 		$query = $this->db->getQueryBuilder();
 		$id = $query->select('id')->from('bestatter_price_lists')->where($query->expr()->eq('list_key', $query->createNamedParameter('STANDARD')))->executeQuery()->fetchOne();
-		if ($id !== false) return (int)$id;
+		if ($id !== false) {
+			return (int)$id;
+		}
 		$insert = $this->db->getQueryBuilder();
 		$insert->insert('bestatter_price_lists')->values(['list_key' => $insert->createNamedParameter('STANDARD'), 'name' => $insert->createNamedParameter('Standardpreisliste'), 'branch_key' => $insert->createNamedParameter(null), 'active' => $insert->createNamedParameter(true, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_BOOL), 'created_at' => $insert->createNamedParameter($now), 'updated_at' => $insert->createNamedParameter($now)])->executeStatement();
 		return (int)$this->db->lastInsertId('bestatter_price_lists');
@@ -450,6 +500,10 @@ class Version4800Date20260929000000 extends SimpleMigrationStep {
 	}
 
 	private function columns(mixed $table, array $definitions): void {
-		foreach ($definitions as $name => [$type, $options]) if (!$table->hasColumn($name)) $table->addColumn($name, $type, $options);
+		foreach ($definitions as $name => [$type, $options]) {
+			if (!$table->hasColumn($name)) {
+				$table->addColumn($name, $type, $options);
+			}
+		}
 	}
 }

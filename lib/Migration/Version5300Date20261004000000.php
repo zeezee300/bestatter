@@ -18,7 +18,9 @@ class Version5300Date20261004000000 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if ($schema->hasTable('bestatter_branch_logos')) return null;
+		if ($schema->hasTable('bestatter_branch_logos')) {
+			return null;
+		}
 		$t = $schema->createTable('bestatter_branch_logos');
 		$t->addColumn('id', Types::INTEGER, ['autoincrement' => true, 'unsigned' => true]);
 		$t->addColumn('branch_key', Types::STRING, ['length' => 100]);

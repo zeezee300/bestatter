@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace OCA\Bestatter\Command;
 
 use OCA\Bestatter\Service\StorageMigrationService;
@@ -18,7 +20,11 @@ use Symfony\Component\Console\Output\OutputInterface;
 class StorageMigrate extends Command {
 	private const CONFIRMATION = 'BESTATTER-ABLAGE-ZENTRAL';
 
-	public function __construct(private StorageMigrationService $migration) { parent::__construct(); }
+	public function __construct(
+		private StorageMigrationService $migration,
+	) {
+		parent::__construct();
+	}
 
 	protected function configure(): void {
 		$this->setName('bestatter:storage-migrate')
@@ -36,7 +42,9 @@ class StorageMigrate extends Command {
 		$sourceFolder = (string)($input->getOption('source-folder') ?? '');
 		$plan = $this->migration->plan($account, $sourceFolder);
 		$print = $plan;
-		if (!$input->getOption('details')) unset($print['items']);
+		if (!$input->getOption('details')) {
+			unset($print['items']);
+		}
 		$output->writeln(json_encode($print, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 		if (!$input->getOption('execute')) {
 			$output->writeln('<comment>Trockenlauf: keine Dateien kopiert, keine Daten verändert. Ausführen mit --execute --confirmation=' . self::CONFIRMATION . '</comment>');

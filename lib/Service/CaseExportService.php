@@ -9,7 +9,13 @@ use OCP\IDBConnection;
 
 /** Vollständiger, maschinenlesbarer Datenexport eines Falls ohne externe Nebenwirkungen. */
 class CaseExportService {
-	public function __construct(private IDBConnection $db, private CaseService $cases, private AuditService $audit, private LabelService $labels) {}
+	public function __construct(
+		private IDBConnection $db,
+		private CaseService $cases,
+		private AuditService $audit,
+		private LabelService $labels,
+	) {
+	}
 
 	public function export(int $caseId): array {
 		$case = $this->cases->getCase($caseId);
@@ -37,6 +43,9 @@ class CaseExportService {
 			'captureImports' => $this->decodedRows($this->rows('bestatter_capture_imports', 'case_id', $caseId), ['suggestions_json']),
 			// 0.76.0: Marker (auch entfernte, mit Zeitpunkten) und die daraus berechneten Hinweise.
 			'labels' => $this->labels->exportRows($caseId),
+			// 0.89.7: Vorsorge – Vertragsstand und Finanzierungen
+			'precare' => $this->rows('bestatter_precare', 'case_id', $caseId),
+			'precareFundings' => $this->rows('bestatter_precare_funding', 'case_id', $caseId),
 			'hints' => $this->labels->forCase($caseId)['hints'],
 			'auditHistory' => $this->audit->caseHistory($caseId),
 		];
@@ -51,14 +60,25 @@ class CaseExportService {
 
 	private function childRows(string $table, string $field, array $parents): array {
 		$result = [];
-		foreach ($parents as $parent) foreach ($this->rows($table, $field, (int)$parent['id']) as $row) $result[] = $row;
+		foreach ($parents as $parent) {
+			foreach ($this->rows($table, $field, (int)$parent['id']) as $row) {
+				$result[] = $row;
+			}
+		}
 		return $result;
 	}
 
 	private function decodedRows(array $rows, array $fields): array {
-		foreach ($rows as &$row) foreach ($fields as $field) {
-			if (!isset($row[$field]) || !is_string($row[$field])) continue;
-			try { $row[$field] = json_decode($row[$field], true, 512, JSON_THROW_ON_ERROR); } catch (\Throwable) {}
+		foreach ($rows as &$row) {
+			foreach ($fields as $field) {
+				if (!isset($row[$field]) || !is_string($row[$field])) {
+					continue;
+				}
+				try {
+					$row[$field] = json_decode($row[$field], true, 512, JSON_THROW_ON_ERROR);
+				} catch (\Throwable) {
+				}
+			}
 		}
 		return $rows;
 	}

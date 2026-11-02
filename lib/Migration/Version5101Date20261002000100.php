@@ -18,11 +18,19 @@ class Version5101Date20261002000100 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if (!$schema->hasTable('bestatter_capture_imports')) return null;
+		if (!$schema->hasTable('bestatter_capture_imports')) {
+			return null;
+		}
 		$t = $schema->getTable('bestatter_capture_imports');
 		$changed = false;
-		if ($t->hasIndex('bestatter_capture_hash_user')) { $t->dropIndex('bestatter_capture_hash_user'); $changed = true; }
-		if (!$t->hasIndex('bestatter_capture_hash')) { $t->addIndex(['document_sha256', 'user_id'], 'bestatter_capture_hash'); $changed = true; }
+		if ($t->hasIndex('bestatter_capture_hash_user')) {
+			$t->dropIndex('bestatter_capture_hash_user');
+			$changed = true;
+		}
+		if (!$t->hasIndex('bestatter_capture_hash')) {
+			$t->addIndex(['document_sha256', 'user_id'], 'bestatter_capture_hash');
+			$changed = true;
+		}
 		return $changed ? $schema : null;
 	}
 }

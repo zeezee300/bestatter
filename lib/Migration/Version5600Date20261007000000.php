@@ -19,12 +19,17 @@ use OCP\Migration\SimpleMigrationStep;
  * Mitgelieferte Arten (resources/document-kinds.json) entstehen beim ersten Aufruf; Wahrheitswerte als SMALLINT.
  */
 class Version5600Date20261007000000 extends SimpleMigrationStep {
-	public function __construct(private IDBConnection $db) {}
+	public function __construct(
+		private IDBConnection $db,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
-		if ($schema->hasTable('bestatter_document_kinds')) return null;
+		if ($schema->hasTable('bestatter_document_kinds')) {
+			return null;
+		}
 		$t = $schema->createTable('bestatter_document_kinds');
 		$t->addColumn('id', Types::INTEGER, ['autoincrement' => true, 'unsigned' => true]);
 		$t->addColumn('kind_key', Types::STRING, ['length' => 60]);
@@ -61,12 +66,16 @@ class Version5600Date20261007000000 extends SimpleMigrationStep {
 		$updated = 0;
 		foreach ($rows as $row) {
 			$complete = json_decode((string)$row['complete_json'], true);
-			if (!is_array($complete) || strtoupper((string)($complete['type'] ?? 'NONE')) !== 'NONE') continue;
+			if (!is_array($complete) || strtoupper((string)($complete['type'] ?? 'NONE')) !== 'NONE') {
+				continue;
+			}
 			$complete = ['type' => 'DOCUMENT_RECEIVED', 'templateKey' => '', 'presetKey' => '', 'field' => '', 'value' => '', 'status' => '', 'label' => '', 'documentKind' => 'STERBEURKUNDE'];
 			$update = $this->db->getQueryBuilder();
 			$updated += $update->update('bestatter_process_steps')->set('complete_json', $update->createNamedParameter(json_encode($complete, JSON_THROW_ON_ERROR)))
 				->where($update->expr()->eq('id', $update->createNamedParameter((int)$row['id'])))->executeStatement();
 		}
-		if ($updated > 0) $output->info('Standardablauf: Schritt „Sterbeurkunden abholen“ erledigt sich bei eingegangener Sterbeurkunde.');
+		if ($updated > 0) {
+			$output->info('Standardablauf: Schritt „Sterbeurkunden abholen“ erledigt sich bei eingegangener Sterbeurkunde.');
+		}
 	}
 }

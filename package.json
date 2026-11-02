@@ -1,6 +1,6 @@
 {
   "name": "nextcloud-bestatter",
-  "version": "0.88.2",
+  "version": "0.90.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",

@@ -17,7 +17,9 @@ class Version3200Date20260910000000 extends SimpleMigrationStep {
 			$table = $schema->getTable('bestatter_case_services');
 			// Existing service rows do not yet have a category snapshot. Keep the new
 			// column nullable and omit an empty-string default for Nextcloud's schema check.
-			if (!$table->hasColumn('article_category')) $table->addColumn('article_category', 'string', ['length' => 100, 'notnull' => false]);
+			if (!$table->hasColumn('article_category')) {
+				$table->addColumn('article_category', 'string', ['length' => 100, 'notnull' => false]);
+			}
 		}
 		return $schema;
 	}

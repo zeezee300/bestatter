@@ -17,7 +17,13 @@ use OCP\IRequest;
  * Wunsch; ohne $force und ohne $uri werden zuerst mögliche Dubletten zurückgegeben.
  */
 class ContactApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private ContactService $contacts, private CaseService $cases, private AuditService $audit) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private ContactService $contacts,
+		private CaseService $cases,
+		private AuditService $audit,
+	) {
 		parent::__construct($appName, $request);
 	}
 
@@ -35,7 +41,9 @@ class ContactApiController extends ApiController {
 		if ($uri === '' && !$force) {
 			$title = trim((string)($values['firstName'] ?? '') . ' ' . (string)($values['lastName'] ?? ''));
 			$duplicates = $this->contacts->duplicates($title, $values);
-			if ($duplicates !== []) return new DataResponse(['status' => 'DUPLICATES', 'duplicates' => $duplicates]);
+			if ($duplicates !== []) {
+				return new DataResponse(['status' => 'DUPLICATES', 'duplicates' => $duplicates]);
+			}
 		}
 		$contact = $this->contacts->savePerson($values, $uri);
 		$this->audit->log($caseId, 'CASE_CONTACT', null, $uri === '' ? 'ADDRESS_BOOK_CREATED' : 'ADDRESS_BOOK_UPDATED', null, ['contactId' => $contact['id'], 'title' => $contact['title'], 'addressBook' => $contact['data']['addressBook'] ?? '', 'role' => (string)($values['role'] ?? '')]);

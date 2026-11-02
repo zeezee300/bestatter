@@ -213,6 +213,84 @@
         "label": "Vertrags-/Kundennummer",
         "required": false
       }
+    },
+    {
+      "key": "TREUHAND",
+      "recipientType": "TREUHAND",
+      "name": "Sterbefallmeldung Treuhand (Vorsorge)",
+      "contactCategory": "Treuhand",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Sterbefallmeldung – Treuhandvertrag {{precare.contract_number}} – {{case.last_name}}, {{case.first_name}} – Unser Zeichen {{case.number}}",
+      "bodyTemplate": "Guten Tag,\n\nwir zeigen den Tod von {{case.first_name}} {{case.last_name}}, geboren am {{case.date_of_birth}}, verstorben am {{case.date_of_death}}, an. Treuhand-/Vertragsnummer: {{precare.contract_number}}.\n\nDie Sterbeurkunde ist beigefügt. Wir führen die Bestattung im Rahmen des Vorsorgevertrags durch und bitten um Auszahlung des Treuhandguthabens auf folgendes Konto:\n{{branch.bank_account}}\n\nBitte geben Sie bei Rückfragen unser Zeichen {{case.number}} an.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 80,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel",
+        "precare.contract_number"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 14,
+      "documentTemplateKey": "",
+      "referenceField": {
+        "field": "precare.contract_number",
+        "label": "Treuhand-/Vertragsnummer",
+        "required": true
+      }
+    },
+    {
+      "key": "STERBEGELD",
+      "recipientType": "STERBEGELDVERSICHERUNG",
+      "name": "Sterbefallmeldung Sterbegeldversicherung (Vorsorge)",
+      "contactCategory": "Versicherungen",
+      "deliveryChannels": [
+        "EMAIL",
+        "POST",
+        "PORTAL"
+      ],
+      "defaultChannel": "",
+      "subjectTemplate": "Leistungsantrag Sterbegeldversicherung {{precare.contract_number}} – {{case.last_name}}, {{case.first_name}} – Unser Zeichen {{case.number}}",
+      "bodyTemplate": "Guten Tag,\n\nwir zeigen den Tod Ihrer/Ihres Versicherten {{case.first_name}} {{case.last_name}}, geboren am {{case.date_of_birth}}, verstorben am {{case.date_of_death}}, an. Versicherungsnummer: {{precare.contract_number}}.\n\nDie Sterbeurkunde ist beigefügt. Soweit die Versicherungsleistung an uns abgetreten ist bzw. wir bezugsberechtigt sind, bitten wir um Auszahlung auf folgendes Konto:\n{{branch.bank_account}}\n\nBitte geben Sie bei Rückfragen unser Zeichen {{case.number}} an.\n\nMit freundlichen Grüßen",
+      "formType": "STANDARD",
+      "active": true,
+      "sortOrder": 85,
+      "requiredFields": [
+        "case.first_name",
+        "case.last_name",
+        "case.date_of_death",
+        "contact",
+        "delivery_channel",
+        "precare.contract_number"
+      ],
+      "allowedStatuses": [
+        "ENTWURF",
+        "VORBEREITET",
+        "VERSENDET",
+        "BESTAETIGT",
+        "ERLEDIGT"
+      ],
+      "followUpDays": 14,
+      "documentTemplateKey": "",
+      "referenceField": {
+        "field": "precare.contract_number",
+        "label": "Versicherungsnummer",
+        "required": true
+      }
     }
   ]
 }

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Command;
 
+use OCA\Bestatter\AppInfo\Application;
+use OCA\Bestatter\Service\AuditService;
 use OCA\Bestatter\Service\StabilizationService;
 use OCA\Bestatter\Service\TeamService;
-use OCA\Bestatter\Service\AuditService;
-use OCA\Bestatter\AppInfo\Application;
 use OCP\IGroupManager;
 use OCP\IUserManager;
 use OCP\IUserSession;
@@ -25,7 +25,9 @@ class AcceptanceCheck extends Command {
 		private TeamService $team,
 		private StabilizationService $stabilization,
 		private AuditService $audit,
-	) { parent::__construct(); }
+	) {
+		parent::__construct();
+	}
 
 	protected function configure(): void {
 		$this->setName('bestatter:acceptance-check')->setDescription('Prüft Rollenmatrix und Systemzustand vor dem Browser-Abnahmetest.')
@@ -35,7 +37,9 @@ class AcceptanceCheck extends Command {
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
-		$admin = (string)$input->getOption('admin'); $member = (string)$input->getOption('member'); $outsider = trim((string)$input->getOption('outsider'));
+		$admin = (string)$input->getOption('admin');
+		$member = (string)$input->getOption('member');
+		$outsider = trim((string)$input->getOption('outsider'));
 		$adminRole = $this->users->userExists($admin) && $this->team->hasBestatterAdminRole($admin);
 		$memberRole = $this->users->userExists($member) && $this->team->hasBestatterRole($member);
 		$outsiderRole = $outsider !== '' && $this->users->userExists($outsider) && !$this->team->hasBestatterRole($outsider);
@@ -56,18 +60,20 @@ class AcceptanceCheck extends Command {
 		$routeFile = dirname(__DIR__, 2) . '/appinfo/routes.php';
 		$routes = is_file($routeFile) ? (require $routeFile)['routes'] ?? [] : [];
 		$auditIntegrity = $this->audit->verifyIntegrity();
-		$result = ['version'=>Application::VERSION, 'roles'=>[
-			'admin'=>['uid'=>$admin,'exists'=>$this->users->userExists($admin),'expected'=>'Bestatter-Administration','valid'=>$adminRole],
-			'member'=>['uid'=>$member,'exists'=>$this->users->userExists($member),'expected'=>'Bestatter-Mitglied','valid'=>$memberRole],
-			'outsider'=>['uid'=>$outsider,'exists'=>$outsider!==''&&$this->users->userExists($outsider),'expected'=>'kein Bestatter-Zugriff','valid'=>$outsiderRole],
-		], 'authorization'=>['middleware'=>'BestatterAccessMiddleware','registeredRoutes'=>count($routes),'defaultRule'=>'jede App-Route erfordert Mitgliedschaft; administrative Methoden prüfen zusätzlich die Administratorrolle'], 'auditIntegrity'=>$auditIntegrity, 'sampleAcceptance'=>['maximumCases'=>3,'massTestRequired'=>false], 'system'=>['overall'=>$report['overall'],'summary'=>$report['summary']], 'browserChecks'=>[
+		$result = ['version' => Application::VERSION, 'roles' => [
+			'admin' => ['uid' => $admin,'exists' => $this->users->userExists($admin),'expected' => 'Bestatter-Administration','valid' => $adminRole],
+			'member' => ['uid' => $member,'exists' => $this->users->userExists($member),'expected' => 'Bestatter-Mitglied','valid' => $memberRole],
+			'outsider' => ['uid' => $outsider,'exists' => $outsider !== '' && $this->users->userExists($outsider),'expected' => 'kein Bestatter-Zugriff','valid' => $outsiderRole],
+		], 'authorization' => ['middleware' => 'BestatterAccessMiddleware','registeredRoutes' => count($routes),'defaultRule' => 'jede App-Route erfordert Mitgliedschaft; administrative Methoden prüfen zusätzlich die Administratorrolle'], 'auditIntegrity' => $auditIntegrity, 'sampleAcceptance' => ['maximumCases' => 3,'massTestRequired' => false], 'system' => ['overall' => $report['overall'],'summary' => $report['summary']], 'browserChecks' => [
 			'Administration: Systemprüfung, Niederlassungen und Konfiguration erreichbar.',
 			'Fachbenutzer: Fälle, Aufgaben, Termine und Abläufe nutzbar; Administration abgewiesen.',
 			'Außenstehender Nutzer: App-Seite und sämtliche API-Routen liefern 403.',
 			'Aufgabe/Termin in Nextcloud ändern und Rücksynchronisation samt Deep-Link prüfen.',
 		]];
 		$output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-		if ($outsider === '') $output->writeln('<comment>Für die vollständige Rollenabnahme zusätzlich --outsider=<Testkonto-ohne-Bestatter-Gruppe> angeben.</comment>');
+		if ($outsider === '') {
+			$output->writeln('<comment>Für die vollständige Rollenabnahme zusätzlich --outsider=<Testkonto-ohne-Bestatter-Gruppe> angeben.</comment>');
+		}
 		return $adminRole && $memberRole && $outsiderRole && $report['overall'] !== 'ERROR' && $auditIntegrity['status'] !== 'ERROR' ? self::SUCCESS : self::FAILURE;
 	}
 }

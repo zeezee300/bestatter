@@ -33,7 +33,11 @@ class Version4500Date20260924000000 extends SimpleMigrationStep {
 	private const BUNDLED_WORKFLOWS = ['BESTATTUNGSART_TERMIN', 'AUFTRAG_DOKUMENTE', 'STANDESAMT_ANZEIGE', 'ABMELDUNGEN_VORBEREITEN', 'TRAUERFEIER_VORBEREITEN', 'KONDOLENZLISTEN_ERSTELLEN'];
 	private const BUNDLED_CHECKLISTS = ['STERBEFALL_STANDARD', 'FEUERBESTATTUNG', 'ERDBESTATTUNG', 'ERSTBESTATTUNG', 'ABMELDUNGEN'];
 
-	public function __construct(private IDBConnection $db, private IConfig $config) {}
+	public function __construct(
+		private IDBConnection $db,
+		private IConfig $config,
+	) {
+	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		/** @var ISchemaWrapper $schema */
@@ -103,7 +107,9 @@ class Version4500Date20260924000000 extends SimpleMigrationStep {
 
 		if ($schema->hasTable('bestatter_workflows')) {
 			$t = $schema->getTable('bestatter_workflows');
-			if (!$t->hasColumn('superseded')) $t->addColumn('superseded', 'boolean', ['notnull' => false, 'default' => false]);
+			if (!$t->hasColumn('superseded')) {
+				$t->addColumn('superseded', 'boolean', ['notnull' => false, 'default' => false]);
+			}
 		}
 		return $schema;
 	}

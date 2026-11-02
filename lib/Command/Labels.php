@@ -15,7 +15,11 @@ use Symfony\Component\Console\Output\OutputInterface;
  * occ bestatter:labels --activate=all). Deaktivieren und Bearbeiten erfolgen im Customizing.
  */
 class Labels extends Command {
-	public function __construct(private LabelService $labels) { parent::__construct(); }
+	public function __construct(
+		private LabelService $labels,
+	) {
+		parent::__construct();
+	}
 
 	protected function configure(): void {
 		$this->setName('bestatter:labels')

@@ -324,6 +324,48 @@
       "supports_pdf": true
     },
     {
+      "category": "Auftrag",
+      "active": true,
+      "layout": "auftrag_ohne_sterbefall_v1",
+      "description": "Auftrag ohne Sterbefall (Verkauf, Überführung, Urnenbeisetzung, Trauerfeier) mit Leistungs- und Preisaufstellung, Widerrufshinweis und Unterschriften; auch für den Kostenvoranschlag eines Auftrags. Mustertext – vor Verwendung rechtlich prüfen.",
+      "key": "AUFTRAG",
+      "fields": [],
+      "name": "Auftrag (ohne Sterbefall)",
+      "sort_order": 6,
+      "file": "AUFTRAG.docx",
+      "required_fields": [
+        "last_name",
+        "order_client_name",
+        "order_client_address",
+        "order_number",
+        "order_date",
+        "services"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
+      "category": "Auftrag",
+      "active": true,
+      "layout": "bestattungsvorsorgevertrag_v1",
+      "description": "Bestattungsvorsorgevertrag mit Wünschen, Leistungs- und Preisaufstellung, Preisart, Finanzierung, Wiedervorlage, Widerrufshinweis und Unterschriften; im Modus Kostenvoranschlag das Angebot zur Vorsorge. Mustertext – vor Verwendung rechtlich prüfen.",
+      "key": "VORSORGEVERTRAG",
+      "fields": [],
+      "name": "Bestattungsvorsorgevertrag",
+      "sort_order": 7,
+      "file": "VORSORGEVERTRAG.docx",
+      "required_fields": [
+        "first_name",
+        "last_name",
+        "order_client_name",
+        "order_number",
+        "order_date",
+        "services"
+      ],
+      "output_subfolder": "02 Auftrag",
+      "supports_pdf": true
+    },
+    {
       "key": "ABMELDUNG_STANDARD_EMAIL",
       "name": "Abmeldung – E-Mail-Text",
       "category": "Abmeldung",

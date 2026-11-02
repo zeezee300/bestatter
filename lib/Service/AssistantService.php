@@ -57,7 +57,8 @@ class AssistantService {
 		private IDBConnection $db,
 		private InstallationConfigService $installationConfig,
 		private CaseStorageService $storage,
-	) {}
+	) {
+	}
 
 	public function configuration(): array {
 		$available = $this->availableTaskTypes();
@@ -87,16 +88,26 @@ class AssistantService {
 	 * @return array{available: bool, reason: string}
 	 */
 	private function speechAvailability(array $available): array {
-		if (!$this->flag('speech_input_enabled', true)) return ['available' => false, 'reason' => 'Die Gesprächsaufnahme ist in der Administration (Assistenz) ausgeschaltet.'];
-		if (!in_array(AudioToText::ID, $available, true)) return ['available' => false, 'reason' => 'In Nextcloud ist keine Spracherkennung (Speech-to-Text, z. B. Whisper) eingerichtet.'];
-		if (!$this->flag('speech_provider_approved', false)) return ['available' => false, 'reason' => 'Die Spracherkennung ist vorhanden, aber für Falldaten noch nicht freigegeben (Administration → Assistenz).'];
+		if (!$this->flag('speech_input_enabled', true)) {
+			return ['available' => false, 'reason' => 'Die Gesprächsaufnahme ist in der Administration (Assistenz) ausgeschaltet.'];
+		}
+		if (!in_array(AudioToText::ID, $available, true)) {
+			return ['available' => false, 'reason' => 'In Nextcloud ist keine Spracherkennung (Speech-to-Text, z. B. Whisper) eingerichtet.'];
+		}
+		if (!$this->flag('speech_provider_approved', false)) {
+			return ['available' => false, 'reason' => 'Die Spracherkennung ist vorhanden, aber für Falldaten noch nicht freigegeben (Administration → Assistenz).'];
+		}
 		return ['available' => true, 'reason' => ''];
 	}
 
 	/** 0.71.0: Nextcloud-Texterkennung (TaskProcessing „core:image2text:ocr“) vorhanden und freigegeben? */
 	public function nextcloudOcrAvailability(): array {
-		if (!in_array(self::OCR_TASK_TYPE, $this->availableTaskTypes(), true)) return ['available' => false, 'reason' => 'In Nextcloud ist keine Texterkennung (OCR) eingerichtet.'];
-		if (!$this->flag('ocr_provider_approved', false)) return ['available' => false, 'reason' => 'Die Nextcloud-Texterkennung ist vorhanden, aber für Falldaten noch nicht freigegeben (Administration → Assistenz).'];
+		if (!in_array(self::OCR_TASK_TYPE, $this->availableTaskTypes(), true)) {
+			return ['available' => false, 'reason' => 'In Nextcloud ist keine Texterkennung (OCR) eingerichtet.'];
+		}
+		if (!$this->flag('ocr_provider_approved', false)) {
+			return ['available' => false, 'reason' => 'Die Nextcloud-Texterkennung ist vorhanden, aber für Falldaten noch nicht freigegeben (Administration → Assistenz).'];
+		}
 		return ['available' => true, 'reason' => ''];
 	}
 
@@ -121,12 +132,18 @@ class AssistantService {
 
 	public function saveConfiguration(array $data): array {
 		foreach (['guidedCaptureEnabled' => 'guided_capture_enabled', 'speechInputEnabled' => 'speech_input_enabled', 'assistantEnabled' => 'assistant_enabled', 'webResearchEnabled' => 'assistant_web_research_enabled', 'speechProviderApproved' => 'speech_provider_approved', 'ocrProviderApproved' => 'ocr_provider_approved'] as $input => $key) {
-			if (array_key_exists($input, $data)) $this->config->setAppValue(Application::APP_ID, $key, filter_var($data[$input], FILTER_VALIDATE_BOOLEAN) ? 'yes' : 'no');
+			if (array_key_exists($input, $data)) {
+				$this->config->setAppValue(Application::APP_ID, $key, filter_var($data[$input], FILTER_VALIDATE_BOOLEAN) ? 'yes' : 'no');
+			}
 		}
 		$retention = strtoupper(trim((string)($data['audioRetention'] ?? 'DELETE_AFTER_TRANSCRIPTION')));
-		if ($retention !== 'DELETE_AFTER_TRANSCRIPTION') throw new \InvalidArgumentException('Audioaufnahmen müssen im aktuellen Entwicklungsstand unmittelbar nach der Transkription gelöscht werden.');
+		if ($retention !== 'DELETE_AFTER_TRANSCRIPTION') {
+			throw new \InvalidArgumentException('Audioaufnahmen müssen im aktuellen Entwicklungsstand unmittelbar nach der Transkription gelöscht werden.');
+		}
 		$language = strtolower(trim((string)($data['language'] ?? 'de')));
-		if (!preg_match('/^[a-z]{2,3}(?:-[a-z]{2})?$/', $language)) throw new \InvalidArgumentException('Der Sprachcode ist ungültig.');
+		if (!preg_match('/^[a-z]{2,3}(?:-[a-z]{2})?$/', $language)) {
+			throw new \InvalidArgumentException('Der Sprachcode ist ungültig.');
+		}
 		$this->config->setAppValue(Application::APP_ID, 'assistant_audio_retention', $retention);
 		$this->config->setAppValue(Application::APP_ID, 'assistant_language', $language);
 		return $this->configuration();
@@ -134,14 +151,20 @@ class AssistantService {
 
 	public function analyze(string $text, string $context = 'CASE_CAPTURE'): array {
 		$context = strtoupper(trim($context));
-		if (!in_array($context, ['CASE_CAPTURE', 'OCR_FORM', 'TASK', 'SCHEDULE', 'NOTE'], true)) throw new \InvalidArgumentException('Der Erfassungskontext ist ungültig.');
+		if (!in_array($context, ['CASE_CAPTURE', 'OCR_FORM', 'TASK', 'SCHEDULE', 'NOTE'], true)) {
+			throw new \InvalidArgumentException('Der Erfassungskontext ist ungültig.');
+		}
 		// 0.79.0: Bogentexte behalten Zeilen und Mehrfach-Leerzeichen – sie trennen die Spalten (vorher wurden sie vor der
 		// Spaltentrennung zusammengefasst, zweispaltige Zeilen wie „Geburtsdatum: … Geburtsort: …“ verschmolzen).
 		$text = $context === 'OCR_FORM'
 			? trim(str_replace(["\r\n", "\r"], "\n", $text))
 			: trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
-		if ($text === '') throw new \InvalidArgumentException('Bitte einen Gesprächstext eingeben oder eine Aufnahme transkribieren.');
-		if (mb_strlen($text) > self::TEXT_LIMIT) throw new \InvalidArgumentException('Der Gesprächstext ist für eine einzelne Auswertung zu lang.');
+		if ($text === '') {
+			throw new \InvalidArgumentException('Bitte einen Gesprächstext eingeben oder eine Aufnahme transkribieren.');
+		}
+		if (mb_strlen($text) > self::TEXT_LIMIT) {
+			throw new \InvalidArgumentException('Der Gesprächstext ist für eine einzelne Auswertung zu lang.');
+		}
 
 		$suggestions = [];
 		$this->extraQuestions = [];
@@ -149,8 +172,12 @@ class AssistantService {
 		if ($context === 'OCR_FORM') {
 			// 0.79.0: Bögen nur über beschriftete, plausible Felder auswerten. Die Freitextregeln liefen bisher auch über den
 			// Vordruck („Überführung des Sarges …“ → Bestattungsart Überführung) und übernahmen Zeichensalat mit 93 %.
-			foreach (FormTextExtractor::extract($text) as $suggestion) $this->add($suggestions, $suggestion['field'], $suggestion['value'], $suggestion['label'], $suggestion['confidence'], $suggestion['source']);
-			foreach ($suggestions as &$formSuggestion) $formSuggestion['origin'] = 'FORM_LABEL';
+			foreach (FormTextExtractor::extract($text) as $suggestion) {
+				$this->add($suggestions, $suggestion['field'], $suggestion['value'], $suggestion['label'], $suggestion['confidence'], $suggestion['source']);
+			}
+			foreach ($suggestions as &$formSuggestion) {
+				$formSuggestion['origin'] = 'FORM_LABEL';
+			}
 			unset($formSuggestion);
 			$this->applyApprovedRules($text, $suggestions);
 			return $this->result($context, $text, $suggestions);
@@ -171,10 +198,14 @@ class AssistantService {
 		$this->suggestValue($text, $suggestions, 'birth_place', '/\bgeboren\s+(?:worden\s+)?in\s+(.+?)(?=\s+und\b|[,.;]|$)/iu', 'Geburtsort', .9);
 		$this->suggestValue($text, $suggestions, 'birth_place', '/\bgeboren\s+(?:am\s+)?\d{1,2}[.]\d{1,2}[.]\d{2,4}\s+in\s+(.+?)(?=\s+und\b|[,.;]|$)/iu', 'Geburtsort', .92);
 		$this->suggestResidence($text, $suggestions);
-		if ($this->suggestedValue($suggestions, 'last_residence') === '') $this->suggestResidenceAnyOrder($text, $suggestions);
+		if ($this->suggestedValue($suggestions, 'last_residence') === '') {
+			$this->suggestResidenceAnyOrder($text, $suggestions);
+		}
 		// Rückfall: nur der Ort („wohnhaft in Bremen“); eine vorangestellte PLZ gehört nicht zum Ortsnamen.
 		if ($this->suggestedValue($suggestions, 'last_residence_city') === '' && preg_match('/(?:wohnhaft|zuletzt wohnhaft|wohnte\s+zuletzt|wohnt)\s+(?:in|unter)\s+(?:(\d{5})\s+)?([^,.;\d][^,.;]*)/iu', $text, $match)) {
-			if ($match[1] !== '') $this->add($suggestions, 'last_residence_postal_code', $match[1], 'PLZ', .9, $match[0]);
+			if ($match[1] !== '') {
+				$this->add($suggestions, 'last_residence_postal_code', $match[1], 'PLZ', .9, $match[0]);
+			}
 			$this->add($suggestions, 'last_residence_city', trim($match[2]), 'Letzter Wohnort', .68, $match[0]);
 		}
 		$this->suggestCemetery($text, $suggestions);
@@ -192,7 +223,9 @@ class AssistantService {
 		$warnings = [];
 		$fields = array_column($suggestions, 'field');
 		foreach ([['first_name', 'Vorname'], ['last_name', 'Nachname'], ['date_of_death', 'Sterbedatum'], ['funeral_type', 'Bestattungsart']] as [$field, $label]) {
-			if (!in_array($field, $fields, true)) $warnings[] = "$label wurde nicht eindeutig erkannt.";
+			if (!in_array($field, $fields, true)) {
+				$warnings[] = "$label wurde nicht eindeutig erkannt.";
+			}
 		}
 		foreach ($suggestions as $suggestion) {
 			if ($suggestion['field'] === 'spouse_last_name' && (float)$suggestion['confidence'] < .7) {
@@ -202,13 +235,17 @@ class AssistantService {
 
 		$conflicts = [];
 		foreach ($suggestions as $suggestion) {
-			if (empty($suggestion['alternatives'])) continue;
+			if (empty($suggestion['alternatives'])) {
+				continue;
+			}
 			$conflicts[] = ['field' => $suggestion['field'], 'label' => $suggestion['label'], 'values' => array_values(array_unique(array_merge([$suggestion['value']], $suggestion['alternatives']))), 'question' => 'Welcher Wert ist für „' . $suggestion['label'] . '“ richtig?'];
 		}
-		$questions = array_map(static fn(array $item): array => ['field' => $item[0], 'label' => $item[1], 'question' => 'Bitte „' . $item[1] . '“ ergänzen oder ausdrücklich als unbekannt bestätigen.'], array_values(array_filter([
+		$questions = array_map(static fn (array $item): array => ['field' => $item[0], 'label' => $item[1], 'question' => 'Bitte „' . $item[1] . '“ ergänzen oder ausdrücklich als unbekannt bestätigen.'], array_values(array_filter([
 			['first_name', 'Vorname'], ['last_name', 'Nachname'], ['date_of_death', 'Sterbedatum'], ['place_of_death', 'Sterbeort'], ['funeral_type', 'Bestattungsart'], ['order_client_name', 'Auftraggeber/in'],
-		], static fn(array $item): bool => !in_array($item[0], $fields, true))));
-		foreach ($this->extraQuestions as $question) $questions[] = $question;
+		], static fn (array $item): bool => !in_array($item[0], $fields, true))));
+		foreach ($this->extraQuestions as $question) {
+			$questions[] = $question;
+		}
 
 		return [
 			'context' => $context,
@@ -229,17 +266,24 @@ class AssistantService {
 		$allowed = ['salutation','title','first_name','last_name','birth_name','date_of_birth','date_of_death','funeral_type','place_of_death','birth_place','birth_registry_office','profession','pension_insurance_number','civil_status','spouse_first_name','spouse_last_name','spouse_date_of_birth','spouse_birth_place','spouse_residence','spouse_date_of_death','spouse_death_place','marriage_date','marriage_place','partnership_date','divorce_date','religion','last_residence','last_residence_postal_code','last_residence_city','cemetery_contact','order_client_relation','order_client_first_name','order_client_name','order_client_mobile','certificate_free_count','certificate_paid_count'];
 		$created = 0;
 		foreach (array_slice($corrections, 0, 40) as $correction) {
-			$field = trim((string)($correction['field'] ?? '')); $source = $this->compactEvidence((string)($correction['source'] ?? ''));
-			$observed = trim((string)($correction['observedValue'] ?? '')); $confirmed = trim((string)($correction['confirmedValue'] ?? ''));
-			if (!in_array($field, $allowed, true) || $source === '' || $confirmed === '' || $observed === $confirmed) continue;
+			$field = trim((string)($correction['field'] ?? ''));
+			$source = $this->compactEvidence((string)($correction['source'] ?? ''));
+			$observed = trim((string)($correction['observedValue'] ?? ''));
+			$confirmed = trim((string)($correction['confirmedValue'] ?? ''));
+			if (!in_array($field, $allowed, true) || $source === '' || $confirmed === '' || $observed === $confirmed) {
+				continue;
+			}
 			$strategy = in_array($field, ['civil_status','funeral_type','religion','salutation'], true) ? 'ENUM' : 'REVIEW_ONLY';
 			$pattern = mb_strtolower($source);
-			foreach (array_filter([$observed, $confirmed]) as $value) $pattern = str_ireplace(mb_strtolower($value), '{VALUE}', $pattern);
+			foreach (array_filter([$observed, $confirmed]) as $value) {
+				$pattern = str_ireplace(mb_strtolower($value), '{VALUE}', $pattern);
+			}
 			$query = $this->db->getQueryBuilder();
 			try {
-				$query->insert('bestatter_assistant_rules')->values(['field_key'=>$query->createNamedParameter($field),'trigger_pattern'=>$query->createNamedParameter(mb_substr($pattern,0,255)),'strategy'=>$query->createNamedParameter($strategy),'canonical_value'=>$query->createNamedParameter($strategy==='ENUM'?$confirmed:null),'status'=>$query->createNamedParameter('PENDING'),'usage_count'=>$query->createNamedParameter(0),'created_by'=>$query->createNamedParameter($this->userSession->getUser()?->getUID()??'system'),'approved_by'=>$query->createNamedParameter(null),'created_at'=>$query->createNamedParameter(date('c')),'updated_at'=>$query->createNamedParameter(date('c'))])->executeStatement();
+				$query->insert('bestatter_assistant_rules')->values(['field_key' => $query->createNamedParameter($field),'trigger_pattern' => $query->createNamedParameter(mb_substr($pattern, 0, 255)),'strategy' => $query->createNamedParameter($strategy),'canonical_value' => $query->createNamedParameter($strategy === 'ENUM'?$confirmed:null),'status' => $query->createNamedParameter('PENDING'),'usage_count' => $query->createNamedParameter(0),'created_by' => $query->createNamedParameter($this->userSession->getUser()?->getUID() ?? 'system'),'approved_by' => $query->createNamedParameter(null),'created_at' => $query->createNamedParameter(date('c')),'updated_at' => $query->createNamedParameter(date('c'))])->executeStatement();
 				$created++;
-			} catch (\Throwable) { /* Duplicate evidence remains one review item. */ }
+			} catch (\Throwable) { /* Duplicate evidence remains one review item. */
+			}
 		}
 		return ['accepted' => $created, 'status' => 'PENDING_REVIEW', 'privacy' => 'Vollständige Gesprächsprotokolle und Falldaten werden nicht als Lernregel gespeichert.'];
 	}
@@ -247,33 +291,52 @@ class AssistantService {
 	public function learningRules(): array {
 		$query = $this->db->getQueryBuilder();
 		$rows = $query->select('*')->from('bestatter_assistant_rules')->orderBy('created_at', 'DESC')->setMaxResults(250)->executeQuery()->fetchAllAssociative();
-		return array_map(static fn(array $row): array => ['id'=>(int)$row['id'],'field'=>$row['field_key'],'pattern'=>$row['trigger_pattern'],'strategy'=>$row['strategy'],'canonicalValue'=>$row['canonical_value'],'status'=>$row['status'],'usageCount'=>(int)$row['usage_count'],'createdBy'=>$row['created_by'],'approvedBy'=>$row['approved_by'],'createdAt'=>$row['created_at']], $rows);
+		return array_map(static fn (array $row): array => ['id' => (int)$row['id'],'field' => $row['field_key'],'pattern' => $row['trigger_pattern'],'strategy' => $row['strategy'],'canonicalValue' => $row['canonical_value'],'status' => $row['status'],'usageCount' => (int)$row['usage_count'],'createdBy' => $row['created_by'],'approvedBy' => $row['approved_by'],'createdAt' => $row['created_at']], $rows);
 	}
 
 	public function reviewLearningRule(int $id, string $status): array {
-		$status = strtoupper(trim($status)); if (!in_array($status, ['APPROVED','REJECTED'], true)) throw new \InvalidArgumentException('Ungültiger Prüfstatus für die Lernregel.');
+		$status = strtoupper(trim($status));
+		if (!in_array($status, ['APPROVED','REJECTED'], true)) {
+			throw new \InvalidArgumentException('Ungültiger Prüfstatus für die Lernregel.');
+		}
 		$query = $this->db->getQueryBuilder();
-		$affected = $query->update('bestatter_assistant_rules')->set('status',$query->createNamedParameter($status))->set('approved_by',$query->createNamedParameter($this->userSession->getUser()?->getUID()??'system'))->set('updated_at',$query->createNamedParameter(date('c')))->where($query->expr()->eq('id',$query->createNamedParameter($id)))->executeStatement();
-		if ($affected !== 1) throw new \InvalidArgumentException('Die Lernregel wurde nicht gefunden.');
-		foreach ($this->learningRules() as $rule) if ($rule['id'] === $id) return $rule;
+		$affected = $query->update('bestatter_assistant_rules')->set('status', $query->createNamedParameter($status))->set('approved_by', $query->createNamedParameter($this->userSession->getUser()?->getUID() ?? 'system'))->set('updated_at', $query->createNamedParameter(date('c')))->where($query->expr()->eq('id', $query->createNamedParameter($id)))->executeStatement();
+		if ($affected !== 1) {
+			throw new \InvalidArgumentException('Die Lernregel wurde nicht gefunden.');
+		}
+		foreach ($this->learningRules() as $rule) {
+			if ($rule['id'] === $id) {
+				return $rule;
+			}
+		}
 		throw new \RuntimeException('Die Lernregel konnte nicht erneut geladen werden.');
 	}
 
 	public function scheduleTranscription(array $upload): array {
 		$speech = $this->speechAvailability($this->availableTaskTypes());
-		if (!$speech['available']) throw new \InvalidArgumentException($speech['reason']);
-		if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new \InvalidArgumentException('Die Audioaufnahme konnte nicht hochgeladen werden.');
+		if (!$speech['available']) {
+			throw new \InvalidArgumentException($speech['reason']);
+		}
+		if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+			throw new \InvalidArgumentException('Die Audioaufnahme konnte nicht hochgeladen werden.');
+		}
 		$size = (int)($upload['size'] ?? 0);
-		if ($size <= 0 || $size > self::AUDIO_LIMIT) throw new \InvalidArgumentException('Die Audioaufnahme ist leer oder größer als 25 MB.');
+		if ($size <= 0 || $size > self::AUDIO_LIMIT) {
+			throw new \InvalidArgumentException('Die Audioaufnahme ist leer oder größer als 25 MB.');
+		}
 		$mime = strtolower(trim(explode(';', (string)($upload['type'] ?? ''), 2)[0]));
 		if ($mime !== '' && !in_array($mime, self::AUDIO_MIME_TYPES, true)) {
 			throw new \InvalidArgumentException(sprintf('Das Audioformat "%s" wird nicht unterstützt. Unterstützt werden WebM, OGG, WAV, MP3, M4A und AAC.', $mime));
 		}
 		$tempName = (string)($upload['tmp_name'] ?? '');
-		if ($tempName === '' || !is_file($tempName)) throw new \InvalidArgumentException('Die temporäre Audioaufnahme wurde nicht gefunden.');
+		if ($tempName === '' || !is_file($tempName)) {
+			throw new \InvalidArgumentException('Die temporäre Audioaufnahme wurde nicht gefunden.');
+		}
 
 		$user = $this->userSession->getUser();
-		if ($user === null) throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		if ($user === null) {
+			throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		}
 		$folder = $this->assistantFolder($user->getUID());
 		$extension = $this->extension($mime, (string)($upload['name'] ?? 'aufnahme.webm'));
 		$name = 'aufnahme-' . bin2hex(random_bytes(12)) . '.' . $extension;
@@ -296,7 +359,9 @@ class AssistantService {
 	}
 
 	public function transcriptionStatus(int $taskId): array {
-		if ($taskId <= 0) throw new \InvalidArgumentException('Ungültige Transkriptionskennung.');
+		if ($taskId <= 0) {
+			throw new \InvalidArgumentException('Ungültige Transkriptionskennung.');
+		}
 		$task = $this->tasks->getTask($taskId);
 		$userId = $this->userSession->getUser()?->getUID();
 		if ($task->getAppId() !== Application::APP_ID || $userId === null || $task->getUserId() !== $userId || !str_starts_with($task->getCustomId(), 'speech:')) {
@@ -312,7 +377,9 @@ class AssistantService {
 		];
 		if ($task->getStatus() === Task::STATUS_SUCCESSFUL) {
 			$result['transcript'] = trim((string)(($task->getOutput() ?? [])['output'] ?? ''));
-			if ($result['transcript'] === '') $result['message'] = 'Die Aufnahme enthielt keinen erkennbaren Text.';
+			if ($result['transcript'] === '') {
+				$result['message'] = 'Die Aufnahme enthielt keinen erkennbaren Text.';
+			}
 			$this->cleanupTaskAudio($task->getCustomId(), $userId);
 		} elseif ($task->getStatus() === Task::STATUS_FAILED) {
 			$result['message'] = $task->getUserFacingErrorMessage() ?: 'Die Aufnahme konnte nicht transkribiert werden.';
@@ -327,8 +394,12 @@ class AssistantService {
 	public function previewIntent(string $input, int $caseId = 0): array {
 		$rawInput = trim($input);
 		$input = trim(preg_replace('/\s+/u', ' ', $input) ?? $input);
-		if ($input === '') throw new \InvalidArgumentException('Bitte einen Arbeitsauftrag an den Assistenten eingeben.');
-		if (mb_strlen($input) > 2_000) throw new \InvalidArgumentException('Der Arbeitsauftrag ist zu lang.');
+		if ($input === '') {
+			throw new \InvalidArgumentException('Bitte einen Arbeitsauftrag an den Assistenten eingeben.');
+		}
+		if (mb_strlen($input) > 2_000) {
+			throw new \InvalidArgumentException('Der Arbeitsauftrag ist zu lang.');
+		}
 
 		$intent = 'INFORMATION';
 		$label = 'Information anzeigen';
@@ -339,7 +410,8 @@ class AssistantService {
 		$documents = [];
 		$requiredInput = null;
 		if (preg_match('/\b(?:suche|finde|öffne|zeige)\w*\s+(?:mir\s+)?(?:den\s+)?fall\b/iu', $input)) {
-			$intent = 'FIND_CASE'; $label = 'Fall suchen und öffnen';
+			$intent = 'FIND_CASE';
+			$label = 'Fall suchen und öffnen';
 			$query = trim((string)preg_replace('/^.*?\bfall\b/iu', '', $input), " \t\n\r\0\x0B,.;");
 			$matches = $this->cases->searchCases($query, 'ALL', 'ALL', 'ALL', 12, 0);
 			foreach ($matches['items'] as $match) {
@@ -362,7 +434,9 @@ class AssistantService {
 			// 0.81.0: eingegangene Dokumente und ausstehende Rückmeldungen eines Falls (rein lesend)
 			[$intent, $label, $answer, $choices] = $this->receivedDocumentsAnswer($caseId);
 		} elseif ($this->isOrganizationResearchRequest($input)) {
-			$intent = 'RESEARCH_ORGANIZATION'; $label = 'Organisation recherchieren und Kontakt vorbereiten'; $write = true;
+			$intent = 'RESEARCH_ORGANIZATION';
+			$label = 'Organisation recherchieren und Kontakt vorbereiten';
+			$write = true;
 			$query = $this->organizationQuery($input);
 			if (!preg_match('/\b(in|aus|bei)\s+[\p{L}][\p{L}\s.-]{1,80}$/iu', $query)) {
 				$requiredInput = ['field' => 'location', 'question' => 'Für welchen Ort oder Bezirk soll die Organisation recherchiert werden?'];
@@ -382,26 +456,45 @@ class AssistantService {
 			}
 			$data = ['query' => $query];
 		} elseif ($this->isDocumentOutputRequest($input)) {
-			$intent = 'PREPARE_DOCUMENT_OUTPUT'; $label = 'Dokumentausgabe prüfen, erzeugen oder öffnen'; $write = true;
+			$intent = 'PREPARE_DOCUMENT_OUTPUT';
+			$label = 'Dokumentausgabe prüfen, erzeugen oder öffnen';
+			$write = true;
 			$preparation = $this->prepareDocumentOutput($caseId, $input);
-			$intent = $preparation['intent']; $data = $preparation['data']; $answer = $preparation['answer']; $documents = $preparation['documents']; $requiredInput = $preparation['requiredInput'];
+			$intent = $preparation['intent'];
+			$data = $preparation['data'];
+			$answer = $preparation['answer'];
+			$documents = $preparation['documents'];
+			$requiredInput = $preparation['requiredInput'];
 			$choices = $preparation['choices'] ?? [];
 		} elseif ($this->isCaseUpdateRequest($input)) {
-			$intent = 'UPDATE_CASE_MASTER_DATA'; $label = 'Falldaten aus Notizen ergänzen'; $write = true;
+			$intent = 'UPDATE_CASE_MASTER_DATA';
+			$label = 'Falldaten aus Notizen ergänzen';
+			$write = true;
 			$prepared = $this->prepareCaseUpdate($caseId, $input);
-			$data = $prepared['data']; $answer = $prepared['answer']; $requiredInput = $prepared['requiredInput'];
+			$data = $prepared['data'];
+			$answer = $prepared['answer'];
+			$requiredInput = $prepared['requiredInput'];
 		} elseif ($this->isTaskBatchRequest($input)) {
-			$intent = 'CREATE_TASK_BATCH'; $label = 'Aufgaben aus Notizen vorbereiten'; $write = true;
+			$intent = 'CREATE_TASK_BATCH';
+			$label = 'Aufgaben aus Notizen vorbereiten';
+			$write = true;
 			$prepared = $this->prepareTaskBatch($caseId, $rawInput);
-			$data = $prepared['data']; $answer = $prepared['answer']; $requiredInput = $prepared['requiredInput'];
+			$data = $prepared['data'];
+			$answer = $prepared['answer'];
+			$requiredInput = $prepared['requiredInput'];
 		} elseif (preg_match('/\b(aufgabe|wiedervorlage)\b/iu', $input)) {
-			$intent = 'CREATE_TASK_DRAFT'; $label = 'Aufgabenentwurf vorbereiten'; $write = true;
+			$intent = 'CREATE_TASK_DRAFT';
+			$label = 'Aufgabenentwurf vorbereiten';
+			$write = true;
 			$data = ['caseId' => $caseId, 'title' => $this->commandTitle($input, ['aufgabe', 'anlegen', 'erstelle', 'bitte']), 'status' => 'OFFEN'];
 		} elseif (preg_match('/\b(termin|trauerfeier|beisetzung|aufbahrung)\b/iu', $input)) {
-			$intent = 'CREATE_SCHEDULE_DRAFT'; $label = 'Terminentwurf vorbereiten'; $write = true;
+			$intent = 'CREATE_SCHEDULE_DRAFT';
+			$label = 'Terminentwurf vorbereiten';
+			$write = true;
 			$data = ['caseId' => $caseId, 'title' => $this->commandTitle($input, ['termin', 'anlegen', 'erstelle', 'bitte']), 'date' => $this->intentDate($input), 'status' => 'OFFEN'];
 		} elseif (preg_match('/\b(fehlt|pflichtangaben|vollständig|offen)\b/iu', $input)) {
-			$intent = 'CHECK_MISSING_FIELDS'; $label = 'Fehlende Angaben prüfen';
+			$intent = 'CHECK_MISSING_FIELDS';
+			$label = 'Fehlende Angaben prüfen';
 			$data = ['caseId' => $caseId, 'scope' => preg_match('/rechnung/iu', $input) ? 'INVOICE' : 'CASE'];
 		} elseif (preg_match('/\b(stammdaten|personendaten|falldaten)\b/iu', $input)) {
 			[$intent, $label, $answer, $choices] = $this->navigationPreview($caseId, 'master', 'Stammdaten öffnen', 'Stammdaten können dort geprüft und ergänzt werden.');
@@ -413,7 +506,8 @@ class AssistantService {
 		} elseif (preg_match('/\b(teilrechnung|schlussrechnung|rechnung|abrechnung|finanzen)\b/iu', $input)) {
 			[$intent, $label, $answer, $choices] = $this->navigationPreview($caseId, 'finances', 'Abrechnung öffnen', 'Vor der Erstellung werden Leistungen, Rechnungsempfänger und die gewählte Rechnungsart geprüft.');
 		} elseif (preg_match('/\b(systemprüfung|systemcheck|systemfehler)\b/iu', $input)) {
-			$intent = 'NAVIGATE'; $label = 'Systemprüfung öffnen';
+			$intent = 'NAVIGATE';
+			$label = 'Systemprüfung öffnen';
 			$answer = ['title' => 'Systemprüfung', 'text' => 'Die technische Prüfung zeigt Ursache, Auswirkung und – soweit möglich – einen direkten Absprung zur zuständigen Konfiguration.', 'items' => []];
 			$choices[] = ['id' => 'system-check', 'kind' => 'navigation', 'label' => 'Administration → Systemprüfung', 'description' => 'Systemprüfung jetzt öffnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'administration', 'administrationTab' => 'system'])];
 		}
@@ -428,8 +522,12 @@ class AssistantService {
 					$scope = (string)($data['scope'] ?? 'CASE');
 					$report = $this->operations->completeness($caseId, $scope === 'INVOICE' ? 'BILLING' : 'ALL');
 					$missing = [];
-					foreach ($report['phases'] as $phaseReport) foreach ($phaseReport['checks'] as $check) {
-						if (!$check['complete']) $missing[] = $phaseReport['label'] . ': ' . $check['label'];
+					foreach ($report['phases'] as $phaseReport) {
+						foreach ($phaseReport['checks'] as $check) {
+							if (!$check['complete']) {
+								$missing[] = $phaseReport['label'] . ': ' . $check['label'];
+							}
+						}
 					}
 					$answer = ['title' => 'Vollständigkeitsprüfung', 'text' => $report['ready'] ? 'Alle geprüften Angaben und Voraussetzungen sind vollständig.' : $report['percentage'] . ' % vollständig.', 'items' => $missing, 'report' => $report];
 				}
@@ -438,7 +536,7 @@ class AssistantService {
 				$answer = [
 					'title' => 'Persönliche Tagesübersicht',
 					'text' => sprintf('%d offene Fälle, %d Aufgaben heute, %d überfällige Aufgaben und %d Termine heute.', $day['counts']['openCases'], $day['counts']['tasksToday'], $day['counts']['overdueTasks'], $day['counts']['schedulesToday']),
-					'items' => array_map(static fn(array $item): string => ($item['caseNumber'] !== '' ? $item['caseNumber'] . ' · ' : '') . $item['title'], array_slice(array_merge($day['overdueTasks'], $day['tasksToday'], $day['schedulesToday']), 0, 12)),
+					'items' => array_map(static fn (array $item): string => ($item['caseNumber'] !== '' ? $item['caseNumber'] . ' · ' : '') . $item['title'], array_slice(array_merge($day['overdueTasks'], $day['tasksToday'], $day['schedulesToday']), 0, 12)),
 				];
 			} elseif ($answer === null) {
 				$answer = ['title' => 'Unterstützte Auskünfte', 'text' => 'Ich kann den persönlichen Arbeitstag, offene und überfällige Aufgaben, die Vollständigkeit eines Falls oder einer Rechnung, den Belegeingang und die eingegangenen Dokumente eines Falls prüfen.', 'items' => ['Was ist heute fällig?', 'Welche Aufgaben sind überfällig?', 'Welche Angaben fehlen in diesem Fall?', 'Ist der Fall für die Rechnung vollständig?', 'Was liegt im Belegeingang?', 'Welche Dokumente sind für diesen Fall eingegangen?']];
@@ -459,8 +557,12 @@ class AssistantService {
 			'documents' => $documents,
 			'requiredInput' => $requiredInput,
 		];
-		if ($executable) $result['confirmationToken'] = $this->confirmationToken($intent, $data);
-		if ($caseId > 0) $this->audit->log($caseId, 'ASSISTANT', null, $write ? 'INTENT_PREVIEWED' : 'INFORMATION_REQUESTED', null, ['intent' => $intent, 'queryLength' => mb_strlen($input), 'writeOperation' => $write]);
+		if ($executable) {
+			$result['confirmationToken'] = $this->confirmationToken($intent, $data);
+		}
+		if ($caseId > 0) {
+			$this->audit->log($caseId, 'ASSISTANT', null, $write ? 'INTENT_PREVIEWED' : 'INFORMATION_REQUESTED', null, ['intent' => $intent, 'queryLength' => mb_strlen($input), 'writeOperation' => $write]);
+		}
 		return $result;
 	}
 
@@ -469,22 +571,34 @@ class AssistantService {
 		$intent = (string)$payload['intent'];
 		$data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
 		$caseId = (int)($data['caseId'] ?? 0);
-		if ($intent === 'NAVIGATE') return ['intent' => $intent, 'navigation' => $data, 'caseNumber' => $caseId > 0 ? $this->cases->getCase($caseId)['caseNumber'] : null];
+		if ($intent === 'NAVIGATE') {
+			return ['intent' => $intent, 'navigation' => $data, 'caseNumber' => $caseId > 0 ? $this->cases->getCase($caseId)['caseNumber'] : null];
+		}
 		if ($intent === 'CREATE_CONTACT') {
 			$contactData = is_array($data['contact'] ?? null) ? $data['contact'] : [];
 			$title = trim((string)($data['title'] ?? ''));
-			if ($title === '') throw new \InvalidArgumentException('Die Bezeichnung des Kontakts fehlt.');
+			if ($title === '') {
+				throw new \InvalidArgumentException('Die Bezeichnung des Kontakts fehlt.');
+			}
 			$duplicates = $this->contacts->duplicates($title, $contactData);
-			if ($duplicates !== []) throw new \InvalidArgumentException('Ein möglicherweise gleicher Kontakt ist bereits vorhanden. Bitte das Adressbuch prüfen.');
+			if ($duplicates !== []) {
+				throw new \InvalidArgumentException('Ein möglicherweise gleicher Kontakt ist bereits vorhanden. Bitte das Adressbuch prüfen.');
+			}
 			$contact = $this->contacts->create($title, json_encode($contactData, JSON_THROW_ON_ERROR));
-			if ($caseId > 0) $this->audit->log($caseId, 'ASSISTANT', null, 'CONTACT_CREATED', null, ['contactId' => $contact['id'], 'title' => $contact['title'], 'sourceUrl' => $contactData['sourceUrl'] ?? '']);
+			if ($caseId > 0) {
+				$this->audit->log($caseId, 'ASSISTANT', null, 'CONTACT_CREATED', null, ['contactId' => $contact['id'], 'title' => $contact['title'], 'sourceUrl' => $contactData['sourceUrl'] ?? '']);
+			}
 			return ['intent' => $intent, 'contact' => $contact, 'caseNumber' => $caseId > 0 ? $this->cases->getCase($caseId)['caseNumber'] : null];
 		}
-		if ($caseId <= 0) throw new \InvalidArgumentException('Für die Aktion ist ein Fall erforderlich.');
+		if ($caseId <= 0) {
+			throw new \InvalidArgumentException('Für die Aktion ist ein Fall erforderlich.');
+		}
 		$case = $this->cases->getCase($caseId);
 		if ($intent === 'UPDATE_CASE_MASTER_DATA') {
 			$changes = is_array($data['changes'] ?? null) ? $data['changes'] : [];
-			if ($changes === []) throw new \InvalidArgumentException('Es wurden keine bestätigungsfähigen Falldaten erkannt.');
+			if ($changes === []) {
+				throw new \InvalidArgumentException('Es wurden keine bestätigungsfähigen Falldaten erkannt.');
+			}
 			$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 			$masterData = array_replace($masterData, [
 				'first_name' => (string)$case['firstName'], 'last_name' => (string)$case['lastName'],
@@ -499,18 +613,27 @@ class AssistantService {
 		if ($intent === 'CREATE_TASK_BATCH') {
 			$tasks = is_array($data['tasks'] ?? null) ? array_slice($data['tasks'], 0, 12) : [];
 			$batchId = trim((string)($data['batchId'] ?? ''));
-			if ($tasks === [] || $batchId === '') throw new \InvalidArgumentException('Der bestätigte Aufgabenentwurf ist unvollständig.');
+			if ($tasks === [] || $batchId === '') {
+				throw new \InvalidArgumentException('Der bestätigte Aufgabenentwurf ist unvollständig.');
+			}
 			$existingIndexes = [];
 			foreach ($this->records->list('task', $caseId) as $existing) {
 				$assistant = is_array($existing['data']['assistant'] ?? null) ? $existing['data']['assistant'] : [];
-				if (($assistant['batchId'] ?? '') === $batchId) $existingIndexes[(int)($assistant['sourceIndex'] ?? -1)] = $existing;
+				if (($assistant['batchId'] ?? '') === $batchId) {
+					$existingIndexes[(int)($assistant['sourceIndex'] ?? -1)] = $existing;
+				}
 			}
 			$created = [];
 			$uid = $this->userSession->getUser()?->getUID() ?? '';
 			foreach ($tasks as $index => $task) {
-				if (isset($existingIndexes[$index])) { $created[] = $existingIndexes[$index]; continue; }
+				if (isset($existingIndexes[$index])) {
+					$created[] = $existingIndexes[$index];
+					continue;
+				}
 				$title = trim((string)($task['title'] ?? ''));
-				if ($title === '') continue;
+				if ($title === '') {
+					continue;
+				}
 				$created[] = $this->groupware->createTask($title, (string)($task['date'] ?? date('Y-m-d') . 'T00:00'), 'OFFEN', json_encode([
 					'description' => 'Aus Notizen durch den Bestatter-Assistenten vorbereitet und vom Benutzer ausdrücklich bestätigt.',
 					'priority' => 'NORMAL', 'assigneeUid' => $uid, 'assigneeName' => $uid,
@@ -526,7 +649,9 @@ class AssistantService {
 		}
 		if ($intent === 'GENERATE_DOCUMENT_TEMPLATE') {
 			$templateKey = strtoupper(trim((string)($data['templateKey'] ?? '')));
-			if ($templateKey === 'RECHNUNG') throw new \InvalidArgumentException('Rechnungen müssen wegen Nummernkreis, Teilrechnungen und E-Rechnung über Fallakte → Finanzen erzeugt werden.');
+			if ($templateKey === 'RECHNUNG') {
+				throw new \InvalidArgumentException('Rechnungen müssen wegen Nummernkreis, Teilrechnungen und E-Rechnung über Fallakte → Finanzen erzeugt werden.');
+			}
 			$file = $this->documents->generateTemplate($case, $templateKey, 'ENTWURF', true, false);
 			try {
 				$record = $this->records->saveDocument($caseId, (string)$file['title'], (string)$file['status'], $file);
@@ -537,7 +662,9 @@ class AssistantService {
 			return ['intent' => $intent, 'caseNumber' => $case['caseNumber'], 'record' => $record, 'documents' => [$this->documentDescriptor($file, (string)$file['title'])]];
 		}
 		$title = trim((string)($data['title'] ?? ''));
-		if ($title === '') throw new \InvalidArgumentException('Die Bezeichnung des Entwurfs fehlt.');
+		if ($title === '') {
+			throw new \InvalidArgumentException('Die Bezeichnung des Entwurfs fehlt.');
+		}
 		$uid = $this->userSession->getUser()?->getUID() ?? '';
 		$date = (string)($data['date'] ?? (date('Y-m-d') . 'T00:00'));
 		$recordData = json_encode([
@@ -565,34 +692,44 @@ class AssistantService {
 
 	private function prepareCaseUpdate(int $caseId, string $input): array {
 		$empty = ['data' => ['caseId' => $caseId, 'changes' => []], 'answer' => null, 'requiredInput' => null];
-		if ($caseId <= 0) return array_replace($empty, [
-			'answer' => ['title' => 'Fallbezug erforderlich', 'text' => 'Bitte den zu ergänzenden Sterbefall auswählen.', 'items' => []],
-			'requiredInput' => ['field' => 'caseId', 'question' => 'Welcher Sterbefall soll mit den Angaben ergänzt werden?'],
-		]);
+		if ($caseId <= 0) {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Fallbezug erforderlich', 'text' => 'Bitte den zu ergänzenden Sterbefall auswählen.', 'items' => []],
+				'requiredInput' => ['field' => 'caseId', 'question' => 'Welcher Sterbefall soll mit den Angaben ergänzt werden?'],
+			]);
+		}
 		$details = preg_replace('/^.*?\b(?:daten|angaben|notizen)\b\s*[:\-–]?\s*/iu', '', $input) ?? $input;
 		$details = trim($details);
 		if ($details === '' || $details === $input) {
 			$colon = mb_strpos($input, ':');
-			if ($colon !== false) $details = trim(mb_substr($input, $colon + 1));
+			if ($colon !== false) {
+				$details = trim(mb_substr($input, $colon + 1));
+			}
 		}
-		if ($details === '') return array_replace($empty, [
-			'answer' => ['title' => 'Angaben fehlen', 'text' => 'Bitte die zu übernehmenden Personendaten nach einem Doppelpunkt ergänzen.', 'items' => []],
-			'requiredInput' => ['field' => 'details', 'question' => 'Welche konkreten Daten sollen in den Sterbefall übernommen werden?'],
-		]);
+		if ($details === '') {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Angaben fehlen', 'text' => 'Bitte die zu übernehmenden Personendaten nach einem Doppelpunkt ergänzen.', 'items' => []],
+				'requiredInput' => ['field' => 'details', 'question' => 'Welche konkreten Daten sollen in den Sterbefall übernommen werden?'],
+			]);
+		}
 		$analysis = $this->analyze($details, 'CASE_CAPTURE');
 		$changes = [];
 		$items = [];
 		foreach ($analysis['suggestions'] as $suggestion) {
 			$field = (string)($suggestion['field'] ?? '');
 			$value = trim((string)($suggestion['value'] ?? ''));
-			if ($field === '' || $value === '' || array_key_exists($field, $changes)) continue;
+			if ($field === '' || $value === '' || array_key_exists($field, $changes)) {
+				continue;
+			}
 			$changes[$field] = $value;
 			$items[] = (string)($suggestion['label'] ?? $field) . ': ' . $value;
 		}
-		if ($changes === []) return array_replace($empty, [
-			'answer' => ['title' => 'Keine eindeutigen Falldaten erkannt', 'text' => 'Die Notiz wurde nicht automatisch übernommen. Bitte klar benannte Angaben verwenden oder die Stammdaten manuell öffnen.', 'items' => []],
-			'requiredInput' => ['field' => 'details', 'question' => 'Bitte die Angaben eindeutiger formulieren, zum Beispiel „Vorname Maria, Nachname Muster, geboren am …“.'],
-		]);
+		if ($changes === []) {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Keine eindeutigen Falldaten erkannt', 'text' => 'Die Notiz wurde nicht automatisch übernommen. Bitte klar benannte Angaben verwenden oder die Stammdaten manuell öffnen.', 'items' => []],
+				'requiredInput' => ['field' => 'details', 'question' => 'Bitte die Angaben eindeutiger formulieren, zum Beispiel „Vorname Maria, Nachname Muster, geboren am …“.'],
+			]);
+		}
 		return [
 			'data' => ['caseId' => $caseId, 'changes' => $changes],
 			'answer' => ['title' => count($changes) . ' Falldaten erkannt', 'text' => 'Diese Angaben werden erst nach Ihrer Bestätigung in die Stammdaten übernommen. Bereits vorhandene, nicht genannte Felder bleiben unverändert.', 'items' => $items],
@@ -607,37 +744,53 @@ class AssistantService {
 
 	private function prepareTaskBatch(int $caseId, string $input): array {
 		$empty = ['data' => ['caseId' => $caseId, 'tasks' => []], 'answer' => null, 'requiredInput' => null];
-		if ($caseId <= 0) return array_replace($empty, [
-			'answer' => ['title' => 'Fallbezug erforderlich', 'text' => 'Bitte zuerst den Sterbefall auswählen, dem die Aufgaben zugeordnet werden sollen.', 'items' => []],
-			'requiredInput' => ['field' => 'caseId', 'question' => 'Zu welchem Sterbefall sollen die Aufgaben angelegt werden?'],
-		]);
+		if ($caseId <= 0) {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Fallbezug erforderlich', 'text' => 'Bitte zuerst den Sterbefall auswählen, dem die Aufgaben zugeordnet werden sollen.', 'items' => []],
+				'requiredInput' => ['field' => 'caseId', 'question' => 'Zu welchem Sterbefall sollen die Aufgaben angelegt werden?'],
+			]);
+		}
 		$notes = '';
 		$colon = mb_strpos($input, ':');
-		if ($colon !== false) $notes = trim(mb_substr($input, $colon + 1));
+		if ($colon !== false) {
+			$notes = trim(mb_substr($input, $colon + 1));
+		}
 		if ($notes === '') {
 			$notes = trim((string)preg_replace('/^.*?\baufgaben?\b\s+(?:zum|für\s+den)\s+sterbefall\b\s*[:\-–]?\s*/iu', '', $input));
-			if ($notes === trim($input)) $notes = '';
+			if ($notes === trim($input)) {
+				$notes = '';
+			}
 		}
-		if ($notes === '') return array_replace($empty, [
-			'answer' => ['title' => 'Aufgabennotizen fehlen', 'text' => 'Bitte die einzelnen Tätigkeiten nach einem Doppelpunkt als Liste angeben.', 'items' => []],
-			'requiredInput' => ['field' => 'notes', 'question' => 'Welche Aufgaben sollen angelegt werden?'],
-		]);
+		if ($notes === '') {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Aufgabennotizen fehlen', 'text' => 'Bitte die einzelnen Tätigkeiten nach einem Doppelpunkt als Liste angeben.', 'items' => []],
+				'requiredInput' => ['field' => 'notes', 'question' => 'Welche Aufgaben sollen angelegt werden?'],
+			]);
+		}
 		$notes = preg_replace('/(?:^|\R)\s*(?:[-*•]|\d+[.)])\s*/u', "\n", $notes) ?? $notes;
 		$parts = preg_split('/\R+|\s*;\s*|(?<=[.!?])\s+(?=[\p{Lu}\d])/u', $notes, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-		if (count($parts) === 1) $parts = preg_split('/\s*,\s*|\s+und\s+(?=[\p{Lu}])/u', $notes, -1, PREG_SPLIT_NO_EMPTY) ?: $parts;
+		if (count($parts) === 1) {
+			$parts = preg_split('/\s*,\s*|\s+und\s+(?=[\p{Lu}])/u', $notes, -1, PREG_SPLIT_NO_EMPTY) ?: $parts;
+		}
 		$titles = [];
 		foreach ($parts as $part) {
 			$title = trim((string)preg_replace('/^\s*(?:bitte\s+|dann\s+|anschließend\s+)?/iu', '', $part), " \t\n\r\0\x0B,.;:-–");
-			if (mb_strlen($title) < 3) continue;
+			if (mb_strlen($title) < 3) {
+				continue;
+			}
 			$title = mb_strtoupper(mb_substr($title, 0, 1)) . mb_substr($title, 1, 254);
 			$titles[mb_strtolower($title)] = $title;
-			if (count($titles) >= 12) break;
+			if (count($titles) >= 12) {
+				break;
+			}
 		}
-		if ($titles === []) return array_replace($empty, [
-			'answer' => ['title' => 'Keine Aufgaben erkannt', 'text' => 'Aus der Notiz konnten keine eindeutigen Tätigkeiten abgeleitet werden.', 'items' => []],
-			'requiredInput' => ['field' => 'notes', 'question' => 'Bitte jede Aufgabe in einer eigenen Zeile oder mit Semikolon getrennt angeben.'],
-		]);
-		$tasks = array_map(static fn(string $title): array => ['title' => $title, 'date' => date('Y-m-d') . 'T00:00', 'status' => 'OFFEN'], array_values($titles));
+		if ($titles === []) {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Keine Aufgaben erkannt', 'text' => 'Aus der Notiz konnten keine eindeutigen Tätigkeiten abgeleitet werden.', 'items' => []],
+				'requiredInput' => ['field' => 'notes', 'question' => 'Bitte jede Aufgabe in einer eigenen Zeile oder mit Semikolon getrennt angeben.'],
+			]);
+		}
+		$tasks = array_map(static fn (string $title): array => ['title' => $title, 'date' => date('Y-m-d') . 'T00:00', 'status' => 'OFFEN'], array_values($titles));
 		return [
 			'data' => ['caseId' => $caseId, 'batchId' => bin2hex(random_bytes(12)), 'tasks' => $tasks],
 			'answer' => ['title' => count($tasks) . ' Aufgaben erkannt', 'text' => 'Bitte die Aufgabenliste prüfen. Die Aufgaben werden erst nach ausdrücklicher Bestätigung angelegt und dem ausgewählten Fall zugeordnet.', 'items' => array_values($titles)],
@@ -646,7 +799,9 @@ class AssistantService {
 	}
 
 	private function navigationPreview(int $caseId, string $caseTab, string $label, string $text): array {
-		if ($caseId <= 0) return ['NAVIGATE', $label, ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst einen Fall auswählen.', 'items' => []], []];
+		if ($caseId <= 0) {
+			return ['NAVIGATE', $label, ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst einen Fall auswählen.', 'items' => []], []];
+		}
 		$case = $this->cases->getCase($caseId);
 		return ['NAVIGATE', $label, ['title' => $label, 'text' => $text, 'items' => [$case['caseNumber'] . ' · ' . trim($case['firstName'] . ' ' . $case['lastName'])]], [[
 			'id' => 'navigate-' . $caseTab, 'kind' => 'navigation', 'label' => $label, 'description' => 'Fallakte · ' . $case['caseNumber'],
@@ -679,16 +834,20 @@ class AssistantService {
 		$label = 'Paperless-Einrichtung prüfen';
 		/** @var TeamService $team */
 		$team = $this->lazy(TeamService::class);
-		if (!$team->isBestatterAdmin()) return ['INFORMATION', $label, ['title' => 'Nur für die Administration', 'text' => 'Die Paperless-Einrichtung kann nur die Administration prüfen (Administration → Systemprüfung).', 'items' => []], []];
+		if (!$team->isBestatterAdmin()) {
+			return ['INFORMATION', $label, ['title' => 'Nur für die Administration', 'text' => 'Die Paperless-Einrichtung kann nur die Administration prüfen (Administration → Systemprüfung).', 'items' => []], []];
+		}
 		/** @var PaperlessSetupCheckService $setup */
 		$setup = $this->lazy(PaperlessSetupCheckService::class);
 		$result = $setup->check();
 		$statusText = ['OK' => 'in Ordnung', 'WARN' => 'prüfen', 'ERROR' => 'Fehler'];
-		$items = array_map(static fn(array $item): string => $item['label'] . ' (' . ($statusText[$item['status']] ?? $item['status']) . '): ' . $item['detail'], $result['items']);
+		$items = array_map(static fn (array $item): string => $item['label'] . ' (' . ($statusText[$item['status']] ?? $item['status']) . '): ' . $item['detail'], $result['items']);
 		$choices = [
 			['id' => 'paperless-settings', 'kind' => 'navigation', 'label' => 'Administration → Paperless', 'description' => 'Verbindung, Betriebsart und Feld für die Fallnummer', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'administration', 'administrationTab' => 'paperless'])],
 		];
-		if ($result['applicable']) $choices[] = ['id' => 'document-kinds', 'kind' => 'navigation', 'label' => 'Customizing → Dokumentarten', 'description' => 'Paperless-Dokumenttypen zuordnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'customizing', 'customizingTab' => 'document-kinds'])];
+		if ($result['applicable']) {
+			$choices[] = ['id' => 'document-kinds', 'kind' => 'navigation', 'label' => 'Customizing → Dokumentarten', 'description' => 'Paperless-Dokumenttypen zuordnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'customizing', 'customizingTab' => 'document-kinds'])];
+		}
 		return ['PAPERLESS_SETUP', $label, ['title' => 'Paperless-Einrichtung', 'text' => $result['message'], 'items' => $items], $choices];
 	}
 
@@ -698,7 +857,9 @@ class AssistantService {
 		/** @var PaperlessInboxService $inbox */
 		$inbox = $this->lazy(PaperlessInboxService::class);
 		$overview = $inbox->overview($forCase ? $caseId : 0);
-		if (!$overview['enabled'] || $overview['mode'] !== 'FULL') return ['INFORMATION', $label, ['title' => 'Belegeingang nicht aktiv', 'text' => 'Paperless ist nicht im Modus „Beidseitiger Belegeingang“ angebunden. Dokumente laden Sie direkt in der Fallakte unter „Dokumente“ hoch.', 'items' => []], []];
+		if (!$overview['enabled'] || $overview['mode'] !== 'FULL') {
+			return ['INFORMATION', $label, ['title' => 'Belegeingang nicht aktiv', 'text' => 'Paperless ist nicht im Modus „Beidseitiger Belegeingang“ angebunden. Dokumente laden Sie direkt in der Fallakte unter „Dokumente“ hoch.', 'items' => []], []];
+		}
 		$case = $forCase ? $this->cases->getCase($caseId) : null;
 		$items = array_map(static function (array $item): string {
 			$kind = $item['kindName'] !== '' ? $item['kindName'] : 'Dokumentart offen';
@@ -706,11 +867,15 @@ class AssistantService {
 				: ($item['candidates'] > 1 ? $item['candidates'] . ' mögliche Fälle' : ($item['rated'] ? 'kein Fall erkannt' : 'noch nicht ausgewertet'));
 			return ($item['title'] !== '' ? $item['title'] : 'Dokument') . ' · ' . $kind . ' · ' . $target;
 		}, array_slice($overview['items'], 0, 12));
-		if ($overview['pending'] > 12) $items[] = '… und ' . ($overview['pending'] - 12) . ' weitere';
+		if ($overview['pending'] > 12) {
+			$items[] = '… und ' . ($overview['pending'] - 12) . ' weitere';
+		}
 		$text = $case !== null
 			? ($overview['pending'] === 0 ? 'Im Belegeingang ist kein Dokument für ' . $case['caseNumber'] . ' vorgeschlagen.' : $overview['pending'] . ' Dokument(e) im Belegeingang sind ' . $case['caseNumber'] . ' vorgeschlagen.')
 			: ($overview['total'] === 0 ? 'Im Belegeingang liegt kein unzugeordnetes Dokument.' : $overview['total'] . ' Dokument(e) im Belegeingang sind noch keinem Fall zugeordnet.');
-		if ($overview['unrated'] > 0) $text .= ' Noch nicht ausgewertet: ' . $overview['unrated'] . ' – beim Öffnen des Belegeingangs liest die Anwendung Dokumenttyp und Fallnummer aus Paperless.';
+		if ($overview['unrated'] > 0) {
+			$text .= ' Noch nicht ausgewertet: ' . $overview['unrated'] . ' – beim Öffnen des Belegeingangs liest die Anwendung Dokumenttyp und Fallnummer aus Paperless.';
+		}
 		$text .= ' Zuordnen und Übernehmen erfolgen im Belegeingang.';
 		$choices = [['id' => 'inbox', 'kind' => 'navigation', 'label' => 'Belegeingang öffnen', 'description' => 'Dokumente prüfen und zuordnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'inbox'])]];
 		return ['INBOX_OVERVIEW', $label, ['title' => 'Belegeingang', 'text' => $text, 'items' => $items], $choices];
@@ -718,32 +883,42 @@ class AssistantService {
 
 	private function receivedDocumentsAnswer(int $caseId): array {
 		$label = 'Eingegangene Dokumente prüfen';
-		if ($caseId <= 0) return ['INFORMATION', $label, ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst unter „Fallbezug“ einen Fall auswählen.', 'items' => []], []];
+		if ($caseId <= 0) {
+			return ['INFORMATION', $label, ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst unter „Fallbezug“ einen Fall auswählen.', 'items' => []], []];
+		}
 		$case = $this->cases->getCase($caseId);
 		/** @var DocumentKindService $kindService */
 		$kindService = $this->lazy(DocumentKindService::class);
 		$kinds = [];
-		foreach ($kindService->definitions() as $kind) $kinds[$kind['key']] = $kind;
+		foreach ($kindService->definitions() as $kind) {
+			$kinds[$kind['key']] = $kind;
+		}
 		$received = [];
 		foreach ($this->records->list('document', $caseId) as $document) {
 			$key = strtoupper((string)($document['data']['documentKind'] ?? ''));
-			if ($key === '') continue;
+			if ($key === '') {
+				continue;
+			}
 			$date = substr((string)($document['date'] ?? ''), 0, 10);
 			$entry = $received[$key] ?? ['count' => 0, 'copies' => 0, 'first' => $date];
 			$entry['count']++;
 			$entry['copies'] += max(0, (int)($document['data']['documentCount'] ?? 0));
-			if ($date !== '' && ($entry['first'] === '' || $date < $entry['first'])) $entry['first'] = $date;
+			if ($date !== '' && ($entry['first'] === '' || $date < $entry['first'])) {
+				$entry['first'] = $date;
+			}
 			$received[$key] = $entry;
 		}
-		$formatDate = static fn(string $date): string => $date !== '' && ($time = strtotime($date)) ? date('d.m.Y', $time) : '';
+		$formatDate = static fn (string $date): string => $date !== '' && ($time = strtotime($date)) ? date('d.m.Y', $time) : '';
 		$items = [];
 		foreach ($received as $key => $entry) {
 			$kind = $kinds[$key] ?? null;
 			$copies = $entry['copies'] > 0 && $kind !== null && $kind['countLabel'] !== '' ? ', ' . $entry['copies'] . ' ' . $kind['countLabel'] : '';
 			$items[] = ($kind['name'] ?? $key) . ': ' . $entry['count'] . ' Dokument' . ($entry['count'] === 1 ? '' : 'e') . $copies . ($entry['first'] !== '' ? ' (seit ' . $formatDate($entry['first']) . ')' : '');
 		}
-		if (isset($kinds['STERBEURKUNDE']) && $kinds['STERBEURKUNDE']['active'] && !isset($received['STERBEURKUNDE'])) $items[] = 'Sterbeurkunde: noch nicht eingegangen';
-		$pending = array_values(array_filter($this->records->list('deregistration', $caseId), static fn(array $item): bool => strtoupper((string)$item['status']) === 'VERSENDET'));
+		if (isset($kinds['STERBEURKUNDE']) && $kinds['STERBEURKUNDE']['active'] && !isset($received['STERBEURKUNDE'])) {
+			$items[] = 'Sterbeurkunde: noch nicht eingegangen';
+		}
+		$pending = array_values(array_filter($this->records->list('deregistration', $caseId), static fn (array $item): bool => strtoupper((string)$item['status']) === 'VERSENDET'));
 		foreach ($pending as $item) {
 			$sent = $formatDate(substr((string)($item['data']['sentAt'] ?? ''), 0, 10));
 			$items[] = 'Rückmeldung ausstehend: ' . $item['title'] . ($sent !== '' ? ' (versendet am ' . $sent . ')' : '');
@@ -753,14 +928,25 @@ class AssistantService {
 			/** @var PaperlessInboxService $inbox */
 			$inbox = $this->lazy(PaperlessInboxService::class);
 			$overview = $inbox->overview($caseId);
-			if ($overview['enabled'] && $overview['mode'] === 'FULL') $inboxPending = $overview['pending'];
-		} catch (\Throwable) { /* Belegeingang ist optional */ }
-		if ($inboxPending > 0) $items[] = 'Im Belegeingang für diesen Fall vorgeschlagen: ' . $inboxPending . ' Dokument' . ($inboxPending === 1 ? '' : 'e');
+			if ($overview['enabled'] && $overview['mode'] === 'FULL') {
+				$inboxPending = $overview['pending'];
+			}
+		} catch (\Throwable) { /* Belegeingang ist optional */
+		}
+		if ($inboxPending > 0) {
+			$items[] = 'Im Belegeingang für diesen Fall vorgeschlagen: ' . $inboxPending . ' Dokument' . ($inboxPending === 1 ? '' : 'e');
+		}
 		$text = $received === [] ? 'Für ' . $case['caseNumber'] . ' ist noch kein Dokument mit Dokumentart abgelegt.' : 'Für ' . $case['caseNumber'] . ' sind Dokumente aus ' . count($received) . ' Dokumentart' . (count($received) === 1 ? '' : 'en') . ' abgelegt.';
-		if ($pending !== []) $text .= ' ' . count($pending) . ' versendete Abmeldung(en) warten auf eine Rückmeldung.';
+		if ($pending !== []) {
+			$text .= ' ' . count($pending) . ' versendete Abmeldung(en) warten auf eine Rückmeldung.';
+		}
 		$choices = [['id' => 'case-documents', 'kind' => 'navigation', 'label' => 'Dokumente des Falls öffnen', 'description' => 'Fallakte · ' . $case['caseNumber'], 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'case-detail', 'caseId' => $caseId, 'caseTab' => 'document'])]];
-		if ($pending !== []) $choices[] = ['id' => 'case-deregistrations', 'kind' => 'navigation', 'label' => 'Abmeldungen öffnen', 'description' => 'Fallakte · ' . $case['caseNumber'], 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'case-detail', 'caseId' => $caseId, 'caseTab' => 'deregistration'])];
-		if ($inboxPending > 0) $choices[] = ['id' => 'inbox', 'kind' => 'navigation', 'label' => 'Belegeingang öffnen', 'description' => 'Vorgeschlagene Dokumente zuordnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'inbox'])];
+		if ($pending !== []) {
+			$choices[] = ['id' => 'case-deregistrations', 'kind' => 'navigation', 'label' => 'Abmeldungen öffnen', 'description' => 'Fallakte · ' . $case['caseNumber'], 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'case-detail', 'caseId' => $caseId, 'caseTab' => 'deregistration'])];
+		}
+		if ($inboxPending > 0) {
+			$choices[] = ['id' => 'inbox', 'kind' => 'navigation', 'label' => 'Belegeingang öffnen', 'description' => 'Vorgeschlagene Dokumente zuordnen', 'confirmationToken' => $this->confirmationToken('NAVIGATE', ['view' => 'inbox'])];
+		}
 		return ['RECEIVED_DOCUMENTS', $label, ['title' => 'Eingegangene Dokumente', 'text' => $text, 'items' => $items], $choices];
 	}
 
@@ -780,26 +966,36 @@ class AssistantService {
 	}
 
 	private function isDocumentOutputRequest(string $input): bool {
-		if (preg_match('/\b(druck|drucke|ausdruck|ausgeben|erzeug|erstelle|generier|öffne|anzeig|vorschau|finde|suche)\w*\b/iu', $input) !== 1) return false;
-		if (preg_match('/\b(dokument|formular|urkunde|vollmacht|rechnung|kva|kostenvoranschlag|auftrag|kondolenzliste|trauerbrief|trauerkarte|anschreiben|vorlage)\w*\b/iu', $input) === 1) return true;
+		if (preg_match('/\b(druck|drucke|ausdruck|ausgeben|erzeug|erstelle|generier|öffne|anzeig|vorschau|finde|suche)\w*\b/iu', $input) !== 1) {
+			return false;
+		}
+		if (preg_match('/\b(dokument|formular|urkunde|vollmacht|rechnung|kva|kostenvoranschlag|auftrag|kondolenzliste|trauerbrief|trauerkarte|anschreiben|vorlage)\w*\b/iu', $input) === 1) {
+			return true;
+		}
 		foreach ($this->configuration->documents() as $template) {
-			if ((bool)($template['active'] ?? false) && $this->templateMatchesRequest($template, $input)) return true;
+			if ((bool)($template['active'] ?? false) && $this->templateMatchesRequest($template, $input)) {
+				return true;
+			}
 		}
 		return false;
 	}
 
 	private function prepareDocumentOutput(int $caseId, string $input): array {
 		$empty = ['intent' => 'PREPARE_DOCUMENT_OUTPUT', 'data' => ['caseId' => $caseId], 'documents' => [], 'choices' => [], 'requiredInput' => null];
-		if ($caseId <= 0) return array_replace($empty, [
-			'answer' => ['title' => 'Fall auswählen', 'text' => 'Dokumente werden immer aus einem konkreten Fall und dessen aktuellen Daten erzeugt.', 'items' => []],
-			'requiredInput' => ['field' => 'caseId', 'question' => 'Für welchen Fall soll die Dokumentausgabe vorbereitet werden?'],
-		]);
+		if ($caseId <= 0) {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Fall auswählen', 'text' => 'Dokumente werden immer aus einem konkreten Fall und dessen aktuellen Daten erzeugt.', 'items' => []],
+				'requiredInput' => ['field' => 'caseId', 'question' => 'Für welchen Fall soll die Dokumentausgabe vorbereitet werden?'],
+			]);
+		}
 
-		$templates = array_values(array_filter($this->configuration->documents(), static fn(array $template): bool => (bool)($template['active'] ?? false) && str_ends_with(mb_strtolower((string)($template['fileName'] ?? '')), '.docx')));
-		$matches = array_values(array_filter($templates, fn(array $template): bool => $this->templateMatchesRequest($template, $input)));
-		if (preg_match('/\bkondolenzlisten?\b/iu', $input) === 1) return $this->prepareCondolencePrint($caseId, $input);
+		$templates = array_values(array_filter($this->configuration->documents(), static fn (array $template): bool => (bool)($template['active'] ?? false) && str_ends_with(mb_strtolower((string)($template['fileName'] ?? '')), '.docx')));
+		$matches = array_values(array_filter($templates, fn (array $template): bool => $this->templateMatchesRequest($template, $input)));
+		if (preg_match('/\bkondolenzlisten?\b/iu', $input) === 1) {
+			return $this->prepareCondolencePrint($caseId, $input);
+		}
 		if ($matches === []) {
-			$choices = array_map(fn(array $template): array => $this->documentTemplateChoice($caseId, $template), array_slice($templates, 0, 20));
+			$choices = array_map(fn (array $template): array => $this->documentTemplateChoice($caseId, $template), array_slice($templates, 0, 20));
 			return array_replace($empty, [
 				'choices' => $choices,
 				'answer' => ['title' => 'Dokumentvorlage auswählen', 'text' => 'Die gewünschte Ausgabe war nicht eindeutig. Bitte eine aktive Vorlage auswählen; vorhandene aktuelle Ausgaben werden dabei bevorzugt geöffnet.', 'items' => []],
@@ -807,31 +1003,39 @@ class AssistantService {
 		}
 		if (count($matches) > 1) {
 			return array_replace($empty, [
-				'choices' => array_map(fn(array $template): array => $this->documentTemplateChoice($caseId, $template), $matches),
+				'choices' => array_map(fn (array $template): array => $this->documentTemplateChoice($caseId, $template), $matches),
 				'answer' => ['title' => 'Mehrere passende Vorlagen', 'text' => 'Bitte die gewünschte Ausgabe auswählen.', 'items' => []],
 			]);
 		}
 
 		$template = $matches[0];
 		$key = (string)$template['key'];
-		if (in_array($key, ['KONDOLENZLISTE_DECKBLATT', 'KONDOLENZLISTE_LISTE'], true)) return $this->prepareCondolencePrint($caseId, $input);
+		if (in_array($key, ['KONDOLENZLISTE_DECKBLATT', 'KONDOLENZLISTE_LISTE'], true)) {
+			return $this->prepareCondolencePrint($caseId, $input);
+		}
 		$existing = $this->documentsForTemplate($caseId, $key);
-		if ($existing !== []) return array_replace($empty, [
-			'intent' => 'OPEN_EXISTING_DOCUMENTS', 'data' => ['caseId' => $caseId, 'templateKey' => $key], 'documents' => $existing,
-			'answer' => ['title' => 'Aktuelle Ausgabe vorhanden', 'text' => 'Die vorhandene aktuelle Ausgabe kann geöffnet, in der Vorschau geprüft oder – bei PDF – gedruckt werden.', 'items' => [(string)$template['name']]],
-		]);
-		if ($key === 'RECHNUNG') return array_replace($empty, [
-			'answer' => ['title' => 'Rechnung fachlich erzeugen', 'text' => 'Eine Rechnung darf nicht direkt aus der DOCX-Vorlage erzeugt werden. Bitte Fallakte → Finanzen verwenden; dort werden Nummernkreis, Teilrechnungen, ZUGFeRD und Zahlungs-QR berücksichtigt.', 'items' => []],
-			'requiredInput' => ['field' => 'invoiceProcess', 'question' => 'Bitte die Rechnung in der Fallakte unter „Finanzen“ erzeugen.'],
-		]);
+		if ($existing !== []) {
+			return array_replace($empty, [
+				'intent' => 'OPEN_EXISTING_DOCUMENTS', 'data' => ['caseId' => $caseId, 'templateKey' => $key], 'documents' => $existing,
+				'answer' => ['title' => 'Aktuelle Ausgabe vorhanden', 'text' => 'Die vorhandene aktuelle Ausgabe kann geöffnet, in der Vorschau geprüft oder – bei PDF – gedruckt werden.', 'items' => [(string)$template['name']]],
+			]);
+		}
+		if ($key === 'RECHNUNG') {
+			return array_replace($empty, [
+				'answer' => ['title' => 'Rechnung fachlich erzeugen', 'text' => 'Eine Rechnung darf nicht direkt aus der DOCX-Vorlage erzeugt werden. Bitte Fallakte → Finanzen verwenden; dort werden Nummernkreis, Teilrechnungen, ZUGFeRD und Zahlungs-QR berücksichtigt.', 'items' => []],
+				'requiredInput' => ['field' => 'invoiceProcess', 'question' => 'Bitte die Rechnung in der Fallakte unter „Finanzen“ erzeugen.'],
+			]);
+		}
 
 		$case = $this->cases->getCase($caseId);
 		$preview = $this->documents->preview($case, $key);
-		if (($preview['missingFields'] ?? []) !== []) return array_replace($empty, [
-			'data' => ['caseId' => $caseId, 'templateKey' => $key],
-			'answer' => ['title' => 'Pflichtangaben fehlen', 'text' => 'Die Ausgabe kann erst nach Ergänzung der erforderlichen Falldaten erzeugt werden.', 'items' => (array)$preview['missingFields']],
-			'requiredInput' => ['field' => 'masterData', 'question' => 'Bitte die genannten Angaben in der Fallakte ergänzen.'],
-		]);
+		if (($preview['missingFields'] ?? []) !== []) {
+			return array_replace($empty, [
+				'data' => ['caseId' => $caseId, 'templateKey' => $key],
+				'answer' => ['title' => 'Pflichtangaben fehlen', 'text' => 'Die Ausgabe kann erst nach Ergänzung der erforderlichen Falldaten erzeugt werden.', 'items' => (array)$preview['missingFields']],
+				'requiredInput' => ['field' => 'masterData', 'question' => 'Bitte die genannten Angaben in der Fallakte ergänzen.'],
+			]);
+		}
 		return [
 			'intent' => 'GENERATE_DOCUMENT_TEMPLATE', 'data' => ['caseId' => $caseId, 'templateKey' => $key], 'documents' => [], 'choices' => [], 'requiredInput' => null,
 			'answer' => ['title' => 'Dokumentausgabe ist bereit', 'text' => sprintf('„%s“ wird aus den aktuellen Falldaten als DOCX und – sofern verfügbar – zusätzlich als PDF erzeugt.', (string)$template['name']), 'items' => ['Ablage: ' . (string)$preview['outputSubfolder'], 'Keine automatische Druckausgabe ohne Browserbestätigung']],
@@ -842,13 +1046,19 @@ class AssistantService {
 		$haystack = $this->normalizeDocumentText($input);
 		$haystack = trim(preg_replace('/\b(?:druck\w*|ausdruck\w*|ausgeben\w*|ausgabe\w*|erzeug\w*|erstelle\w*|generier\w*|oeffne\w*|anzeig\w*|vorschau\w*|finde\w*|suche\w*|bitte)\b/u', ' ', $haystack) ?? $haystack);
 		$haystack = trim(preg_replace('/\s+/u', ' ', $haystack) ?? $haystack);
-		if ($haystack === '') return false;
+		if ($haystack === '') {
+			return false;
+		}
 		$candidates = [(string)($template['name'] ?? ''), (string)($template['key'] ?? ''), pathinfo((string)($template['fileName'] ?? ''), PATHINFO_FILENAME)];
 		foreach ($candidates as $candidate) {
 			$needle = $this->normalizeDocumentText($candidate);
-			if ($needle !== '' && (str_contains($haystack, $needle) || str_contains($needle, $haystack))) return true;
-			$words = array_values(array_filter(explode(' ', $needle), static fn(string $word): bool => mb_strlen($word) >= 5));
-			if ($words !== [] && count(array_filter($words, static fn(string $word): bool => str_contains($haystack, $word))) >= min(2, count($words))) return true;
+			if ($needle !== '' && (str_contains($haystack, $needle) || str_contains($needle, $haystack))) {
+				return true;
+			}
+			$words = array_values(array_filter(explode(' ', $needle), static fn (string $word): bool => mb_strlen($word) >= 5));
+			if ($words !== [] && count(array_filter($words, static fn (string $word): bool => str_contains($haystack, $word))) >= min(2, count($words))) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -873,7 +1083,9 @@ class AssistantService {
 	private function documentsForTemplate(int $caseId, string $templateKey): array {
 		$documents = [];
 		foreach ($this->records->list('document', $caseId) as $record) {
-			if ((string)($record['data']['templateKey'] ?? '') !== $templateKey) continue;
+			if ((string)($record['data']['templateKey'] ?? '') !== $templateKey) {
+				continue;
+			}
 			$documents[] = $this->documentDescriptor((array)$record['data'], (string)$record['title']);
 		}
 		return $documents;
@@ -881,7 +1093,9 @@ class AssistantService {
 
 	private function prepareCondolencePrint(int $caseId, string $input): array {
 		$empty = ['intent' => 'PREPARE_CONDOLENCE_PRINT', 'data' => ['caseId' => $caseId], 'documents' => [], 'requiredInput' => null];
-		if ($caseId <= 0) return array_replace($empty, ['answer' => ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst den zugehörigen Fall auswählen.', 'items' => []], 'requiredInput' => ['field' => 'caseId', 'question' => 'Für welchen Fall sollen die Kondolenzlisten ausgegeben werden?']]);
+		if ($caseId <= 0) {
+			return array_replace($empty, ['answer' => ['title' => 'Fall auswählen', 'text' => 'Bitte zuerst den zugehörigen Fall auswählen.', 'items' => []], 'requiredInput' => ['field' => 'caseId', 'question' => 'Für welchen Fall sollen die Kondolenzlisten ausgegeben werden?']]);
+		}
 		$case = $this->cases->getCase($caseId);
 		$schedules = array_values(array_filter($this->records->list('schedule', $caseId), static function (array $record): bool {
 			$category = (string)($record['data']['appointmentCategory'] ?? '');
@@ -890,16 +1104,28 @@ class AssistantService {
 		}));
 		if (count($schedules) > 1) {
 			$requestedDate = $this->intentDate($input);
-			if ($requestedDate !== '') $schedules = array_values(array_filter($schedules, static fn(array $record): bool => str_starts_with((string)$record['date'], substr($requestedDate, 0, 10))));
+			if ($requestedDate !== '') {
+				$schedules = array_values(array_filter($schedules, static fn (array $record): bool => str_starts_with((string)$record['date'], substr($requestedDate, 0, 10))));
+			}
 		}
-		if ($schedules === []) return array_replace($empty, ['answer' => ['title' => 'Bestätigte Trauerfeier fehlt', 'text' => 'Für den Fall wurde keine eindeutig bestätigte Trauerfeier gefunden. Bitte den Termin zuerst anlegen oder bestätigen.', 'items' => []], 'requiredInput' => ['field' => 'schedule', 'question' => 'Wann findet die bestätigte Trauerfeier statt?']]);
-		if (count($schedules) > 1) return array_replace($empty, ['answer' => ['title' => 'Mehrere Trauerfeiern gefunden', 'text' => 'Bitte den gewünschten Termin mit Datum im Arbeitsauftrag nennen.', 'items' => array_map(static fn(array $record): string => (string)$record['date'] . ' · ' . (string)$record['title'], $schedules)], 'requiredInput' => ['field' => 'scheduleDate', 'question' => 'Für welchen Trauerfeier-Termin sollen die Kondolenzlisten ausgegeben werden?']]);
+		if ($schedules === []) {
+			return array_replace($empty, ['answer' => ['title' => 'Bestätigte Trauerfeier fehlt', 'text' => 'Für den Fall wurde keine eindeutig bestätigte Trauerfeier gefunden. Bitte den Termin zuerst anlegen oder bestätigen.', 'items' => []], 'requiredInput' => ['field' => 'schedule', 'question' => 'Wann findet die bestätigte Trauerfeier statt?']]);
+		}
+		if (count($schedules) > 1) {
+			return array_replace($empty, ['answer' => ['title' => 'Mehrere Trauerfeiern gefunden', 'text' => 'Bitte den gewünschten Termin mit Datum im Arbeitsauftrag nennen.', 'items' => array_map(static fn (array $record): string => (string)$record['date'] . ' · ' . (string)$record['title'], $schedules)], 'requiredInput' => ['field' => 'scheduleDate', 'question' => 'Für welchen Trauerfeier-Termin sollen die Kondolenzlisten ausgegeben werden?']]);
+		}
 		$schedule = $schedules[0];
 		$master = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$missing = [];
-		if (trim((string)($master['first_name'] ?? $case['firstName'] ?? '')) === '') $missing[] = 'Vorname';
-		if (trim((string)($master['last_name'] ?? $case['lastName'] ?? '')) === '') $missing[] = 'Nachname';
-		if ($missing !== []) return array_replace($empty, ['answer' => ['title' => 'Falldaten unvollständig', 'text' => 'Bitte vor der Dokumenterzeugung ergänzen: ' . implode(', ', $missing) . '.', 'items' => $missing], 'requiredInput' => ['field' => 'masterData', 'question' => 'Bitte die fehlenden Falldaten ergänzen.']]);
+		if (trim((string)($master['first_name'] ?? $case['firstName'] ?? '')) === '') {
+			$missing[] = 'Vorname';
+		}
+		if (trim((string)($master['last_name'] ?? $case['lastName'] ?? '')) === '') {
+			$missing[] = 'Nachname';
+		}
+		if ($missing !== []) {
+			return array_replace($empty, ['answer' => ['title' => 'Falldaten unvollständig', 'text' => 'Bitte vor der Dokumenterzeugung ergänzen: ' . implode(', ', $missing) . '.', 'items' => $missing], 'requiredInput' => ['field' => 'masterData', 'question' => 'Bitte die fehlenden Falldaten ergänzen.']]);
+		}
 
 		$documents = $this->condolenceDocuments($caseId, $schedule);
 		if (count($documents) >= 2) {
@@ -908,13 +1134,21 @@ class AssistantService {
 		}
 
 		foreach ($this->records->list('task', $caseId) as $task) {
-			if (preg_match('/kondolenzlisten?/iu', (string)$task['title']) !== 1) continue;
+			if (preg_match('/kondolenzlisten?/iu', (string)$task['title']) !== 1) {
+				continue;
+			}
 			$sourceScheduleId = (int)($task['data']['sourceScheduleId'] ?? 0);
-			if ($sourceScheduleId > 0 && $sourceScheduleId !== (int)$schedule['id']) continue;
+			if ($sourceScheduleId > 0 && $sourceScheduleId !== (int)$schedule['id']) {
+				continue;
+			}
 			$available = $this->actions->available((int)$task['id']);
 			foreach (($available['actions'] ?? []) as $action) {
-				if (($action['key'] ?? '') !== 'KONDOLENZLISTEN_PAKET') continue;
-				if (($action['executed'] ?? false) && !($action['retryable'] ?? false)) continue;
+				if (($action['key'] ?? '') !== 'KONDOLENZLISTEN_PAKET') {
+					continue;
+				}
+				if (($action['executed'] ?? false) && !($action['retryable'] ?? false)) {
+					continue;
+				}
 				return ['intent' => 'EXECUTE_PROCESS_ACTION', 'data' => ['caseId' => $caseId, 'recordId' => $task['id'], 'actionKey' => $action['key']], 'documents' => [], 'requiredInput' => null,
 					'answer' => ['title' => 'Dokumentpaket ist bereit', 'text' => sprintf('Deckblatt und Kondolenzliste werden aus der bestätigten Trauerfeier vom %s erzeugt. Danach können die PDFs geöffnet und gedruckt werden.', (new \DateTimeImmutable((string)$schedule['date']))->format('d.m.Y H:i')), 'items' => ['Zielordner: 05 Trauerdruck', 'Keine automatische Druckausgabe ohne Browserbestätigung']]];
 			}
@@ -925,9 +1159,13 @@ class AssistantService {
 	private function condolenceDocuments(int $caseId, array $schedule): array {
 		$documents = [];
 		foreach ($this->records->list('document', $caseId) as $record) {
-			if (!in_array((string)($record['data']['templateKey'] ?? ''), ['KONDOLENZLISTE_DECKBLATT', 'KONDOLENZLISTE_LISTE'], true)) continue;
+			if (!in_array((string)($record['data']['templateKey'] ?? ''), ['KONDOLENZLISTE_DECKBLATT', 'KONDOLENZLISTE_LISTE'], true)) {
+				continue;
+			}
 			$snapshot = is_array($record['data']['sourceScheduleSnapshot'] ?? null) ? $record['data']['sourceScheduleSnapshot'] : [];
-			if ((int)($snapshot['id'] ?? 0) !== (int)$schedule['id'] || (string)($snapshot['date'] ?? '') !== (string)$schedule['date']) continue;
+			if ((int)($snapshot['id'] ?? 0) !== (int)$schedule['id'] || (string)($snapshot['date'] ?? '') !== (string)$schedule['date']) {
+				continue;
+			}
 			$documents[] = $this->documentDescriptor((array)$record['data'], (string)$record['title']);
 		}
 		return $documents;
@@ -969,8 +1207,11 @@ class AssistantService {
 	}
 
 	private function availableTaskTypes(): array {
-		try { return $this->tasks->getAvailableTaskTypeIds(); }
-		catch (\Throwable) { return []; }
+		try {
+			return $this->tasks->getAvailableTaskTypeIds();
+		} catch (\Throwable) {
+			return [];
+		}
 	}
 
 	private function flag(string $key, bool $default): bool {
@@ -995,16 +1236,35 @@ class AssistantService {
 	 * Fehler), werden nach $maxAgeSeconds gelöscht. Nur im eigenen Bereich jeder Person, nie in Fallakten.
 	 */
 	public function cleanupStaleAudio(int $maxAgeSeconds = 86_400): int {
-		if ($this->config->getAppValue(Application::APP_ID, 'assistant_audio_retention', 'DELETE_AFTER_TRANSCRIPTION') !== 'DELETE_AFTER_TRANSCRIPTION') return 0;
-		$deleted = 0; $limit = time() - max(3600, $maxAgeSeconds);
+		if ($this->config->getAppValue(Application::APP_ID, 'assistant_audio_retention', 'DELETE_AFTER_TRANSCRIPTION') !== 'DELETE_AFTER_TRANSCRIPTION') {
+			return 0;
+		}
+		$deleted = 0;
+		$limit = time() - max(3600, $maxAgeSeconds);
 		foreach ($this->storage->bestatterUids() as $uid) {
-			try { $home = $this->rootFolder->getUserFolder($uid); } catch (\Throwable) { continue; }
+			try {
+				$home = $this->rootFolder->getUserFolder($uid);
+			} catch (\Throwable) {
+				continue;
+			}
 			foreach ($this->audioPaths() as $path) {
-				try { if (!$home->nodeExists($path)) continue; $folder = $home->get($path); } catch (\Throwable) { continue; }
-				if (!$folder instanceof Folder || $this->storage->locationOf($folder, $uid) !== 'OWN') continue;
+				try {
+					if (!$home->nodeExists($path)) {
+						continue;
+					} $folder = $home->get($path);
+				} catch (\Throwable) {
+					continue;
+				}
+				if (!$folder instanceof Folder || $this->storage->locationOf($folder, $uid) !== 'OWN') {
+					continue;
+				}
 				foreach ($folder->getDirectoryListing() as $node) {
 					if ($node instanceof File && str_starts_with($node->getName(), 'aufnahme-') && $node->getMTime() < $limit) {
-						try { $node->delete(); $deleted++; } catch (\Throwable) {}
+						try {
+							$node->delete();
+							$deleted++;
+						} catch (\Throwable) {
+						}
 					}
 				}
 			}
@@ -1013,12 +1273,23 @@ class AssistantService {
 	}
 
 	private function cleanupTaskAudio(string $customId, string $uid): void {
-		if ($this->config->getAppValue(Application::APP_ID, 'assistant_audio_retention', 'DELETE_AFTER_TRANSCRIPTION') !== 'DELETE_AFTER_TRANSCRIPTION') return;
+		if ($this->config->getAppValue(Application::APP_ID, 'assistant_audio_retention', 'DELETE_AFTER_TRANSCRIPTION') !== 'DELETE_AFTER_TRANSCRIPTION') {
+			return;
+		}
 		$fileId = (int)substr($customId, strlen('speech:'));
-		if ($fileId <= 0) return;
+		if ($fileId <= 0) {
+			return;
+		}
 		foreach ($this->rootFolder->getUserFolder($uid)->getById($fileId) as $node) {
-			if (!$node instanceof File) continue;
-			foreach ($this->audioPaths() as $path) if (str_contains($node->getPath(), '/' . $path . '/')) { $node->delete(); break; }
+			if (!$node instanceof File) {
+				continue;
+			}
+			foreach ($this->audioPaths() as $path) {
+				if (str_contains($node->getPath(), '/' . $path . '/')) {
+					$node->delete();
+					break;
+				}
+			}
 		}
 	}
 
@@ -1049,15 +1320,25 @@ class AssistantService {
 		return preg_replace_callback('/\b\p{L}{8,}\b/u', static function (array $match): string {
 			$word = $match[0];
 			$lower = mb_strtolower($word);
-			if (in_array($lower, self::TYPO_KEYWORDS, true)) return $word;
-			$best = null; $bestDistance = PHP_INT_MAX;
+			if (in_array($lower, self::TYPO_KEYWORDS, true)) {
+				return $word;
+			}
+			$best = null;
+			$bestDistance = PHP_INT_MAX;
 			foreach (self::TYPO_KEYWORDS as $keyword) {
-				if (abs(mb_strlen($keyword) - mb_strlen($lower)) > 2) continue;
+				if (abs(mb_strlen($keyword) - mb_strlen($lower)) > 2) {
+					continue;
+				}
 				$distance = levenshtein(self::ascii($lower), self::ascii($keyword));
-				if ($distance < $bestDistance) { $bestDistance = $distance; $best = $keyword; }
+				if ($distance < $bestDistance) {
+					$bestDistance = $distance;
+					$best = $keyword;
+				}
 			}
 			$allowed = mb_strlen($lower) >= 10 ? 2 : 1;
-			if ($best === null || $bestDistance === 0 || $bestDistance > $allowed) return $word;
+			if ($best === null || $bestDistance === 0 || $bestDistance > $allowed) {
+				return $word;
+			}
 			$first = mb_substr($word, 0, 1);
 			return $first === mb_strtoupper($first) ? mb_strtoupper(mb_substr($best, 0, 1)) . mb_substr($best, 1) : $best;
 		}, $text) ?? $text;
@@ -1076,9 +1357,13 @@ class AssistantService {
 			['/\b(zu\s*hause|daheim)\s+(?:in\s+[\p{Lu}][\p{L}\-]+\s+)?(?:verstorben|gestorben)/iu', .88],
 		];
 		foreach ($patterns as [$pattern, $confidence]) {
-			if (!preg_match($pattern, $text, $match)) continue;
+			if (!preg_match($pattern, $text, $match)) {
+				continue;
+			}
 			$value = self::homePlace(trim($match[1]));
-			if ($value === '') continue;
+			if ($value === '') {
+				continue;
+			}
 			$this->add($suggestions, 'place_of_death', $value, 'Sterbeort / Einrichtung', $confidence, $match[0]);
 			return;
 		}
@@ -1086,7 +1371,9 @@ class AssistantService {
 
 	/** „zuhause Bremen“, „in zuhause“, „zu Hause“ → „zu Hause“ bzw. „zu Hause, Bremen“. */
 	private static function homePlace(string $value): string {
-		if (!preg_match('/^(?:in\s+)?(?:zu\s*hause|daheim|der\s+eigenen\s+wohnung|seiner\s+wohnung|ihrer\s+wohnung)\b\s*(?:in\s+)?(.*)$/iu', $value, $match)) return $value;
+		if (!preg_match('/^(?:in\s+)?(?:zu\s*hause|daheim|der\s+eigenen\s+wohnung|seiner\s+wohnung|ihrer\s+wohnung)\b\s*(?:in\s+)?(.*)$/iu', $value, $match)) {
+			return $value;
+		}
 		$place = trim($match[1]);
 		return $place === '' ? 'zu Hause' : 'zu Hause, ' . $place;
 	}
@@ -1098,8 +1385,12 @@ class AssistantService {
 	private function suggestResidenceAnyOrder(string $text, array &$suggestions): void {
 		$sentences = preg_split('/(?<=[.;!?])\s+(?=\p{Lu})/u', $text) ?: [$text];
 		foreach ($sentences as $sentence) {
-			if (!preg_match('/\b(?:wohnte|wohnt|wohnhaft|wohnsitz|anschrift|adresse|lebte|gemeldet)\b/iu', $sentence)) continue;
-			if (!preg_match('/\b(\d{5})\s+([\p{Lu}][\p{L}\-]+(?:\s+(?:am|an\s+der|im|in\s+der|ob\s+der|bei)\s+[\p{Lu}][\p{L}\-]+|\s*\([\p{L}\s]+\))?)/u', $sentence, $place)) continue;
+			if (!preg_match('/\b(?:wohnte|wohnt|wohnhaft|wohnsitz|anschrift|adresse|lebte|gemeldet)\b/iu', $sentence)) {
+				continue;
+			}
+			if (!preg_match('/\b(\d{5})\s+([\p{Lu}][\p{L}\-]+(?:\s+(?:am|an\s+der|im|in\s+der|ob\s+der|bei)\s+[\p{Lu}][\p{L}\-]+|\s*\([\p{L}\s]+\))?)/u', $sentence, $place)) {
+				continue;
+			}
 			$rest = str_replace($place[0], ' ', $sentence);
 			$number = '(\d{1,4}(?:\s?[a-zA-Z](?!\p{L}))?(?:\s?[-\/]\s?\d{1,4}(?:\s?[a-zA-Z](?!\p{L}))?)?)(?![\d.,]\d)';
 			$named = '((?:[\p{Lu}][\p{L}ß.\-]*[ \-]){0,3}[\p{Lu}\p{Ll}][\p{L}ß\-]*' . self::STREET_SUFFIX . ')';
@@ -1137,14 +1428,18 @@ class AssistantService {
 			['/\büberführung\b/iu', 'UEBERFUEHRUNG', .86],
 		];
 		foreach ($rules as [$pattern, $value, $confidence]) {
-			if (!preg_match($pattern, $text, $match)) continue;
+			if (!preg_match($pattern, $text, $match)) {
+				continue;
+			}
 			$this->add($suggestions, 'funeral_type', $value, 'Bestattungsart', $confidence, $match[0]);
 			return;
 		}
 	}
 
 	private function suggestName(string $text, array &$suggestions): void {
-		if (!preg_match('/(?:sterbefall|verstorbene(?:r| person)?|verstorben ist|es\s+geht\s+um)\s+(?:frau\s+|herr\s+)?([\p{L}\'-]+)\s+([\p{L}\'-]+)(?=\s*[,.;]|\s+(?:geborene|geborener|geb[.]|ist|war|wurde)\b|$)/iu', $text, $match)) return;
+		if (!preg_match('/(?:sterbefall|verstorbene(?:r| person)?|verstorben ist|es\s+geht\s+um)\s+(?:frau\s+|herr\s+)?([\p{L}\'-]+)\s+([\p{L}\'-]+)(?=\s*[,.;]|\s+(?:geborene|geborener|geb[.]|ist|war|wurde)\b|$)/iu', $text, $match)) {
+			return;
+		}
 		$this->add($suggestions, 'first_name', $match[1], 'Vorname', .88, $match[0]);
 		$this->add($suggestions, 'last_name', $match[2], 'Nachname', .88, $match[0]);
 	}
@@ -1183,7 +1478,9 @@ class AssistantService {
 		}
 		if (preg_match('/\b(evangelisch|katholisch|islamisch|muslimisch|jüdisch|konfessionslos)\b/iu', $text, $match)) {
 			$religion = mb_strtolower($match[1]);
-			if ($religion === 'muslimisch') $religion = 'Islam';
+			if ($religion === 'muslimisch') {
+				$religion = 'Islam';
+			}
 			$this->add($suggestions, 'religion', $religion, 'Religion', .94, $match[0]);
 		}
 	}
@@ -1193,11 +1490,15 @@ class AssistantService {
 		// Die Straße darf keinen Satzwechsel („. Die …“) enthalten, damit nichts aus einem früheren Satz übernommen wird.
 		$street = '((?:(?!\.\s+\p{Lu})[^;]){3,80}?)';
 		if (!preg_match('/\b(?:zuletzt\s+)?(in\s+der|in\s+dem|im|am|an\s+der|auf\s+der|auf\s+dem)\s+' . $street . ',?\s+(?:in\s+)?(\d{5})\s+([\p{L}][\p{L}\s-]*?)\s+wohnhaft(?:\s+gewesen)?\b/iu', $text, $match)
-			&& !preg_match('/\b(?:der\s+)?letzte\s+wohnsitz\s+(?:ist|war|lautet)()\s+(.+?),?\s+(?:in\s+)?(\d{5})\s+([\p{L}][\p{L}\s-]*?)(?=$|[,.;])/iu', $text, $match)) return;
+			&& !preg_match('/\b(?:der\s+)?letzte\s+wohnsitz\s+(?:ist|war|lautet)()\s+(.+?),?\s+(?:in\s+)?(\d{5})\s+([\p{L}][\p{L}\s-]*?)(?=$|[,.;])/iu', $text, $match)) {
+			return;
+		}
 		$street = rtrim(trim($match[2]), ',');
 		// „am Markt 3“ → Straßenname „Am Markt 3“; bei „in der/im“ gehört die Präposition nicht zur Anschrift.
 		$preposition = mb_strtolower(preg_replace('/\s+/u', ' ', $match[1]));
-		if (in_array($preposition, ['am', 'an der', 'auf der', 'auf dem'], true)) $street = mb_strtoupper(mb_substr($preposition, 0, 1)) . mb_substr($preposition, 1) . ' ' . $street;
+		if (in_array($preposition, ['am', 'an der', 'auf der', 'auf dem'], true)) {
+			$street = mb_strtoupper(mb_substr($preposition, 0, 1)) . mb_substr($preposition, 1) . ' ' . $street;
+		}
 		$this->add($suggestions, 'last_residence', $street, 'Straße / Hausnummer', .9, $match[0]);
 		$this->add($suggestions, 'last_residence_postal_code', $match[3], 'PLZ', .98, $match[0]);
 		$this->add($suggestions, 'last_residence_city', trim($match[4]), 'Letzter Wohnort', .94, $match[0]);
@@ -1238,11 +1539,15 @@ class AssistantService {
 			$elliptic = !$explicit
 				&& str_contains(mb_strtolower($text), 'sterbeurkund')
 				&& preg_match('/\b(\d+|ein(?:e|en)?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn)\s+weitere\s+' . $qualifier . '\b/iu', $text, $match) === 1;
-			if (!$explicit && !$elliptic) continue;
+			if (!$explicit && !$elliptic) {
+				continue;
+			}
 			$value = $this->numberValue($match[1]);
-			if ($value !== null) $this->add($suggestions, $field, (string)$value, $label, .94, $match[0]);
+			if ($value !== null) {
+				$this->add($suggestions, $field, (string)$value, $label, .94, $match[0]);
+			}
 		}
-		// 0.84.0: Anzahl ohne Angabe gebührenfrei/-pflichtig nicht verwerfen. 0.85.0 (Entscheidung Kunde 12.10.2026): als
+		// 0.84.0: Anzahl ohne Angabe gebührenfrei/-pflichtig nicht verwerfen. 0.85.0: als
 		// gebührenpflichtig vorbelegen und die Aufteilung als Prüfhinweis nennen (gebührenfrei bleibt beim Standard des Auftrags).
 		$hasCount = $this->suggestedValue($suggestions, 'certificate_free_count') !== '' || $this->suggestedValue($suggestions, 'certificate_paid_count') !== '';
 		if (!$hasCount && preg_match('/\b(\d+|ein(?:e|en)?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn)\s+(?:\p{L}+\s+)?sterbeurkunden?\b/iu', $text, $match)) {
@@ -1268,13 +1573,17 @@ class AssistantService {
 			'/\b' . $document . '\s+(?:ist|wurde|liegt|wird|haben\s+wir)?\s*(?:\p{L}+\s+){0,3}?' . $signed . '\b/iu',
 		];
 		foreach ($patterns as $pattern) {
-			if (preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE) !== 1) continue;
+			if (preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE) !== 1) {
+				continue;
+			}
 			$offset = (int)$match[0][1];
 			// Nur den eigenen Satz betrachten („kein Grabschmuck o.ä. Der unterschriebene Auftrag …“ ist keine Verneinung).
 			$before = substr($text, max(0, $offset - 40), min(40, $offset));
 			$before = (string)preg_replace('/^.*[.;!?:]/su', '', $before);
 			$window = $before . (string)$match[0][0];
-			if (preg_match('/\b(?:nicht|kein(?:e|en|er)?|noch\s+nicht|ohne)\b/iu', $window) === 1) continue;
+			if (preg_match('/\b(?:nicht|kein(?:e|en|er)?|noch\s+nicht|ohne)\b/iu', $window) === 1) {
+				continue;
+			}
 			$this->followUps[] = ['key' => 'SIGNED_ORDER_UPLOAD', 'label' => 'Unterschriebenen Auftrag hochladen und prüfen', 'source' => trim((string)$match[0][0])];
 			return;
 		}
@@ -1282,27 +1591,41 @@ class AssistantService {
 
 	private function numberValue(string $value): ?int {
 		$value = mb_strtolower(trim($value));
-		if (ctype_digit($value)) return (int)$value;
-		$numbers = ['ein'=>1, 'eine'=>1, 'einen'=>1, 'zwei'=>2, 'drei'=>3, 'vier'=>4, 'fünf'=>5, 'sechs'=>6, 'sieben'=>7, 'acht'=>8, 'neun'=>9, 'zehn'=>10];
+		if (ctype_digit($value)) {
+			return (int)$value;
+		}
+		$numbers = ['ein' => 1, 'eine' => 1, 'einen' => 1, 'zwei' => 2, 'drei' => 3, 'vier' => 4, 'fünf' => 5, 'sechs' => 6, 'sieben' => 7, 'acht' => 8, 'neun' => 9, 'zehn' => 10];
 		return $numbers[$value] ?? null;
 	}
 
 	private function suggestDate(string $text, array &$suggestions, string $field, string $pattern, string $label): void {
-		if (!preg_match($pattern, $text, $match)) return;
+		if (!preg_match($pattern, $text, $match)) {
+			return;
+		}
 		$value = $this->dateValue(trim($match[1]));
-		if ($value !== null) $this->add($suggestions, $field, $value, $label, .9, $match[0]);
+		if ($value !== null) {
+			$this->add($suggestions, $field, $value, $label, .9, $match[0]);
+		}
 	}
 
 	private function suggestValue(string $text, array &$suggestions, string $field, string $pattern, string $label, float $confidence): void {
-		if (!preg_match($pattern, $text, $match)) return;
+		if (!preg_match($pattern, $text, $match)) {
+			return;
+		}
 		$value = trim($match[1]);
-		if ($value !== '') $this->add($suggestions, $field, $value, $label, $confidence, $match[0]);
+		if ($value !== '') {
+			$this->add($suggestions, $field, $value, $label, $confidence, $match[0]);
+		}
 	}
 
 	private function add(array &$suggestions, string $field, string $value, string $label, float $confidence, string $source): void {
 		foreach ($suggestions as &$existing) {
-			if ($existing['field'] !== $field) continue;
-			if ((string)$existing['value'] !== $value) $existing['alternatives'][] = $value;
+			if ($existing['field'] !== $field) {
+				continue;
+			}
+			if ((string)$existing['value'] !== $value) {
+				$existing['alternatives'][] = $value;
+			}
 			return;
 		}
 		unset($existing);
@@ -1311,18 +1634,24 @@ class AssistantService {
 
 	private function applyApprovedRules(string $text, array &$suggestions): void {
 		// Ohne Datenbank (Textprüfung ohne Konstruktor, z. B. tests/assistant-0322-text-fixture.php) nur feste Regeln anwenden.
-		if (!(new \ReflectionProperty(self::class, 'db'))->isInitialized($this)) return;
+		if (!(new \ReflectionProperty(self::class, 'db'))->isInitialized($this)) {
+			return;
+		}
 		try {
 			$query = $this->db->getQueryBuilder();
-			$rows = $query->select('id','field_key','trigger_pattern','canonical_value')->from('bestatter_assistant_rules')->where($query->expr()->eq('status',$query->createNamedParameter('APPROVED')))->andWhere($query->expr()->eq('strategy',$query->createNamedParameter('ENUM')))->executeQuery()->fetchAllAssociative();
+			$rows = $query->select('id', 'field_key', 'trigger_pattern', 'canonical_value')->from('bestatter_assistant_rules')->where($query->expr()->eq('status', $query->createNamedParameter('APPROVED')))->andWhere($query->expr()->eq('strategy', $query->createNamedParameter('ENUM')))->executeQuery()->fetchAllAssociative();
 			$normalized = mb_strtolower($text);
 			foreach ($rows as $row) {
 				$needle = str_replace('{value}', '', mb_strtolower((string)$row['trigger_pattern']));
-				if ($needle === '' || !str_contains($normalized, trim($needle))) continue;
+				if ($needle === '' || !str_contains($normalized, trim($needle))) {
+					continue;
+				}
 				$this->add($suggestions, (string)$row['field_key'], (string)$row['canonical_value'], (string)$row['field_key'], .8, (string)$row['trigger_pattern']);
-				$update=$this->db->getQueryBuilder(); $update->update('bestatter_assistant_rules')->set('usage_count',$update->createFunction('usage_count + 1'))->where($update->expr()->eq('id',$update->createNamedParameter((int)$row['id'])))->executeStatement();
+				$update = $this->db->getQueryBuilder();
+				$update->update('bestatter_assistant_rules')->set('usage_count', $update->createFunction('usage_count + 1'))->where($update->expr()->eq('id', $update->createNamedParameter((int)$row['id'])))->executeStatement();
 			}
-		} catch (\Throwable) { /* Learning must never disable deterministic capture. */ }
+		} catch (\Throwable) { /* Learning must never disable deterministic capture. */
+		}
 	}
 
 	private function compactEvidence(string $source): string {
@@ -1333,7 +1662,9 @@ class AssistantService {
 
 	private function suggestedValue(array $suggestions, string $field): string {
 		foreach ($suggestions as $suggestion) {
-			if (($suggestion['field'] ?? '') === $field) return trim((string)($suggestion['value'] ?? ''));
+			if (($suggestion['field'] ?? '') === $field) {
+				return trim((string)($suggestion['value'] ?? ''));
+			}
 		}
 		return '';
 	}
@@ -1341,13 +1672,20 @@ class AssistantService {
 	private function dateValue(string $value): ?string {
 		$value = mb_strtolower(trim($value));
 		$today = new \DateTimeImmutable('today');
-		if (preg_match('/\bheute\b/u', $value)) return $today->format('Y-m-d');
-		if (preg_match('/\bgestern\b/u', $value)) return $today->modify('-1 day')->format('Y-m-d');
+		if (preg_match('/\bheute\b/u', $value)) {
+			return $today->format('Y-m-d');
+		}
+		if (preg_match('/\bgestern\b/u', $value)) {
+			return $today->modify('-1 day')->format('Y-m-d');
+		}
 		if (preg_match('/(\d{1,2})[.]\s*(\d{1,2})[.]\s*(\d{2,4})/', $value, $match)) {
-			$year = (int)$match[3]; if ($year < 100) $year += $year > 30 ? 1900 : 2000;
+			$year = (int)$match[3];
+			if ($year < 100) {
+				$year += $year > 30 ? 1900 : 2000;
+			}
 			return checkdate((int)$match[2], (int)$match[1], $year) ? sprintf('%04d-%02d-%02d', $year, $match[2], $match[1]) : null;
 		}
-		$months = ['januar'=>1,'februar'=>2,'märz'=>3,'maerz'=>3,'april'=>4,'mai'=>5,'juni'=>6,'juli'=>7,'august'=>8,'september'=>9,'oktober'=>10,'november'=>11,'dezember'=>12];
+		$months = ['januar' => 1,'februar' => 2,'märz' => 3,'maerz' => 3,'april' => 4,'mai' => 5,'juni' => 6,'juli' => 7,'august' => 8,'september' => 9,'oktober' => 10,'november' => 11,'dezember' => 12];
 		if (preg_match('/(\d{1,2})[.]?\s*([\p{L}]+)\s*(\d{4})/u', $value, $match) && isset($months[$match[2]])) {
 			return checkdate($months[$match[2]], (int)$match[1], (int)$match[3]) ? sprintf('%04d-%02d-%02d', $match[3], $months[$match[2]], $match[1]) : null;
 		}
@@ -1363,21 +1701,30 @@ class AssistantService {
 	private function intentDate(string $input): string {
 		$date = null;
 		$today = new \DateTimeImmutable('today');
-		if (preg_match('/\bheute\b/iu', $input)) $date = $today;
-		elseif (preg_match('/\bmorgen\b/iu', $input)) $date = $today->modify('+1 day');
-		elseif (preg_match('/\b(\d{1,2})[.](\d{1,2})[.](\d{4})\b/u', $input, $match) && checkdate((int)$match[2], (int)$match[1], (int)$match[3])) {
+		if (preg_match('/\bheute\b/iu', $input)) {
+			$date = $today;
+		} elseif (preg_match('/\bmorgen\b/iu', $input)) {
+			$date = $today->modify('+1 day');
+		} elseif (preg_match('/\b(\d{1,2})[.](\d{1,2})[.](\d{4})\b/u', $input, $match) && checkdate((int)$match[2], (int)$match[1], (int)$match[3])) {
 			$date = new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $match[3], $match[2], $match[1]));
 		}
-		if ($date === null) return '';
+		if ($date === null) {
+			return '';
+		}
 		$time = '00:00';
-		if (preg_match('/\b(?:um\s+)?([01]?\d|2[0-3])[:.]([0-5]\d)\s*(?:uhr)?\b/iu', $input, $match)) $time = sprintf('%02d:%02d', $match[1], $match[2]);
-		elseif (preg_match('/\bum\s+([01]?\d|2[0-3])\s+uhr\b/iu', $input, $match)) $time = sprintf('%02d:00', $match[1]);
+		if (preg_match('/\b(?:um\s+)?([01]?\d|2[0-3])[:.]([0-5]\d)\s*(?:uhr)?\b/iu', $input, $match)) {
+			$time = sprintf('%02d:%02d', $match[1], $match[2]);
+		} elseif (preg_match('/\bum\s+([01]?\d|2[0-3])\s+uhr\b/iu', $input, $match)) {
+			$time = sprintf('%02d:00', $match[1]);
+		}
 		return $date->format('Y-m-d') . 'T' . $time;
 	}
 
 	private function confirmationToken(string $intent, array $data): string {
 		$userId = $this->userSession->getUser()?->getUID();
-		if ($userId === null) throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		if ($userId === null) {
+			throw new \RuntimeException('Kein Nextcloud-Benutzer angemeldet.');
+		}
 		$payload = $this->base64Url(json_encode(['intent' => $intent, 'data' => $data, 'userId' => $userId, 'expiresAt' => time() + 300], JSON_THROW_ON_ERROR));
 		$signature = $this->base64Url(hash_hmac('sha256', $payload, $this->config->getSystemValueString('secret'), true));
 		return $payload . '.' . $signature;
@@ -1385,10 +1732,14 @@ class AssistantService {
 
 	private function verifyConfirmationToken(string $token): array {
 		$parts = explode('.', $token, 2);
-		if (count($parts) !== 2) throw new \InvalidArgumentException('Die Bestätigung ist ungültig. Bitte die Vorschau erneut aufrufen.');
+		if (count($parts) !== 2) {
+			throw new \InvalidArgumentException('Die Bestätigung ist ungültig. Bitte die Vorschau erneut aufrufen.');
+		}
 		[$payload, $signature] = $parts;
 		$expected = $this->base64Url(hash_hmac('sha256', $payload, $this->config->getSystemValueString('secret'), true));
-		if (!hash_equals($expected, $signature)) throw new \InvalidArgumentException('Die Bestätigung ist ungültig. Bitte die Vorschau erneut aufrufen.');
+		if (!hash_equals($expected, $signature)) {
+			throw new \InvalidArgumentException('Die Bestätigung ist ungültig. Bitte die Vorschau erneut aufrufen.');
+		}
 		$decoded = base64_decode(strtr($payload, '-_', '+/'), true);
 		$data = $decoded === false ? null : json_decode($decoded, true, 512, JSON_THROW_ON_ERROR);
 		$userId = $this->userSession->getUser()?->getUID();

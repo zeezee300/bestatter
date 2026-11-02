@@ -13,7 +13,12 @@ class ReportingService {
 	private const CLOSED_ACTIVITY_STATUSES = ['ERLEDIGT', 'DONE', 'ABGESCHLOSSEN', 'FINAL'];
 	private const COMMITTED_INVOICE_STATUSES = ['FREIGEGEBEN', 'VERSENDET', 'TEILBEZAHLT', 'BEZAHLT'];
 
-	public function __construct(private IDBConnection $db, private AuditService $audit) {}
+	public function __construct(
+		private IDBConnection $db,
+		private AuditService $audit,
+		private ?PrecareService $precare = null,
+	) {
+	}
 
 	public function summary(string $from = '', string $to = '', string $branch = 'ALL'): array {
 		$cases = $this->caseRows($from, $to, $branch);
@@ -29,12 +34,17 @@ class ReportingService {
 			'cases' => count($cases), 'services' => count($services), 'invoices' => count($invoices),
 			'branches' => count($branches), 'workload' => count($workload),
 			'kpis' => $kpis,
+			// 0.89.7: angelegte Akten je Vorgangsart und Kennzahlen der Vorsorge (Angaben aus der Akte, keine Buchhaltung)
+			'casesByKind' => array_count_values(array_map(static fn (array $row): string => (string)$row['Vorgangsart'], $cases)),
+			'precare' => $this->precare?->metrics($from !== '' ? $this->date($from) : '0000-01-01', $to !== '' ? $this->date($to) : '9999-12-31', $branch === '' ? 'ALL' : $branch),
 		];
 	}
 
 	public function csv(string $type, string $from = '', string $to = '', string $branch = 'ALL'): string {
 		$type = strtolower(trim($type));
-		if (!in_array($type, self::TYPES, true)) throw new \InvalidArgumentException('Die gewählte Auswertung ist nicht verfügbar.');
+		if (!in_array($type, self::TYPES, true)) {
+			throw new \InvalidArgumentException('Die gewählte Auswertung ist nicht verfügbar.');
+		}
 		$rows = match ($type) {
 			'cases' => $this->caseRows($from, $to, $branch),
 			'services' => $this->serviceRows($from, $to, $branch),
@@ -49,10 +59,10 @@ class ReportingService {
 
 	private function caseRows(string $from, string $to, string $branch): array {
 		$q = $this->db->getQueryBuilder();
-		$q->select('case_number', 'first_name', 'last_name', 'date_of_death', 'funeral_type', 'status', 'branch', 'responsible_employee', 'created_at')->from('bestatter_cases');
+		$q->select('case_number', 'first_name', 'last_name', 'date_of_death', 'funeral_type', 'status', 'branch', 'responsible_employee', 'created_at', 'case_kind', 'order_type')->from('bestatter_cases');
 		$this->where($q, 'created_at', 'branch', $from, $to, $branch);
 		$rows = $q->orderBy('created_at', 'DESC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn($r) => ['Fallnummer' => $r['case_number'], 'Vorname' => $r['first_name'], 'Nachname' => $r['last_name'], 'Sterbedatum' => $r['date_of_death'] ?? '', 'Bestattungsart' => $r['funeral_type'] ?? '', 'Fallstatus' => $r['status'], 'Niederlassung' => $r['branch'] ?? '', 'Verantwortlich' => $r['responsible_employee'] ?? '', 'Angelegt am' => $r['created_at']], $rows);
+		return array_map(static fn ($r) => ['Fallnummer' => $r['case_number'], 'Vorgangsart' => CaseKinds::label((string)($r['case_kind'] ?? '') ?: CaseKinds::DEATH), 'Auftragsart' => (string)($r['order_type'] ?? ''), 'Vorname' => $r['first_name'], 'Nachname' => $r['last_name'], 'Sterbedatum' => $r['date_of_death'] ?? '', 'Bestattungsart' => $r['funeral_type'] ?? '', 'Fallstatus' => $r['status'], 'Niederlassung' => $r['branch'] ?? '', 'Verantwortlich' => $r['responsible_employee'] ?? '', 'Angelegt am' => $r['created_at']], $rows);
 	}
 
 	private function serviceRows(string $from, string $to, string $branch): array {
@@ -60,7 +70,7 @@ class ReportingService {
 		$q->select('c.case_number', 'c.branch', 's.side_order_id', 'so.side_order_number', 's.article_number', 's.title', 's.origin', 's.cost_type', 's.article_group', 's.unit', 's.ordered_quantity_milli', 's.performed_quantity_milli', 's.invoiced_quantity_milli', 's.unit_price_cents', 's.vat_rate', 's.service_status', 's.billability', 's.performed_by', 's.updated_at')->from('bestatter_case_services', 's')->innerJoin('s', 'bestatter_cases', 'c', $q->expr()->eq('c.id', 's.case_id'))->leftJoin('s', 'bestatter_side_orders', 'so', $q->expr()->eq('so.id', 's.side_order_id'))->where($q->expr()->neq('s.item_category', $q->createNamedParameter('PACKAGE')));
 		$this->where($q, 's.updated_at', 'c.branch', $from, $to, $branch, true);
 		$rows = $q->orderBy('c.case_number', 'ASC')->addOrderBy('s.sort_order', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn($r) => ['Fallnummer' => $r['case_number'], 'Nebenauftrag' => $r['side_order_number'] ?? '', 'Niederlassung' => $r['branch'] ?? '', 'Artikelnummer' => $r['article_number'], 'Leistung' => $r['title'], 'Herkunft' => ($r['origin'] ?? '') === 'NACHTRAG' ? 'NTR – Nachtrag' : ($r['origin'] ?? 'ORDER'), 'Kostenart' => $r['cost_type'], 'Einheit' => $r['unit'], 'Beauftragt' => (int)$r['ordered_quantity_milli'] / 1000, 'Erbracht' => (int)$r['performed_quantity_milli'] / 1000, 'Fakturiert' => (int)$r['invoiced_quantity_milli'] / 1000, 'Einzelpreis netto' => (int)$r['unit_price_cents'] / 100, 'MwSt. %' => (int)$r['vat_rate'], 'Leistungsstatus' => CatalogRules::SERVICE_STATUS_LABELS[CatalogRules::deriveStatus((int)$r['ordered_quantity_milli'], (int)$r['performed_quantity_milli'], (int)$r['invoiced_quantity_milli'], (string)$r['service_status'])] ?? (string)$r['service_status'], 'Warengruppe' => (string)($r['article_group'] ?? ''), 'Abrechenbarkeit' => $r['billability'], 'Bearbeitet von' => $r['performed_by'] ?? '', 'Stand' => $r['updated_at']], $rows);
+		return array_map(static fn ($r) => ['Fallnummer' => $r['case_number'], 'Nebenauftrag' => $r['side_order_number'] ?? '', 'Niederlassung' => $r['branch'] ?? '', 'Artikelnummer' => $r['article_number'], 'Leistung' => $r['title'], 'Herkunft' => ($r['origin'] ?? '') === 'NACHTRAG' ? 'NTR – Nachtrag' : ($r['origin'] ?? 'ORDER'), 'Kostenart' => $r['cost_type'], 'Einheit' => $r['unit'], 'Beauftragt' => (int)$r['ordered_quantity_milli'] / 1000, 'Erbracht' => (int)$r['performed_quantity_milli'] / 1000, 'Fakturiert' => (int)$r['invoiced_quantity_milli'] / 1000, 'Einzelpreis netto' => (int)$r['unit_price_cents'] / 100, 'MwSt. %' => (int)$r['vat_rate'], 'Leistungsstatus' => CatalogRules::SERVICE_STATUS_LABELS[CatalogRules::deriveStatus((int)$r['ordered_quantity_milli'], (int)$r['performed_quantity_milli'], (int)$r['invoiced_quantity_milli'], (string)$r['service_status'])] ?? (string)$r['service_status'], 'Warengruppe' => (string)($r['article_group'] ?? ''), 'Abrechenbarkeit' => $r['billability'], 'Bearbeitet von' => $r['performed_by'] ?? '', 'Stand' => $r['updated_at']], $rows);
 	}
 
 	private function invoiceRows(string $from, string $to, string $branch): array {
@@ -68,7 +78,7 @@ class ReportingService {
 		$q->select('c.case_number', 'c.branch', 'i.side_order_id', 'so.side_order_number', 'i.invoice_number', 'i.status', 'i.net_cents', 'i.vat_cents', 'i.gross_cents', 'i.created_by', 'i.created_at', 'i.document_kind')->selectAlias('ref.invoice_number', 'reference_number')->from('bestatter_invoices', 'i')->innerJoin('i', 'bestatter_cases', 'c', $q->expr()->eq('c.id', 'i.case_id'))->leftJoin('i', 'bestatter_side_orders', 'so', $q->expr()->eq('so.id', 'i.side_order_id'))->leftJoin('i', 'bestatter_invoices', 'ref', $q->expr()->eq('ref.id', 'i.reference_invoice_id'));
 		$this->where($q, 'i.created_at', 'c.branch', $from, $to, $branch);
 		$rows = $q->orderBy('i.created_at', 'DESC')->executeQuery()->fetchAllAssociative();
-		return array_map(static fn($r) => ['Rechnungsnummer' => $r['invoice_number'], 'Belegart' => CommercialService::DOCUMENT_KINDS[(string)($r['document_kind'] ?? 'INVOICE')] ?? 'Rechnung', 'Bezug' => (string)($r['reference_number'] ?? ''), 'Fallnummer' => $r['case_number'], 'Nebenauftrag' => $r['side_order_number'] ?? '', 'Niederlassung' => $r['branch'] ?? '', 'Status' => $r['status'], 'Netto EUR' => (int)$r['net_cents'] / 100, 'MwSt. EUR' => (int)$r['vat_cents'] / 100, 'Brutto EUR' => (int)$r['gross_cents'] / 100, 'Erstellt von' => $r['created_by'], 'Erstellt am' => $r['created_at']], $rows);
+		return array_map(static fn ($r) => ['Rechnungsnummer' => $r['invoice_number'], 'Belegart' => CommercialService::DOCUMENT_KINDS[(string)($r['document_kind'] ?? 'INVOICE')] ?? 'Rechnung', 'Bezug' => (string)($r['reference_number'] ?? ''), 'Fallnummer' => $r['case_number'], 'Nebenauftrag' => $r['side_order_number'] ?? '', 'Niederlassung' => $r['branch'] ?? '', 'Status' => $r['status'], 'Netto EUR' => (int)$r['net_cents'] / 100, 'MwSt. EUR' => (int)$r['vat_cents'] / 100, 'Brutto EUR' => (int)$r['gross_cents'] / 100, 'Erstellt von' => $r['created_by'], 'Erstellt am' => $r['created_at']], $rows);
 	}
 
 	private function workloadRows(string $from, string $to, string $branch): array {
@@ -95,65 +105,129 @@ class ReportingService {
 		$now = time();
 		foreach ($workload as $row) {
 			$name = trim((string)($row['Zuständig'] ?? '')) ?: 'Ohne Zuordnung';
-			if ($name !== 'Ohne Zuordnung') $assignedEntries++;
+			if ($name !== 'Ohne Zuordnung') {
+				$assignedEntries++;
+			}
 			$employees[$name] ??= ['name' => $name, 'openTasks' => 0, 'completedTasks' => 0, 'overdueTasks' => 0, 'appointments' => 0, 'plannedMinutes' => 0, 'actualMinutes' => 0, 'actualTimeCoveragePercent' => 0, '_activities' => 0, '_actualEntries' => 0];
 			$employees[$name]['_activities']++;
 			$status = strtoupper((string)$row['Status']);
 			$done = in_array($status, self::CLOSED_ACTIVITY_STATUSES, true);
 			if ($row['Art'] === 'Aufgabe') {
-				if ($done) { $completedTasks++; $employees[$name]['completedTasks']++; }
-				else {
-					$openTasks++; $employees[$name]['openTasks']++;
+				if ($done) {
+					$completedTasks++;
+					$employees[$name]['completedTasks']++;
+				} else {
+					$openTasks++;
+					$employees[$name]['openTasks']++;
 					$due = trim((string)($row['Datum / Zeit'] ?? ''));
 					$dueTimestamp = $due === '' ? false : strtotime($due);
-					if ($dueTimestamp !== false) { $tasksWithDueDate++; if ($dueTimestamp < $now) { $overdueTasks++; $employees[$name]['overdueTasks']++; } }
-					elseif ($due !== '') $invalidActivityValues++;
+					if ($dueTimestamp !== false) {
+						$tasksWithDueDate++;
+						if ($dueTimestamp < $now) {
+							$overdueTasks++;
+							$employees[$name]['overdueTasks']++;
+						}
+					} elseif ($due !== '') {
+						$invalidActivityValues++;
+					}
 				}
 			} else {
-				$appointments++; $employees[$name]['appointments']++;
-				if ($done) $completedAppointments++;
-				if ($status === 'ABGESAGT' || $status === 'CANCELLED') $cancelledAppointments++;
+				$appointments++;
+				$employees[$name]['appointments']++;
+				if ($done) {
+					$completedAppointments++;
+				}
+				if ($status === 'ABGESAGT' || $status === 'CANCELLED') {
+					$cancelledAppointments++;
+				}
 			}
-			$plan = (int)($row['Planzeit Minuten'] ?? 0); $actual = (int)($row['Istzeit Minuten'] ?? 0);
-			if ($plan < 0 || $actual < 0) { $invalidActivityValues++; $plan = max(0, $plan); $actual = max(0, $actual); }
-			if ($plan > 0) $plannedEntries++;
-			if ($actual > 0) { $actualEntries++; $employees[$name]['_actualEntries']++; }
-			if ($plan > 0 && $actual > $plan * 3) $extremeTimeDeviations++;
-			$employees[$name]['plannedMinutes'] += $plan; $employees[$name]['actualMinutes'] += $actual;
-			$plannedMinutes += $plan; $actualMinutes += $actual;
+			$plan = (int)($row['Planzeit Minuten'] ?? 0);
+			$actual = (int)($row['Istzeit Minuten'] ?? 0);
+			if ($plan < 0 || $actual < 0) {
+				$invalidActivityValues++;
+				$plan = max(0, $plan);
+				$actual = max(0, $actual);
+			}
+			if ($plan > 0) {
+				$plannedEntries++;
+			}
+			if ($actual > 0) {
+				$actualEntries++;
+				$employees[$name]['_actualEntries']++;
+			}
+			if ($plan > 0 && $actual > $plan * 3) {
+				$extremeTimeDeviations++;
+			}
+			$employees[$name]['plannedMinutes'] += $plan;
+			$employees[$name]['actualMinutes'] += $actual;
+			$plannedMinutes += $plan;
+			$actualMinutes += $actual;
 		}
-		foreach ($employees as &$employee) { $employee['actualTimeCoveragePercent'] = $this->percent($employee['_actualEntries'], $employee['_activities']); unset($employee['_activities'], $employee['_actualEntries']); }
-		unset($employee); ksort($employees, SORT_NATURAL | SORT_FLAG_CASE);
+		foreach ($employees as &$employee) {
+			$employee['actualTimeCoveragePercent'] = $this->percent($employee['_actualEntries'], $employee['_activities']);
+			unset($employee['_activities'], $employee['_actualEntries']);
+		}
+		unset($employee);
+		ksort($employees, SORT_NATURAL | SORT_FLAG_CASE);
 
 		$orderedQuantity = $performedQuantity = $invoicedQuantity = 0.0;
 		$performedServices = $fullyPerformedServices = $invalidServiceValues = $serviceQuantityDeviations = 0;
 		$performedNetByCostType = ['INTERNAL' => 0.0, 'EXPENSE' => 0.0, 'THIRD_PARTY' => 0.0];
 		foreach ($services as $row) {
-			$ordered = (float)($row['Beauftragt'] ?? 0); $performed = (float)($row['Erbracht'] ?? 0); $invoiced = (float)($row['Fakturiert'] ?? 0);
-			if ($ordered < 0 || $performed < 0 || $invoiced < 0 || (float)($row['Einzelpreis netto'] ?? 0) < 0) $invalidServiceValues++;
-			if ($invoiced > $performed + 0.0005) $invalidServiceValues++;
-			if ($ordered > 0 && $performed > $ordered + 0.0005) $serviceQuantityDeviations++;
-			$orderedQuantity += max(0.0, $ordered); $performedQuantity += max(0.0, $performed); $invoicedQuantity += max(0.0, $invoiced);
+			$ordered = (float)($row['Beauftragt'] ?? 0);
+			$performed = (float)($row['Erbracht'] ?? 0);
+			$invoiced = (float)($row['Fakturiert'] ?? 0);
+			if ($ordered < 0 || $performed < 0 || $invoiced < 0 || (float)($row['Einzelpreis netto'] ?? 0) < 0) {
+				$invalidServiceValues++;
+			}
+			if ($invoiced > $performed + 0.0005) {
+				$invalidServiceValues++;
+			}
+			if ($ordered > 0 && $performed > $ordered + 0.0005) {
+				$serviceQuantityDeviations++;
+			}
+			$orderedQuantity += max(0.0, $ordered);
+			$performedQuantity += max(0.0, $performed);
+			$invoicedQuantity += max(0.0, $invoiced);
 			$costType = strtoupper((string)($row['Kostenart'] ?? 'INTERNAL'));
 			$performedNetByCostType[$costType] = ($performedNetByCostType[$costType] ?? 0.0) + max(0.0, $performed) * max(0.0, (float)($row['Einzelpreis netto'] ?? 0));
-			if ($performed > 0) $performedServices++;
-			if ($ordered > 0 && $performed + 0.0005 >= $ordered) $fullyPerformedServices++;
+			if ($performed > 0) {
+				$performedServices++;
+			}
+			if ($ordered > 0 && $performed + 0.0005 >= $ordered) {
+				$fullyPerformedServices++;
+			}
 		}
 
 		$invoiceNet = $invoiceGross = $committedInvoiceGross = 0.0;
 		$activeInvoices = $committedInvoices = $invalidInvoiceValues = 0;
 		foreach ($invoices as $row) {
 			$status = strtoupper((string)($row['Status'] ?? ''));
-			if ($status === 'STORNIERT') continue;
+			if ($status === 'STORNIERT') {
+				continue;
+			}
 			// 0.70.0: Eine Stornorechnung hebt ihre (dann stornierte) Rechnung auf – beide zählen nicht. Gutschriften mindern den Umsatz.
 			$kind = (string)($row['Belegart'] ?? 'Rechnung');
-			if ($kind === 'Stornorechnung') continue;
-			$net = (float)($row['Netto EUR'] ?? 0); $vat = (float)($row['MwSt. EUR'] ?? 0); $gross = (float)($row['Brutto EUR'] ?? 0);
-			$invoiceNet += $net; $invoiceGross += $gross;
-			if ($kind === 'Rechnung') $activeInvoices++;
-			if (in_array($status, self::COMMITTED_INVOICE_STATUSES, true)) { if ($kind === 'Rechnung') $committedInvoices++; $committedInvoiceGross += $gross; }
+			if ($kind === 'Stornorechnung') {
+				continue;
+			}
+			$net = (float)($row['Netto EUR'] ?? 0);
+			$vat = (float)($row['MwSt. EUR'] ?? 0);
+			$gross = (float)($row['Brutto EUR'] ?? 0);
+			$invoiceNet += $net;
+			$invoiceGross += $gross;
+			if ($kind === 'Rechnung') {
+				$activeInvoices++;
+			}
+			if (in_array($status, self::COMMITTED_INVOICE_STATUSES, true)) {
+				if ($kind === 'Rechnung') {
+					$committedInvoices++;
+				} $committedInvoiceGross += $gross;
+			}
 			$wrongSign = $kind === 'Gutschrift' ? ($net > 0 || $vat > 0 || $gross > 0) : ($net < 0 || $vat < 0 || $gross < 0);
-			if ($wrongSign || abs(($net + $vat) - $gross) > 0.011) $invalidInvoiceValues++;
+			if ($wrongSign || abs(($net + $vat) - $gross) > 0.011) {
+				$invalidInvoiceValues++;
+			}
 		}
 
 		$qualityChecks = [
@@ -169,8 +243,8 @@ class ReportingService {
 		$overall = in_array('ERROR', $statuses, true) ? 'ERROR' : (in_array('WARN', $statuses, true) ? 'WARN' : 'OK');
 		$performedNetTotal = array_sum($performedNetByCostType);
 		return [
-			'openCases' => count(array_filter($cases, static fn(array $row): bool => !in_array(strtoupper((string)$row['Fallstatus']), self::CLOSED_CASE_STATUSES, true))),
-			'closedCases' => count(array_filter($cases, static fn(array $row): bool => in_array(strtoupper((string)$row['Fallstatus']), self::CLOSED_CASE_STATUSES, true))),
+			'openCases' => count(array_filter($cases, static fn (array $row): bool => !in_array(strtoupper((string)$row['Fallstatus']), self::CLOSED_CASE_STATUSES, true))),
+			'closedCases' => count(array_filter($cases, static fn (array $row): bool => in_array(strtoupper((string)$row['Fallstatus']), self::CLOSED_CASE_STATUSES, true))),
 			'openTasks' => $openTasks, 'completedTasks' => $completedTasks,
 			'taskCompletionRate' => $this->percent($completedTasks, $openTasks + $completedTasks),
 			'overdueTasks' => $overdueTasks, 'overdueRate' => $this->percent($overdueTasks, $openTasks), 'tasksWithDueDate' => $tasksWithDueDate,
@@ -185,8 +259,8 @@ class ReportingService {
 			'performedServices' => $performedServices, 'fullyPerformedServices' => $fullyPerformedServices,
 			'serviceCompletionRate' => $orderedQuantity > 0 ? round($performedQuantity / $orderedQuantity * 100, 1) : null,
 			'billingRate' => $performedQuantity > 0 ? round($invoicedQuantity / $performedQuantity * 100, 1) : null,
-			'performedNetByCostType' => array_map(static fn(float $value): float => round($value, 2), $performedNetByCostType),
-			'performedNetShareByCostType' => array_map(fn(float $value): float => $this->percent($value, $performedNetTotal), $performedNetByCostType),
+			'performedNetByCostType' => array_map(static fn (float $value): float => round($value, 2), $performedNetByCostType),
+			'performedNetShareByCostType' => array_map(fn (float $value): float => $this->percent($value, $performedNetTotal), $performedNetByCostType),
 			'employees' => array_values($employees), 'quality' => ['overall' => $overall, 'checks' => $qualityChecks],
 		];
 	}
@@ -216,29 +290,70 @@ class ReportingService {
 		return ['Kennzahl' => $name, 'Wert' => $value, 'Einheit' => $unit, 'Status' => $status, 'Datenbasis / Einschränkung' => $basis, 'Bezugswert netto EUR' => $netValue === null ? '' : round($netValue, 2)];
 	}
 
-	private function quality(string $key, string $label, string $status, string $message, ?float $coveragePercent = null): array { return ['key' => $key, 'label' => $label, 'status' => $status, 'message' => $message, 'coveragePercent' => $coveragePercent]; }
-	private function percent(float|int $part, float|int $total): float { return $total > 0 ? round($part / $total * 100, 1) : 0.0; }
+	private function quality(string $key, string $label, string $status, string $message, ?float $coveragePercent = null): array {
+		return ['key' => $key, 'label' => $label, 'status' => $status, 'message' => $message, 'coveragePercent' => $coveragePercent];
+	}
+	private function percent(float|int $part, float|int $total): float {
+		return $total > 0 ? round($part / $total * 100, 1) : 0.0;
+	}
 
 	private function branchRows(string $from, string $to, string $branch): array {
 		$groups = [];
 		foreach ($this->invoiceRows($from, $to, $branch) as $row) {
-			if (strtoupper((string)$row['Status']) === 'STORNIERT' || ($row['Belegart'] ?? '') === 'Stornorechnung') continue;
+			if (strtoupper((string)$row['Status']) === 'STORNIERT' || ($row['Belegart'] ?? '') === 'Stornorechnung') {
+				continue;
+			}
 			$key = (string)($row['Niederlassung'] ?: 'Ohne Zuordnung');
 			$groups[$key] ??= ['Niederlassung' => $key, 'Rechnungen' => 0, 'Netto EUR' => 0.0, 'MwSt. EUR' => 0.0, 'Brutto EUR' => 0.0];
-			if (($row['Belegart'] ?? 'Rechnung') === 'Rechnung') $groups[$key]['Rechnungen']++; $groups[$key]['Netto EUR'] += (float)$row['Netto EUR']; $groups[$key]['MwSt. EUR'] += (float)$row['MwSt. EUR']; $groups[$key]['Brutto EUR'] += (float)$row['Brutto EUR'];
+			if (($row['Belegart'] ?? 'Rechnung') === 'Rechnung') {
+				$groups[$key]['Rechnungen']++;
+			} $groups[$key]['Netto EUR'] += (float)$row['Netto EUR'];
+			$groups[$key]['MwSt. EUR'] += (float)$row['MwSt. EUR'];
+			$groups[$key]['Brutto EUR'] += (float)$row['Brutto EUR'];
 		}
-		ksort($groups, SORT_NATURAL | SORT_FLAG_CASE); return array_values($groups);
+		ksort($groups, SORT_NATURAL | SORT_FLAG_CASE);
+		return array_values($groups);
 	}
 
 	private function where($q, string $dateColumn, string $branchColumn, string $from, string $to, string $branch, bool $hasWhere = false): void {
 		$filters = [];
-		if ($from !== '') $filters[] = $q->expr()->gte($dateColumn, $q->createNamedParameter($this->date($from)));
-		if ($to !== '') { $nextDay = (new \DateTimeImmutable($this->date($to)))->modify('+1 day')->format('Y-m-d'); $filters[] = $q->expr()->lt($dateColumn, $q->createNamedParameter($nextDay)); }
-		if ($branch !== '' && strtoupper($branch) !== 'ALL') $filters[] = $q->expr()->eq($branchColumn, $q->createNamedParameter(mb_substr($branch, 0, 100)));
-		foreach ($filters as $condition) { if ($hasWhere) $q->andWhere($condition); else { $q->where($condition); $hasWhere = true; } }
+		if ($from !== '') {
+			$filters[] = $q->expr()->gte($dateColumn, $q->createNamedParameter($this->date($from)));
+		}
+		if ($to !== '') {
+			$nextDay = (new \DateTimeImmutable($this->date($to)))->modify('+1 day')->format('Y-m-d');
+			$filters[] = $q->expr()->lt($dateColumn, $q->createNamedParameter($nextDay));
+		}
+		if ($branch !== '' && strtoupper($branch) !== 'ALL') {
+			$filters[] = $q->expr()->eq($branchColumn, $q->createNamedParameter(mb_substr($branch, 0, 100)));
+		}
+		foreach ($filters as $condition) {
+			if ($hasWhere) {
+				$q->andWhere($condition);
+			} else {
+				$q->where($condition);
+				$hasWhere = true;
+			}
+		}
 	}
 
-	private function filters(string $from, string $to, string $branch): array { return ['from' => $from === '' ? '' : $this->date($from), 'to' => $to === '' ? '' : $this->date($to), 'branch' => $branch === '' ? 'ALL' : $branch]; }
-	private function date(string $value): string { $value = trim($value); if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) throw new \InvalidArgumentException('Der Zeitraum enthält ein ungültiges Datum.'); return $value; }
-	private function encode(array $rows): string { if (!$rows) return "\xEF\xBB\xBFKeine Daten\r\n"; $out = fopen('php://temp', 'r+'); fputcsv($out, array_keys($rows[0]), ';', '"', '\\', "\r\n"); foreach ($rows as $row) fputcsv($out, $row, ';', '"', '\\', "\r\n"); rewind($out); return "\xEF\xBB\xBF" . (string)stream_get_contents($out); }
+	private function filters(string $from, string $to, string $branch): array {
+		return ['from' => $from === '' ? '' : $this->date($from), 'to' => $to === '' ? '' : $this->date($to), 'branch' => $branch === '' ? 'ALL' : $branch];
+	}
+	private function date(string $value): string {
+		$value = trim($value);
+		if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+			throw new \InvalidArgumentException('Der Zeitraum enthält ein ungültiges Datum.');
+		} return $value;
+	}
+	private function encode(array $rows): string {
+		if (!$rows) {
+			return "\xEF\xBB\xBFKeine Daten\r\n";
+		} $out = fopen('php://temp', 'r+');
+		fputcsv($out, array_keys($rows[0]), ';', '"', '\\', "\r\n");
+		foreach ($rows as $row) {
+			fputcsv($out, $row, ';', '"', '\\', "\r\n");
+		} rewind($out);
+		return "\xEF\xBB\xBF" . (string)stream_get_contents($out);
+	}
 }

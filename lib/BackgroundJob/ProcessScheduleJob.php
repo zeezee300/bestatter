@@ -17,7 +17,11 @@ use Psr\Log\LoggerInterface;
  * Fall und Anlass nur einmal (eindeutiger Index in bestatter_process_runs).
  */
 class ProcessScheduleJob extends TimedJob {
-	public function __construct(ITimeFactory $time, private ProcessService $process, private LoggerInterface $logger) {
+	public function __construct(
+		ITimeFactory $time,
+		private ProcessService $process,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct($time);
 		$this->setInterval(6 * 60 * 60);
 		$this->setTimeSensitivity(IJob::TIME_INSENSITIVE);

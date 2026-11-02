@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'bestatter:workspace:v1'
-const ALLOWED_VIEWS = new Set(['dashboard', 'capture', 'cases', 'case-detail', 'task', 'schedule', 'document', 'inbox', 'customizing', 'administration'])
+const ALLOWED_VIEWS = new Set(['dashboard', 'capture', 'cases', 'orders', 'precare', 'case-detail', 'task', 'schedule', 'document', 'inbox', 'customizing', 'administration'])
 
 export function readWorkspace() {
 	let value = {}

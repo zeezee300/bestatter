@@ -22,7 +22,8 @@ class EuroOfficeConversionService {
 	public function __construct(
 		private IURLGenerator $urlGenerator,
 		private IUserSession $userSession,
-	) {}
+	) {
+	}
 
 	public function isAvailable(): bool {
 		if (!class_exists(self::APP_CONFIG) || !class_exists(self::CRYPT) || !class_exists(self::DOCUMENT_SERVICE)) {

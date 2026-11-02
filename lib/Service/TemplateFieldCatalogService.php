@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Service;
 
 class TemplateFieldCatalogService {
-	public function __construct(private ?LabelService $labels = null) {}
+	public function __construct(
+		private ?LabelService $labels = null,
+		private ?OrderChoiceService $orderChoices = null,
+	) {
+	}
 
 	private const SCHEMA_FILE = __DIR__ . '/../../resources/case-field-schema.json';
 	private const TEMPLATE_DIRECTORY = __DIR__ . '/../../resources/templates';
@@ -14,25 +18,39 @@ class TemplateFieldCatalogService {
 	public function fields(): array {
 		$labels = [];
 		$schema = is_file(self::SCHEMA_FILE) ? json_decode((string)file_get_contents(self::SCHEMA_FILE), true, 512, JSON_THROW_ON_ERROR) : [];
-		foreach ($schema as $field) $labels['{{case.' . $field['key'] . '}}'] = (string)$field['label'];
+		foreach ($schema as $field) {
+			$labels['{{case.' . $field['key'] . '}}'] = (string)$field['label'];
+		}
 		$placeholders = array_keys($labels);
 		$source = '';
-		foreach (self::PLACEHOLDER_SOURCES as $file) if (is_file($file)) $source .= "\n" . (string)file_get_contents($file);
-		foreach (glob(self::TEMPLATE_DIRECTORY . '/*.txt') ?: [] as $file) $source .= "\n" . (string)file_get_contents($file);
+		foreach (self::PLACEHOLDER_SOURCES as $file) {
+			if (is_file($file)) {
+				$source .= "\n" . (string)file_get_contents($file);
+			}
+		}
+		foreach (glob(self::TEMPLATE_DIRECTORY . '/*.txt') ?: [] as $file) {
+			$source .= "\n" . (string)file_get_contents($file);
+		}
 		foreach (glob(self::TEMPLATE_DIRECTORY . '/*.docx') ?: [] as $file) {
 			$archive = new \ZipArchive();
-			if ($archive->open($file) !== true) continue;
+			if ($archive->open($file) !== true) {
+				continue;
+			}
 			for ($index = 0; $index < $archive->numFiles; $index++) {
 				$name = (string)$archive->getNameIndex($index);
-				if (!str_starts_with($name, 'word/') || !str_ends_with($name, '.xml')) continue;
+				if (!str_starts_with($name, 'word/') || !str_ends_with($name, '.xml')) {
+					continue;
+				}
 				$content = $archive->getFromIndex($index);
-				if (is_string($content)) $source .= "\n" . strip_tags($content);
+				if (is_string($content)) {
+					$source .= "\n" . strip_tags($content);
+				}
 			}
 			$archive->close();
 		}
 		preg_match_all('/\{\{[A-Za-z0-9_.]+\}\}/', $source, $matches);
 		// 0.75.2: Platzhalter brauchen einen Namen aus Buchstaben (kein „{{...}}“ aus Kommentaren).
-		$found = array_filter($matches[0] ?? [], static fn(string $placeholder): bool => preg_match('/^\{\{[A-Za-z]/', $placeholder) === 1);
+		$found = array_filter($matches[0] ?? [], static fn (string $placeholder): bool => preg_match('/^\{\{[A-Za-z]/', $placeholder) === 1);
 		$placeholders = array_values(array_unique(array_merge($placeholders, $found)));
 		sort($placeholders, SORT_NATURAL | SORT_FLAG_CASE);
 		$special = [
@@ -58,7 +76,7 @@ class TemplateFieldCatalogService {
 			'{{service.quantity}}' => 'Menge und Einheit', '{{service.unit_price}}' => 'Einzelpreis', '{{service.vat_rate}}' => 'Umsatzsteuersatz',
 			'{{service.net}}' => 'Nettobetrag der Position', '{{service.gross}}' => 'Bruttobetrag der Position', '{{service.package}}' => 'Paketname',
 			'{{order.total_net}}' => 'Gesamtsumme netto', '{{order.total_vat}}' => 'Umsatzsteuer gesamt', '{{order.total_gross}}' => 'Gesamtsumme brutto',
-			'{{order.services_heading}}' => 'Überschrift des Leistungsbereichs', '{{order.cost_note}}' => 'Preis- und Schätzhinweis für Auftrag oder Kostenvoranschlag', '{{order.tax_heading}}' => 'Überschrift der Umsatzsteuerübersicht',
+			'{{order.services_heading}}' => 'Überschrift des Leistungsbereichs', '{{order.cost_note}}' => 'Preis- und Schätzhinweis für Auftrag oder Kostenvoranschlag', '{{order.price_terms}}' => 'Hinweis zu Schätzbeträgen (ca.) und Gebühren nach Bescheid mit Abweichungsschwelle', '{{order.tax_heading}}' => 'Überschrift der Umsatzsteuerübersicht',
 			'{{order.taxable_net_label}}' => 'Bezeichnung steuerpflichtiges Netto', '{{order.total_vat_label}}' => 'Bezeichnung Umsatzsteuer', '{{order.pass_through_label}}' => 'Bezeichnung durchlaufende Posten', '{{order.total_gross_label}}' => 'Bezeichnung Gesamtbetrag',
 			'{{order.taxable_net}}' => 'Umsatzsteuerliches Entgelt netto', '{{order.pass_through_total}}' => 'Summe echter durchlaufender Posten',
 			'{{service.group_heading}}' => 'Überschrift des Rechnungsblocks', '{{service.group_subtotal}}' => 'Bezeichnung der Blockzwischensumme', '{{service.group_subtotal_amount}}' => 'Blockzwischensumme',
@@ -130,7 +148,11 @@ class TemplateFieldCatalogService {
 			'{{order.withdrawal_request}}' => 'Erklärung „Beginn vor Ablauf der Widerrufsfrist“ (nur bei Widerrufsrecht)',
 			'{{order.withdrawal_ack_box}}' => 'Kästchen zur Kenntnisnahme Wertersatz/Erlöschen (nur bei Widerrufsrecht)',
 			'{{order.withdrawal_ack}}' => 'Kenntnisnahme Wertersatz und Erlöschen des Widerrufsrechts (nur bei Widerrufsrecht)',
-			'{{order.digital_signature_line}}' => 'Hinweis auf digitale Bestätigung (Name, Datum), sonst leer',
+			'{{order.digital_signature_line}}' => 'Vermerk zur Unterschrift am Tablet (Uhrzeit, Prüfwert) bzw. digitale Bestätigung, sonst leer',
+			'{{order.client_signature}}' => 'Unterschriftsbild bei der Unterschrift am Tablet (eigener Absatz über der Linie)',
+			'{{order.signed_place_date}}' => 'Ort und Datum der Unterschrift am Tablet',
+			'{{order.contractor_place_date}}' => 'Ort und Datum der Annahme durch das Bestattungsunternehmen (Unterschrift am Tablet)',
+			'{{order.contractor_acceptance}}' => 'Annahme durch das Bestattungsunternehmen (angemeldete Person, Unterschrift am Tablet)',
 			'{{order.withdrawal_enclosure}}' => 'Zusatz „sowie der Widerrufsbelehrung …“ (nur bei Widerrufsrecht)',
 			'{{order.client_phone}}' => 'Telefon Auftraggeber/in',
 			'{{order.confirmation_text}}' => 'Bestätigungstext (Kostenvoranschlag bzw. Auftrag)',
@@ -159,7 +181,7 @@ class TemplateFieldCatalogService {
 		];
 		$placeholders = array_values(array_unique(array_merge($placeholders, array_keys($special))));
 		sort($placeholders, SORT_NATURAL | SORT_FLAG_CASE);
-		$result = array_map(function(string $placeholder) use ($labels, $special): array {
+		$result = array_map(function (string $placeholder) use ($labels, $special): array {
 			$key = trim($placeholder, '{}');
 			$source = str_starts_with($key, 'case.') ? 'Fallstammdaten / berechnete Falldaten' : (str_starts_with($key, 'funeral_event.') ? 'Verknüpfter Trauerfeier-Termin' : (str_starts_with($key, 'service.') ? 'Leistungsposition' : (str_starts_with($key, 'order.') ? 'Auftrag / KVA' : (str_starts_with($key, 'recipient.') ? 'Empfänger der Abmeldung' : (str_starts_with($key, 'advance.') ? 'Rentenservice / Vorschussantrag' : (str_starts_with($key, 'source.') ? 'Workflow-Ausgangseintrag' : 'Berechnetes Feld'))))));
 			$name = $labels[$placeholder] ?? $special[$placeholder] ?? ucfirst(str_replace(['case.', 'order.', 'service.', '_', '.'], ['', '', '', ' ', ' – '], $key));
@@ -168,7 +190,23 @@ class TemplateFieldCatalogService {
 		// 0.76.0: Marker-Platzhalter (ein Eintrag je Marker, auch für inaktive).
 		if ($this->labels !== null) {
 			$known = array_column($result, 'placeholder');
-			foreach ($this->labels->placeholderCatalog() as $entry) if (!in_array($entry['placeholder'], $known, true)) $result[] = $entry;
+			foreach ($this->labels->placeholderCatalog() as $entry) {
+				if (!in_array($entry['placeholder'], $known, true)) {
+					$result[] = $entry;
+				}
+			}
+		}
+		// 0.89.3: Ankreuzfelder im Auftrag (Customizing), je Feld {{order.choice.SCHLÜSSEL}} bzw. der bisherige Platzhalter.
+		if ($this->orderChoices !== null) {
+			$known = array_column($result, 'placeholder');
+			$index = array_flip($known);
+			foreach ($this->orderChoices->placeholderCatalog() as $entry) {
+				if (isset($index[$entry['placeholder']])) {
+					$result[$index[$entry['placeholder']]] = $entry;
+					continue;
+				}
+				$result[] = $entry;
+			}
 		}
 		return $result;
 	}
@@ -181,7 +219,9 @@ class TemplateFieldCatalogService {
 	public function csv(): string {
 		$stream = fopen('php://temp', 'w+');
 		fputcsv($stream, ['Platzhalter', 'Sprechender Klarname', 'Datenquelle'], ';');
-		foreach ($this->fields() as $field) fputcsv($stream, [$field['placeholder'], $field['name'], $field['source']], ';');
+		foreach ($this->fields() as $field) {
+			fputcsv($stream, [$field['placeholder'], $field['name'], $field['source']], ';');
+		}
 		rewind($stream);
 		return "\xEF\xBB\xBF" . (string)stream_get_contents($stream);
 	}

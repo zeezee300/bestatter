@@ -10,7 +10,9 @@ spl_autoload_register(static function (string $class) use ($server): void {
 	foreach (['OCP\\' => '/lib/public/', 'NCU\\' => '/lib/unstable/', 'OC\\' => '/lib/private/'] as $prefix => $dir) {
 		if (str_starts_with($class, $prefix)) {
 			$file = $server . $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
-			if (is_file($file)) require $file;
+			if (is_file($file)) {
+				require $file;
+			}
 			return;
 		}
 	}

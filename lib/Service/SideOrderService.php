@@ -16,7 +16,12 @@ class SideOrderService {
 		'STORNIERT' => [],
 	];
 
-	public function __construct(private IDBConnection $db, private CaseService $cases, private AuditService $audit) {}
+	public function __construct(
+		private IDBConnection $db,
+		private CaseService $cases,
+		private AuditService $audit,
+	) {
+	}
 
 	public function all(int $caseId): array {
 		$this->cases->getCase($caseId);
@@ -24,7 +29,7 @@ class SideOrderService {
 		$rows = $query->select('*')->from('bestatter_side_orders')
 			->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))
 			->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
-		return array_map(fn(array $row): array => $this->map($row), $rows);
+		return array_map(fn (array $row): array => $this->map($row), $rows);
 	}
 
 	public function get(int $id): array {
@@ -32,12 +37,18 @@ class SideOrderService {
 		$row = $query->select('*')->from('bestatter_side_orders')
 			->where($query->expr()->eq('id', $query->createNamedParameter($id)))
 			->executeQuery()->fetchAssociative();
-		if ($row === false) throw new \InvalidArgumentException('Nebenauftrag wurde nicht gefunden.');
+		if ($row === false) {
+			throw new \InvalidArgumentException('Nebenauftrag wurde nicht gefunden.');
+		}
 		return $this->map($row);
 	}
 
 	public function create(int $caseId, array $input = []): array {
 		$case = $this->cases->getCase($caseId);
+		// 0.89.7: Nebenaufträge gehören zu einem Sterbefall; Aufträge ohne Sterbefall und Vorsorgen sind selbst eigenständige Vorgänge.
+		if (($case['caseKind'] ?? CaseKinds::DEATH) !== CaseKinds::DEATH) {
+			throw new \InvalidArgumentException('Nebenaufträge gibt es nur zu einem Sterbefall. Für weitere Bestellungen bitte einen eigenen Auftrag anlegen.');
+		}
 		if (in_array(strtoupper((string)$case['status']), ['ABGESCHLOSSEN', 'STORNIERT'], true)) {
 			throw new \InvalidArgumentException('In einem abgeschlossenen oder stornierten Fall kann kein Nebenauftrag angelegt werden. Bitte öffnen Sie den Fall zuvor kontrolliert wieder.');
 		}
@@ -68,7 +79,9 @@ class SideOrderService {
 
 	public function update(int $id, array $input = []): array {
 		$before = $this->get($id);
-		if ($before['status'] !== 'ENTWURF') throw new \InvalidArgumentException('Stammdaten eines Nebenauftrags können nur im Status ENTWURF geändert werden.');
+		if ($before['status'] !== 'ENTWURF') {
+			throw new \InvalidArgumentException('Stammdaten eines Nebenauftrags können nur im Status ENTWURF geändert werden.');
+		}
 		$case = $this->cases->getCase($before['caseId']);
 		$values = $this->values($case, $input, $before);
 		$query = $this->db->getQueryBuilder();
@@ -99,9 +112,15 @@ class SideOrderService {
 		if (!in_array($target, self::STATUSES, true) || !in_array($target, self::TRANSITIONS[$before['status']] ?? [], true)) {
 			throw new \InvalidArgumentException('Dieser Statuswechsel ist für den Nebenauftrag nicht zulässig.');
 		}
-		if ($target === 'BEAUFTRAGT') $this->assertCommissionable($before);
-		if ($target === 'ABGESCHLOSSEN') $this->assertClosable($before);
-		if ($target === 'STORNIERT') $this->assertCancellable($before);
+		if ($target === 'BEAUFTRAGT') {
+			$this->assertCommissionable($before);
+		}
+		if ($target === 'ABGESCHLOSSEN') {
+			$this->assertClosable($before);
+		}
+		if ($target === 'STORNIERT') {
+			$this->assertCancellable($before);
+		}
 		$query = $this->db->getQueryBuilder();
 		$query->update('bestatter_side_orders')
 			->set('status', $query->createNamedParameter($target))
@@ -117,16 +136,22 @@ class SideOrderService {
 	private function assertCommissionable(array $order): void {
 		$missing = [];
 		foreach (['firstName' => 'Vorname', 'lastName' => 'Nachname', 'street' => 'Straße', 'postalCity' => 'PLZ / Ort', 'country' => 'Land'] as $field => $label) {
-			if (trim((string)($order[$field] ?? '')) === '') $missing[] = $label;
+			if (trim((string)($order[$field] ?? '')) === '') {
+				$missing[] = $label;
+			}
 		}
-		if ($missing !== []) throw new \InvalidArgumentException('Vor der Beauftragung fehlen: ' . implode(', ', $missing) . '.');
+		if ($missing !== []) {
+			throw new \InvalidArgumentException('Vor der Beauftragung fehlen: ' . implode(', ', $missing) . '.');
+		}
 		$query = $this->db->getQueryBuilder();
 		$positions = (int)$query->select($query->func()->count('*', 'count'))->from('bestatter_case_services')
 			->where($query->expr()->eq('case_id', $query->createNamedParameter($order['caseId'])))
 			->andWhere($query->expr()->eq('side_order_id', $query->createNamedParameter($order['id'])))
 			->andWhere($query->expr()->neq('service_status', $query->createNamedParameter('STORNIERT')))
 			->executeQuery()->fetchOne();
-		if ($positions === 0) throw new \InvalidArgumentException('Vor der Beauftragung muss mindestens eine fehlerfreie Position erfasst werden.');
+		if ($positions === 0) {
+			throw new \InvalidArgumentException('Vor der Beauftragung muss mindestens eine fehlerfreie Position erfasst werden.');
+		}
 	}
 
 	private function assertClosable(array $order): void {
@@ -142,7 +167,9 @@ class SideOrderService {
 				$query->expr()->eq('status', $query->createNamedParameter('BEZAHLT')),
 			))
 			->executeQuery()->fetchOne();
-		if ($completedFinalInvoices === 0) throw new \InvalidArgumentException('Der Nebenauftrag kann erst nach Freigabe seiner Schlussrechnung abgeschlossen werden.');
+		if ($completedFinalInvoices === 0) {
+			throw new \InvalidArgumentException('Der Nebenauftrag kann erst nach Freigabe seiner Schlussrechnung abgeschlossen werden.');
+		}
 	}
 
 	private function assertCancellable(array $order): void {
@@ -153,14 +180,18 @@ class SideOrderService {
 			->andWhere($query->expr()->neq('status', $query->createNamedParameter('STORNIERT')))
 			->andWhere($query->expr()->eq('document_kind', $query->createNamedParameter('INVOICE')))
 			->executeQuery()->fetchOne();
-		if ($activeInvoices > 0) throw new \InvalidArgumentException('Vor der Stornierung müssen alle Rechnungen dieses Nebenauftrags storniert sein.');
+		if ($activeInvoices > 0) {
+			throw new \InvalidArgumentException('Vor der Stornierung müssen alle Rechnungen dieses Nebenauftrags storniert sein.');
+		}
 	}
 
 	private function values(array $case, array $input, array $fallback = []): array {
 		$master = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
 		$requiredBy = array_key_exists('requiredBy', $input) ? trim((string)$input['requiredBy']) : (string)($fallback['requiredBy'] ?? $this->funeralEvent($master));
 		$lastName = trim((string)($input['lastName'] ?? $fallback['lastName'] ?? ''));
-		if ($lastName === '') throw new \InvalidArgumentException('Der Nachname des Nebenauftraggebers ist erforderlich.');
+		if ($lastName === '') {
+			throw new \InvalidArgumentException('Der Nachname des Nebenauftraggebers ist erforderlich.');
+		}
 		return [
 			'firstName' => trim((string)($input['firstName'] ?? $fallback['firstName'] ?? '')),
 			'lastName' => $lastName,
@@ -181,7 +212,11 @@ class SideOrderService {
 			->where($query->expr()->like('side_order_number', $query->createNamedParameter($prefix . '%')))
 			->executeQuery()->fetchFirstColumn();
 		$highest = 0;
-		foreach ($numbers as $number) if (preg_match('/-N(\d+)$/', (string)$number, $match)) $highest = max($highest, (int)$match[1]);
+		foreach ($numbers as $number) {
+			if (preg_match('/-N(\d+)$/', (string)$number, $match)) {
+				$highest = max($highest, (int)$match[1]);
+			}
+		}
 		return $prefix . ($highest + 1);
 	}
 

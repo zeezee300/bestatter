@@ -7,7 +7,10 @@ namespace OCA\Bestatter\Service\Pdf;
 /** Ordered PDF dictionary; keys are names without slash. */
 final class PdfDict {
 	/** @param array<string,mixed> $entries */
-	public function __construct(public array $entries = []) {}
+	public function __construct(
+		public array $entries = [],
+	) {
+	}
 
 	public function get(string $key): mixed {
 		return $this->entries[$key] ?? null;

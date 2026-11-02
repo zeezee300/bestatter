@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Controller;
 
 use OCA\Bestatter\Service\ArticleService;
+use OCA\Bestatter\Service\AuditService;
+use OCA\Bestatter\Service\BurialVariantRuleService;
+use OCA\Bestatter\Service\CaseStorageService;
+use OCA\Bestatter\Service\CatalogStructureService;
 use OCA\Bestatter\Service\ConfigurationService;
 use OCA\Bestatter\Service\CustomizingService;
 use OCA\Bestatter\Service\DocumentService;
+use OCA\Bestatter\Service\InstallationConfigService;
+use OCA\Bestatter\Service\PriceListService;
+use OCA\Bestatter\Service\StorageMigrationService;
+use OCA\Bestatter\Service\SurchargeRuleService;
 use OCA\Bestatter\Service\TeamService;
 use OCA\Bestatter\Service\TemplateFieldCatalogService;
-use OCA\Bestatter\Service\InstallationConfigService;
-use OCA\Bestatter\Service\AuditService;
-use OCA\Bestatter\Service\SurchargeRuleService;
-use OCA\Bestatter\Service\BurialVariantRuleService;
-use OCA\Bestatter\Service\CatalogStructureService;
-use OCA\Bestatter\Service\PriceListService;
-use OCA\Bestatter\Service\CaseStorageService;
-use OCA\Bestatter\Service\StorageMigrationService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -25,7 +25,26 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class CatalogApiController extends ApiController {
-	public function __construct(string $appName, IRequest $request, private CustomizingService $customizingService, private ArticleService $articles, private ConfigurationService $configuration, private TeamService $teamService, private TemplateFieldCatalogService $templateFields, private InstallationConfigService $installationConfig, private \OCA\Bestatter\Service\CaseFolderPlanService $folderPlan, private AuditService $audit, private SurchargeRuleService $surcharges, private BurialVariantRuleService $burialRules, private DocumentService $documents, private CatalogStructureService $structure, private PriceListService $priceLists, private CaseStorageService $storage, private StorageMigrationService $storageMigration, private \OCA\Bestatter\Service\DocumentTemplateFileService $templateFiles) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private CustomizingService $customizingService,
+		private ArticleService $articles,
+		private ConfigurationService $configuration,
+		private TeamService $teamService,
+		private TemplateFieldCatalogService $templateFields,
+		private InstallationConfigService $installationConfig,
+		private \OCA\Bestatter\Service\CaseFolderPlanService $folderPlan,
+		private AuditService $audit,
+		private SurchargeRuleService $surcharges,
+		private BurialVariantRuleService $burialRules,
+		private DocumentService $documents,
+		private CatalogStructureService $structure,
+		private PriceListService $priceLists,
+		private CaseStorageService $storage,
+		private StorageMigrationService $storageMigration,
+		private \OCA\Bestatter\Service\DocumentTemplateFileService $templateFiles,
+	) {
 		parent::__construct($appName, $request);
 	}
 
@@ -100,12 +119,16 @@ class CatalogApiController extends ApiController {
 	public function reorderCustomizingItems(string $key, string $itemIds = '[]'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$ids = json_decode($itemIds, true, 512, JSON_THROW_ON_ERROR);
-		if (!is_array($ids)) throw new \InvalidArgumentException('Die neue Reihenfolge ist ungültig.');
+		if (!is_array($ids)) {
+			throw new \InvalidArgumentException('Die neue Reihenfolge ist ungültig.');
+		}
 		return new DataResponse($this->customizingService->reorderItems($key, $ids));
 	}
 
 	#[NoAdminRequired]
-	public function caseSchema(): DataResponse { return new DataResponse($this->customizingService->caseFieldSchema()); }
+	public function caseSchema(): DataResponse {
+		return new DataResponse($this->customizingService->caseFieldSchema());
+	}
 
 	#[NoAdminRequired]
 	public function installationSettings(): DataResponse {
@@ -116,7 +139,10 @@ class CatalogApiController extends ApiController {
 	#[NoAdminRequired]
 	public function saveInstallationSettings(string $settings = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		$before=$this->installationConfig->settings(); $saved=$this->installationConfig->save(json_decode($settings, true, 512, JSON_THROW_ON_ERROR)); $this->audit->logSystem('INSTALLATION_CONFIGURATION','UPDATED',['before'=>$before,'after'=>$saved]); return new DataResponse($saved);
+		$before = $this->installationConfig->settings();
+		$saved = $this->installationConfig->save(json_decode($settings, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('INSTALLATION_CONFIGURATION', 'UPDATED', ['before' => $before,'after' => $saved]);
+		return new DataResponse($saved);
 	}
 
 	/** 0.72.0: Ordnerplan der Fallakte (Kennzeichen, Namen, Verwendung). */
@@ -146,9 +172,15 @@ class CatalogApiController extends ApiController {
 	public function storageStatus(): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$status = $this->storage->status();
-		$plan = null; $planError = '';
+		$plan = null;
+		$planError = '';
 		if ($status['account'] !== '' && $status['accountValid']) {
-			try { $plan = $this->storageMigration->plan(); unset($plan['items']); } catch (\Throwable $error) { $planError = $error->getMessage(); }
+			try {
+				$plan = $this->storageMigration->plan();
+				unset($plan['items']);
+			} catch (\Throwable $error) {
+				$planError = $error->getMessage();
+			}
 		}
 		return new DataResponse(['status' => $status, 'plan' => $plan, 'planError' => $planError, 'command' => 'occ bestatter:storage-migrate']);
 	}
@@ -162,7 +194,9 @@ class CatalogApiController extends ApiController {
 		$this->installationConfig->setStorage($this->installationConfig->storageMode(), $prepared['account']);
 		if ($activate && !$this->storage->isCentral()) {
 			$plan = $this->storageMigration->plan($prepared['account']);
-			if ($plan['files'] > 0) throw new \InvalidArgumentException('Es liegen ' . $plan['files'] . ' Dateien in persönlichen Ordnern. Bitte den Umzug mit „occ bestatter:storage-migrate“ ausführen (erst Trockenlauf, dann --execute); danach ist die zentrale Ablage aktiv.');
+			if ($plan['files'] > 0) {
+				throw new \InvalidArgumentException('Es liegen ' . $plan['files'] . ' Dateien in persönlichen Ordnern. Bitte den Umzug mit „occ bestatter:storage-migrate“ ausführen (erst Trockenlauf, dann --execute); danach ist die zentrale Ablage aktiv.');
+			}
 			$prepared = $this->storage->activate('CENTRAL', $prepared['account']);
 		}
 		$this->audit->logSystem('STORAGE', $activate ? 'ACTIVATED' : 'ACCOUNT_PREPARED', ['account' => $prepared['account'], 'location' => $prepared['location'], 'createdShares' => $prepared['createdShares']]);
@@ -170,7 +204,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function articles(): DataResponse { return new DataResponse($this->articles->catalog()); }
+	public function articles(): DataResponse {
+		return new DataResponse($this->articles->catalog());
+	}
 
 	#[NoAdminRequired]
 	public function createArticle(string $article = '{}', string $components = '[]'): DataResponse {
@@ -192,14 +228,6 @@ class CatalogApiController extends ApiController {
 	public function nextArticleNumber(string $group = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		return new DataResponse(['articleNumber' => $this->articles->suggestArticleNumber($group)]);
-	}
-
-	#[NoAdminRequired]
-	public function installSampleCatalog(bool $deactivateLegacy = true): DataResponse {
-		$this->teamService->requireBestatterAdmin();
-		$result = $this->articles->installSampleCatalog($deactivateLegacy);
-		$this->audit->logSystem('ARTICLE_CATALOG', 'SAMPLE_INSTALLED', $result);
-		return new DataResponse($result + $this->articles->catalog());
 	}
 
 	#[NoAdminRequired]
@@ -278,7 +306,9 @@ class CatalogApiController extends ApiController {
 	public function setPriceListItem(int $id, int $articleId = 0, string $price = '', string $validFrom = '', string $validTo = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$cents = (int)round((float)str_replace(',', '.', trim($price)) * 100);
-		if ($articleId <= 0 || trim($price) === '') throw new \InvalidArgumentException('Bitte Artikel und Preis angeben.');
+		if ($articleId <= 0 || trim($price) === '') {
+			throw new \InvalidArgumentException('Bitte Artikel und Preis angeben.');
+		}
 		$this->articles->article($articleId);
 		$this->priceLists->setPrice($id, $articleId, $cents, $validFrom, $validTo !== '' ? $validTo : null);
 		$this->audit->logSystem('PRICE_LIST_ITEM', 'SAVED', ['priceListId' => $id, 'articleId' => $articleId, 'priceCents' => $cents, 'validFrom' => $validFrom, 'validTo' => $validTo]);
@@ -304,8 +334,12 @@ class CatalogApiController extends ApiController {
 	public function importArticles(string $csv = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$upload = $this->apiRequest->getUploadedFile('file');
-		if (is_array($upload) && ($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) $csv = (string)file_get_contents((string)$upload['tmp_name']);
-		if ($csv === '') throw new \InvalidArgumentException('Bitte eine CSV-Datei auswählen.');
+		if (is_array($upload) && ($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+			$csv = (string)file_get_contents((string)$upload['tmp_name']);
+		}
+		if ($csv === '') {
+			throw new \InvalidArgumentException('Bitte eine CSV-Datei auswählen.');
+		}
 		return new DataResponse($this->articles->importCsv($csv));
 	}
 
@@ -347,7 +381,9 @@ class CatalogApiController extends ApiController {
 	private function uploadedCsv(): string {
 		$upload = $this->apiRequest->getUploadedFile('file');
 		$csv = is_array($upload) && ($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK ? (string)file_get_contents((string)$upload['tmp_name']) : '';
-		if (trim($csv) === '') throw new \InvalidArgumentException('Bitte eine CSV-Datei auswählen.');
+		if (trim($csv) === '') {
+			throw new \InvalidArgumentException('Bitte eine CSV-Datei auswählen.');
+		}
 		return $csv;
 	}
 
@@ -355,12 +391,16 @@ class CatalogApiController extends ApiController {
 	public function uploadArticlePhoto(int $id): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$upload = $this->apiRequest->getUploadedFile('file');
-		if (!is_array($upload)) throw new \InvalidArgumentException('Bitte eine Bilddatei auswählen.');
+		if (!is_array($upload)) {
+			throw new \InvalidArgumentException('Bitte eine Bilddatei auswählen.');
+		}
 		return new DataResponse($this->articles->savePhoto($id, $upload));
 	}
 
 	#[NoAdminRequired]
-	public function caseServices(int $caseId, ?int $sideOrderId = null): DataResponse { return new DataResponse($this->articles->caseServices($caseId, $sideOrderId)); }
+	public function caseServices(int $caseId, ?int $sideOrderId = null): DataResponse {
+		return new DataResponse($this->articles->caseServices($caseId, $sideOrderId));
+	}
 
 	#[NoAdminRequired]
 	public function saveCaseServices(int $caseId, string $items = '[]', string $amendmentReason = '', ?int $sideOrderId = null): DataResponse {
@@ -369,10 +409,14 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function documentTemplates(): DataResponse { return new DataResponse($this->configuration->documents()); }
+	public function documentTemplates(): DataResponse {
+		return new DataResponse($this->configuration->documents());
+	}
 
 	#[NoAdminRequired]
-	public function documentTemplateOptions(): DataResponse { return new DataResponse($this->configuration->documentTemplateOptions()); }
+	public function documentTemplateOptions(): DataResponse {
+		return new DataResponse($this->configuration->documentTemplateOptions());
+	}
 
 	#[NoAdminRequired]
 	public function previewDocumentTemplate(string $fileName): DataDownloadResponse {
@@ -414,7 +458,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function deregistrationTemplates(): DataResponse { return new DataResponse($this->configuration->deregistrations()); }
+	public function deregistrationTemplates(): DataResponse {
+		return new DataResponse($this->configuration->deregistrations());
+	}
 
 	#[NoAdminRequired]
 	public function saveDeregistrationTemplate(int $id, string $template = '{}'): DataResponse {
@@ -423,7 +469,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function branches(): DataResponse { return new DataResponse($this->configuration->branches()); }
+	public function branches(): DataResponse {
+		return new DataResponse($this->configuration->branches());
+	}
 
 	#[NoAdminRequired]
 	public function countryProfiles(): DataResponse {
@@ -442,29 +490,37 @@ class CatalogApiController extends ApiController {
 	#[NoAdminRequired]
 	public function saveBranch(int $id, string $branch = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		$saved=$this->configuration->saveBranch(json_decode($branch, true, 512, JSON_THROW_ON_ERROR), $id); $this->audit->logSystem('BRANCH','UPDATED',['id'=>$saved['id']??$id,'key'=>$saved['key']??'']); return new DataResponse($saved);
+		$saved = $this->configuration->saveBranch(json_decode($branch, true, 512, JSON_THROW_ON_ERROR), $id);
+		$this->audit->logSystem('BRANCH', 'UPDATED', ['id' => $saved['id'] ?? $id,'key' => $saved['key'] ?? '']);
+		return new DataResponse($saved);
 	}
 
 	#[NoAdminRequired]
 	public function saveBranchBankData(int $id, string $bankData = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		$saved=$this->configuration->saveBranchBankData($id, json_decode($bankData, true, 512, JSON_THROW_ON_ERROR)); $this->audit->logSystem('BRANCH_BANK_DATA','UPDATED',['branchId'=>$id,'changed'=>true]); return new DataResponse($saved);
+		$saved = $this->configuration->saveBranchBankData($id, json_decode($bankData, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('BRANCH_BANK_DATA', 'UPDATED', ['branchId' => $id,'changed' => true]);
+		return new DataResponse($saved);
 	}
 
 	#[NoAdminRequired]
-	public function invoiceSettings(): DataResponse { return new DataResponse($this->configuration->invoiceSettings()); }
+	public function invoiceSettings(): DataResponse {
+		return new DataResponse($this->configuration->invoiceSettings());
+	}
 
 	#[NoAdminRequired]
 	public function saveInvoiceSettings(string $settings = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		$saved=$this->configuration->saveInvoiceSettings(json_decode($settings, true, 512, JSON_THROW_ON_ERROR)); $this->audit->logSystem('INVOICE_CONFIGURATION','UPDATED',$saved); return new DataResponse($saved);
+		$saved = $this->configuration->saveInvoiceSettings(json_decode($settings, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('INVOICE_CONFIGURATION', 'UPDATED', $saved);
+		return new DataResponse($saved);
 	}
 
 	#[NoAdminRequired]
 	public function deleteConfiguration(string $type, int $id): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		$this->configuration->delete($type, $id);
-		$this->audit->logSystem('CONFIGURATION','DELETED',['type'=>$type,'id'=>$id]);
+		$this->audit->logSystem('CONFIGURATION', 'DELETED', ['type' => $type,'id' => $id]);
 		return new DataResponse([], 204);
 	}
 

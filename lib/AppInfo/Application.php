@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\AppInfo;
 
-use OCA\Bestatter\Listener\CalendarObjectChangedListener;
 use OCA\Bestatter\Listener\AddMissingIndicesListener;
+use OCA\Bestatter\Listener\CalendarObjectChangedListener;
 use OCA\Bestatter\Middleware\BestatterAccessMiddleware;
 use OCA\Bestatter\Search\CaseSearchProvider;
 use OCP\AppFramework\App;
@@ -18,8 +18,8 @@ use OCP\Calendar\Events\CalendarObjectUpdatedEvent;
 use OCP\DB\Events\AddMissingIndicesEvent;
 
 class Application extends App implements IBootstrap {
-    public const APP_ID = 'bestatter';
-	public const VERSION = '0.88.2';
+	public const APP_ID = 'bestatter';
+	public const VERSION = '0.90.0';
 	/**
 	 * Muss exakt dem max-version-Attribut in appinfo/info.xml entsprechen. Einzige Quelle
 	 * der Wahrheit für StabilizationService::nextcloudCompatibilityCheck(), damit das
@@ -30,9 +30,11 @@ class Application extends App implements IBootstrap {
 
 	public function __construct(array $urlParams = []) {
 		$vendorAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
-		if (is_file($vendorAutoload)) require_once $vendorAutoload;
-        parent::__construct(self::APP_ID, $urlParams);
-    }
+		if (is_file($vendorAutoload)) {
+			require_once $vendorAutoload;
+		}
+		parent::__construct(self::APP_ID, $urlParams);
+	}
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerMiddleware(BestatterAccessMiddleware::class);

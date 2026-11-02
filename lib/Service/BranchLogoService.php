@@ -19,7 +19,12 @@ class BranchLogoService {
 	private const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 	private const MAX_EDGE = 1600;
 
-	public function __construct(private IDBConnection $db, private IUserSession $userSession, private AuditService $audit) {}
+	public function __construct(
+		private IDBConnection $db,
+		private IUserSession $userSession,
+		private AuditService $audit,
+	) {
+	}
 
 	/** @return array<string,array{width:int,height:int,updatedAt:string}> je Niederlassungsschlüssel */
 	public function index(): array {
@@ -34,10 +39,14 @@ class BranchLogoService {
 	/** PNG-Bytes des Logos oder null. */
 	public function logo(string $branchKey): ?string {
 		$branchKey = strtoupper(trim($branchKey));
-		if ($branchKey === '') return null;
+		if ($branchKey === '') {
+			return null;
+		}
 		$q = $this->db->getQueryBuilder();
 		$data = $q->select('data')->from('bestatter_branch_logos')->where($q->expr()->eq('branch_key', $q->createNamedParameter($branchKey)))->executeQuery()->fetchOne();
-		if ($data === false) return null;
+		if ($data === false) {
+			return null;
+		}
 		$binary = base64_decode((string)$data, true);
 		return $binary === false || $binary === '' ? null : $binary;
 	}
@@ -45,7 +54,9 @@ class BranchLogoService {
 	/** Prüft (PNG/JPEG/GIF/WebP per Inhalt), verkleinert auf höchstens 1600 px Kantenlänge und speichert als PNG. */
 	public function save(string $branchKey, string $binary): array {
 		$branchKey = strtoupper(trim($branchKey));
-		if (!preg_match('/^[A-Z0-9_-]+$/', $branchKey)) throw new \InvalidArgumentException('Ungültiger Niederlassungsschlüssel.');
+		if (!preg_match('/^[A-Z0-9_-]+$/', $branchKey)) {
+			throw new \InvalidArgumentException('Ungültiger Niederlassungsschlüssel.');
+		}
 		$png = self::normalize($binary);
 		[$width, $height] = (array)getimagesizefromstring($png) + [0, 0];
 		$now = date('c');
@@ -77,21 +88,34 @@ class BranchLogoService {
 	}
 
 	public static function normalize(string $binary): string {
-		if ($binary === '' || strlen($binary) > self::MAX_UPLOAD_BYTES) throw new \InvalidArgumentException('Das Logo ist leer oder größer als 2 MB.');
+		if ($binary === '' || strlen($binary) > self::MAX_UPLOAD_BYTES) {
+			throw new \InvalidArgumentException('Das Logo ist leer oder größer als 2 MB.');
+		}
 		$info = @getimagesizefromstring($binary);
-		if (!is_array($info) || !in_array($info[2] ?? 0, [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) throw new \InvalidArgumentException('Das Logo muss eine PNG-, JPEG-, GIF- oder WebP-Datei sein. Eine SVG-Datei bitte vorher als PNG speichern.');
+		if (!is_array($info) || !in_array($info[2] ?? 0, [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) {
+			throw new \InvalidArgumentException('Das Logo muss eine PNG-, JPEG-, GIF- oder WebP-Datei sein. Eine SVG-Datei bitte vorher als PNG speichern.');
+		}
 		[$width, $height] = [(int)$info[0], (int)$info[1]];
-		if ($width < 16 || $height < 16 || $width > 10000 || $height > 10000) throw new \InvalidArgumentException('Das Logo muss zwischen 16 und 10.000 Pixel breit und hoch sein.');
+		if ($width < 16 || $height < 16 || $width > 10000 || $height > 10000) {
+			throw new \InvalidArgumentException('Das Logo muss zwischen 16 und 10.000 Pixel breit und hoch sein.');
+		}
 		$source = @imagecreatefromstring($binary);
-		if ($source === false) throw new \InvalidArgumentException('Das Logo konnte nicht gelesen werden.');
+		if ($source === false) {
+			throw new \InvalidArgumentException('Das Logo konnte nicht gelesen werden.');
+		}
 		$scale = min(1.0, self::MAX_EDGE / max($width, $height));
-		$targetWidth = max(1, (int)round($width * $scale)); $targetHeight = max(1, (int)round($height * $scale));
+		$targetWidth = max(1, (int)round($width * $scale));
+		$targetHeight = max(1, (int)round($height * $scale));
 		$target = imagecreatetruecolor($targetWidth, $targetHeight);
-		imagealphablending($target, false); imagesavealpha($target, true);
+		imagealphablending($target, false);
+		imagesavealpha($target, true);
 		imagefill($target, 0, 0, (int)imagecolorallocatealpha($target, 255, 255, 255, 127));
 		imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
-		ob_start(); imagepng($target, null, 9); $png = (string)ob_get_clean();
-		imagedestroy($source); imagedestroy($target);
+		ob_start();
+		imagepng($target, null, 9);
+		$png = (string)ob_get_clean();
+		imagedestroy($source);
+		imagedestroy($target);
 		return $png;
 	}
 

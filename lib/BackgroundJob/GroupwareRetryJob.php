@@ -15,7 +15,11 @@ use Psr\Log\LoggerInterface;
  * Person sich erstmals angemeldet bzw. die App Aufgaben geöffnet hat. Läuft alle 30 Minuten (Nextcloud-Cron).
  */
 class GroupwareRetryJob extends TimedJob {
-	public function __construct(ITimeFactory $time, private GroupwareService $groupware, private LoggerInterface $logger) {
+	public function __construct(
+		ITimeFactory $time,
+		private GroupwareService $groupware,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct($time);
 		$this->setInterval(30 * 60);
 		$this->setTimeSensitivity(IJob::TIME_INSENSITIVE);

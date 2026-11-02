@@ -9,7 +9,10 @@ use OCP\IRequest;
 
 /** Marker base class for the app's centrally protected JSON controllers. */
 abstract class ApiController extends Controller {
-	public function __construct(string $appName, protected IRequest $apiRequest) {
+	public function __construct(
+		string $appName,
+		protected IRequest $apiRequest,
+	) {
 		parent::__construct($appName, $apiRequest);
 	}
 }
