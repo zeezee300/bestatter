@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Service;
 
 use OCA\Bestatter\AppInfo\Application;
+use OCP\DB\QueryBuilder\ICompositeExpression;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -725,8 +726,8 @@ class BackupService {
 	}
 
 	/** 0.92.4: Protokolleinträge ohne Fallbezug – case_id 0 (Systemeinträge) oder leer. */
-	private function withoutCase(IQueryBuilder $q): string {
-		return (string)$q->expr()->orX($q->expr()->isNull('case_id'), $q->expr()->eq('case_id', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+	private function withoutCase(IQueryBuilder $q): ICompositeExpression {
+		return $q->expr()->orX($q->expr()->isNull('case_id'), $q->expr()->eq('case_id', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
 	}
 
 	/** @return array<string,mixed> */

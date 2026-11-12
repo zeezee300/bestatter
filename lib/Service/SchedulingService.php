@@ -704,7 +704,7 @@ class SchedulingService {
 	 * Liest und normalisiert die Terminplanung eines Pakets (Schlüssel groß, Listen bereinigt). Prüft Aufbau und Pflichtfelder,
 	 * nicht die Verweise – die meldet die Vorschau.
 	 *
-	 * @return array{scheduleTypes:list<array>,resources:list<array>}
+	 * @return array{scheduleTypes:list<array>,resources:list<array>,assignment:'replace'|'add'}
 	 */
 	public static function parseExchange(string $content): array {
 		$data = json_decode($content, true);
