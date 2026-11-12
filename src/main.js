@@ -1,11 +1,11 @@
-/* global OC */ import { createCasesModule } from './modules/cases.js'; import { createRecordsModule } from './modules/records.js'; import { createCommercialModule } from './modules/commercial.js'; import { createDocumentsModule } from './modules/documents.js'; import { createAdministrationModule } from './modules/administration.js'; import { createCustomizingModule } from './modules/customizing.js'; import { createUi } from './modules/ui.js'; import { createAssistantModule } from './modules/assistant.js'; import { readWorkspace, rememberWorkspace, restoreWorkspace } from './modules/workspace.js'
+/* global OC */ import { createCasesModule } from './modules/cases.js'; import { createRecordsModule } from './modules/records.js'; import { createCommercialModule } from './modules/commercial.js'; import { createDocumentsModule } from './modules/documents.js'; import { createAdministrationModule } from './modules/administration.js'; import { createCustomizingModule } from './modules/customizing.js'; import { createUi } from './modules/ui.js'; import { createAssistantModule } from './modules/assistant.js'; import { readWorkspace, rememberWorkspace, restoreWorkspace } from './modules/workspace.js'; import { createMasterDataModule } from './modules/master-data.js'
 import { createPaperlessModule } from './modules/paperless.js'
 import { createOrderFormModule } from './modules/order-form.js'
 import { createSetupPackageModule } from './modules/setup-package.js'; import { createAccountingModule } from './modules/accounting.js'
 import { prepareDocumentMail, printNextcloudPdf } from './modules/document-actions.js'
 import { createHelpModule } from './modules/help.js'
 import { createProcessModule } from './modules/process.js'
-import { createLabelsModule } from './modules/labels.js'; import { createPrecareModule } from './modules/precare.js'
+import { createLabelsModule } from './modules/labels.js'; import { createPrecareModule } from './modules/precare.js'; import { createCaseNotesModule } from './modules/case-notes.js'
 import { createDocumentKindsModule } from './modules/document-kinds.js'
 import { createNavigation } from './modules/navigation.js'
 import { createCaseGuidance } from './modules/case-guidance.js'; import { createCaseDeletion } from './modules/case-deletion.js'; import { createDocumentTemplatesModule } from './modules/document-templates.js'; import { createOrderSignature } from './modules/order-signature.js'
@@ -83,7 +83,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		records: { task: [], schedule: [], document: [], contact: [], case_contact: [], deregistration: [], activity: [] },
 		view: savedWorkspace.view, caseTab: String(savedWorkspace.caseTab || 'overview'),
 		masterTab: String(savedWorkspace.masterTab || 'Personendaten'), customizingTab: String(savedWorkspace.customizingTab || 'processes'),
-		currentCase: null, currentCaseId: Number(savedWorkspace.caseId || 0), administrationTab: String(savedWorkspace.administrationTab || 'services'),
+		currentCase: null, currentCaseId: Number(savedWorkspace.caseId || 0), administrationTab: String(savedWorkspace.administrationTab || 'onboarding'), masterDataTab: String(savedWorkspace.masterDataTab || 'branches'),
 		serviceQuery: '', serviceCostType: 'ALL', serviceArticleGroup: 'ALL', serviceItemType: 'ALL', serviceArea: 'ALL', serviceArticleType: 'ALL',
 		serviceSelectedOnly: false, serviceCatalogOpen: false, servicePage: 1, servicePageSize: 20, serviceCatalogScrollTop: 0, serviceCatalogDialogScrollTop: 0,
 		newCase: false,
@@ -162,7 +162,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		['dashboard', 'Dashboard'], ['capture', 'Schnellerfassung'], ['cases', 'Sterbefälle'], ['orders', 'Aufträge'], ['precare', 'Vorsorgen'], ['task', 'Aufgaben'],
 		['schedule', 'Termine'], ['document', 'Dokumente'],
 		['inbox', 'Belegeingang'], ['accounting', 'Buchhaltung'],
-		['customizing', 'Customizing'],
+		['master-data', 'Stammdaten'], ['customizing', 'Customizing'],
 		['administration', 'Administration'],
 	]
 	const recordLabels = { task: 'Aufgaben', schedule: 'Termine', document: 'Dokumente', contact: 'Kontakte', activity: 'Fall-Verlauf' }
@@ -201,7 +201,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		],
 		Administration: [
 			['Zuständigkeit', ['responsible_employee', 'branch']],
-			['Fallführung', ['status', 'notes', 'close_reason', 'closed_at']],
+			['Fallführung', ['status', 'close_reason', 'closed_at']], // 0.91.1: „Interne Notizen“ → Reiter „Notizen“
 		],
 	}
 	const labels = {
@@ -227,7 +227,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		grave_number: 'Grabnummer', grave_type: 'Grabart', grave_holder: 'Grabinhaber', grave_depth: 'Grabtiefe', grave_location: 'Grablage',
 		coffin_urn_size: 'Sarg- / Urnengröße', grave_inscription: 'Inschrift auf Grabmal', urn_handover_type: 'Übergabe der Urne',
 		urn_handover_date: 'Urnenübergabedatum', funeral_notes: 'Bemerkung', responsible_employee: 'Verantwortlicher Mitarbeiter',
-		branch: 'Niederlassung', status: 'Fallstatus', notes: 'Interne Notizen', close_reason: 'Abschlussgrund', closed_at: 'Abgeschlossen am',
+		branch: 'Niederlassung', status: 'Fallstatus', close_reason: 'Abschlussgrund', closed_at: 'Abgeschlossen am',
 	}
 	const listMap = {
 		salutation: 'SALUTATION', title: 'TITLE', gender: 'GENDER', civil_status: 'CIVIL_STATUS', religion: 'RELIGION',
@@ -287,13 +287,13 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 	const administrationModule = createAdministrationModule(context)
 	Object.assign(context, administrationModule)
 	const { branchesView, invoiceSettingsView, assistantSettingsView, reportingView, loadReportingSummary, loadOperationsCockpit, bindOperationsCockpit, bindReporting, loadCommercial, commercialVersionPanel, financesPanel, administration, articleOptions, packageComponentRows, supplierOptions, showArticleForm, bindArticleAdministration, bindIncomingInvoices, bindAssistantSettings, loadSystemCheck, bindSystemCheck, loadBackups, bindBackupRestore, loadOnboarding, bindOnboarding } = administrationModule
-	const customizingModule = createCustomizingModule(context)
-	Object.assign(context, customizingModule)
+	const customizingModule = createCustomizingModule(context); Object.assign(context, customizingModule)
 	const { documentTemplatesView, deregistrationTemplatesView, customizing, bindCustomizing, bindConfigurationAdministration } = customizingModule
+	const masterDataModule = createMasterDataModule(context); Object.assign(context, masterDataModule); const { masterDataView, bindMasterData, loadMasterDataTab, redirectToMasterData } = masterDataModule // 0.92.0: Einstellungen → Stammdaten
 	const paperlessModule = createPaperlessModule(context)
 	Object.assign(context, paperlessModule)
 	const { loadPaperlessInbox, loadPaperlessConfiguration, paperlessInboxView, bindPaperlessInbox, bindPaperlessSettings } = paperlessModule
-	Object.assign(context, createPrecareModule(context)) // 0.89.7: Vorsorge, Einlösen, Auftrag als Sterbefall weiterführen
+	Object.assign(context, createPrecareModule(context), createCaseNotesModule(context)) // 0.89.7: Vorsorge, Einlösen, Auftrag als Sterbefall weiterführen; 0.91.0: Fallnotizen
 	const processModule = createProcessModule(context)
 	Object.assign(context, processModule, { runProcessStepAction: processModule.runStepAction })
 	const { loadProcess, loadProcessAdmin, bindProcess, bindProcessAdmin } = processModule
@@ -309,7 +309,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 	function renderLocationKey() {
 		const parts = [state.view]
 		if (state.view === 'case-detail') parts.push(String(state.currentCase?.id || 0), state.caseTab || '', state.masterTab || '', String(state.activeSideOrderId || 0), state.sideOrderView || '')
-		if (state.view === 'customizing') parts.push(state.customizingTab || '')
+		if (state.view === 'customizing') parts.push(state.customizingTab || ''); if (state.view === 'master-data') parts.push(state.masterDataTab || '')
 		if (state.view === 'administration') parts.push(state.administrationTab || '')
 		return parts.join(':')
 	}
@@ -327,6 +327,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		else if (state.view === 'case-detail') content = caseDetail()
 		else if (state.view === 'inbox') content = paperlessInboxView()
 		else if (recordLabels[state.view]) content = recordsView(state.view)
+		else if ((redirectToMasterData() || state.view === 'master-data') && state.team?.isBestatterAdmin) content = masterDataView() // 0.92.0: alte Orte (Wertelisten, Marker, Niederlassungen, Leistungen) → Stammdaten
 		else if (state.view === 'customizing') content = customizing()
 		else if (state.view === 'administration') content = administration()
 		else if (state.view === 'accounting' && state.team?.canUseAccounting) content = accountingView()
@@ -360,7 +361,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 	}
 	let backgroundSyncInFlight = false
 	async function refreshGroupwareSilently() {
-		if (backgroundSyncInFlight || state.view === 'customizing' || root.querySelector('.bp-modal, [data-order-signature], form:focus-within, .is-dirty')) return // 0.89.1: nie während der Unterschrift am Tablet
+		if (backgroundSyncInFlight || state.view === 'customizing' || state.view === 'master-data' || root.querySelector('.bp-modal, [data-order-signature], form:focus-within, .is-dirty')) return // 0.89.1: nie während der Unterschrift am Tablet
 		backgroundSyncInFlight = true
 		try {
 			await Promise.allSettled([
@@ -379,7 +380,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		}
 	}
 	function bind() {
-		bindLabels()
+		bindLabels(); context.bindCaseNotes()
 		bindDocumentKindsAdmin()
 		root.querySelectorAll('[data-dashboard-record-id]').forEach((button) => button.addEventListener('click', async () => {
 			const type = button.dataset.dashboardRecordType === 'schedule' ? 'schedule' : 'task'
@@ -395,10 +396,11 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			state.view = button.dataset.view
 			if (CASE_LIST_VIEWS.includes(state.view)) { state.caseSearch.kind = caseKindForView(state.view); await Promise.all([loadCaseSearch(true), context.loadOrderTypes()]) }
 			if (recordLabels[state.view]) await loadRecordType(state.view)
+			if (state.view === 'task') await loadRecordType('schedule').catch(() => {}) // 0.92.0: Ressourcen des Termins bei Aufgaben mit Terminbezug
 			if (state.view === 'document') await loadAllCaseFiles()
 			if (state.view === 'inbox') await loadPaperlessInbox()
 			if (state.view === 'accounting') await loadAccounting().catch((error) => notifyError(error.message))
-			if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch((error) => notifyError(error.message))
+			if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch((error) => notifyError(error.message)); if (state.view === 'master-data') await loadMasterDataTab(state.masterDataTab).catch((error) => notifyError(error.message))
 			if (state.view === 'administration') { applyCatalog(await api(articleUrl())); state.branches = await api(branchUrl()); if (['branches', 'setup'].includes(state.administrationTab)) await loadBranchLogos(); if (state.administrationTab === 'system') await loadSystemCheck(); if (state.administrationTab === 'cockpit') await loadOperationsCockpit(); if (state.administrationTab === 'backup') await loadBackups(); if (state.administrationTab === 'paperless') await loadPaperlessConfiguration() }
 			render()
 		}))
@@ -451,7 +453,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			if (state.customizingTab === 'processes') await loadProcessAdmin()
 			if (state.customizingTab === 'labels') await loadLabels().catch((error) => notifyError(error.message))
 			if (state.customizingTab === 'document-kinds') { await loadDocumentKinds().catch((error) => notifyError(error.message)); if (state.documentKinds?.canEdit) await context.paperlessTypes() }
-			if (state.customizingTab === 'scheduling') state.scheduling = await api(schedulingUrl())
+			if (state.customizingTab === 'scheduling') [state.schedulingAdmin, state.scheduling] = await Promise.all([api(`${schedulingUrl()}?all=1`), api(schedulingUrl())])
 			if (state.customizingTab === 'surcharges') state.surchargeRules = await api(`${apiBase}/customizing/surcharges`)
 			if (state.customizingTab === 'burial-rules') state.burialVariantRules = await api(`${apiBase}/customizing/burial-rules`)
 			if (state.customizingTab === 'documents') { [state.documentTemplates, state.documentTemplateOptions] = await Promise.all([api(documentTemplateUrl()), api(documentTemplateOptionsUrl())]); state.documentTemplateFiles = null; state.documentTemplateEditing = null }
@@ -462,7 +464,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		document.getElementById('new-case')?.addEventListener('click', () => showNewCase())
 		document.getElementById('delete-case')?.addEventListener('click', () => caseDeletion.deleteCurrentCase()) // 0.89.7: Aufräumen und Neuaufbau in modules/case-deletion.js
 		document.getElementById('export-case')?.addEventListener('click', async () => {
-			try { await download(`${apiBase}/cases/${state.currentCase.id}/export.json`, `Bestatter-Fallexport-${state.currentCase.caseNumber || state.currentCase.id}.json`) }
+			try { await download(`${apiBase}/cases/${state.currentCase.id}/export.zip`, `Bestatter-Fallexport-${state.currentCase.caseNumber || state.currentCase.id}.zip`) }
 			catch (error) { notifyError(error.message) }
 		})
 		document.getElementById('toggle-retention-hold')?.addEventListener('click', showRetentionHoldDialog)
@@ -570,7 +572,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		bindOperationsCockpit()
 		bindPaperlessInbox(); bindPaperlessSettings()
 		bindReporting()
-		bindCustomizing()
+		bindCustomizing(); bindMasterData()
 		bindProcess()
 		bindProcessAdmin()
 		bindConfigurationAdministration()
@@ -864,7 +866,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 				await Promise.all([api(`${apiBase}/cases/${caseId}/completeness`).then((result) => { state.caseCompleteness = result }), loadSideOrders(caseId)])
 				state.assistantSidebar.caseId = caseId
 				globalThis.localStorage?.setItem('bestatter-assistant-case-id', String(caseId))
-				state.view = 'case-detail'; state.caseTab = taskId || taskUid ? 'task' : 'overview'
+				state.view = 'case-detail'; state.caseTab = taskId || taskUid ? 'task' : (params.get('tab') === 'notes' ? 'notes' : 'overview') // 0.91.0: Erwähnung öffnet „Notizen“
 				await loadProcess(caseId)
 				if (taskId || taskUid) await loadRecordType('task', caseId)
 			} else {
@@ -886,7 +888,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			await loadDocumentKinds().catch(() => {})
 			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; Object.assign(state.help, { available: Boolean(helpAvailability?.available), chat: Boolean(helpAvailability?.chat) }); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
 			initializeAssistantCapture(); await caseGuidance.loadRoleStatus()
-			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await Promise.all([loadProcess(state.currentCase.id), context.loadCaseKindData(state.currentCase.id)]); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
+			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadMasterDataTab, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await Promise.all([loadProcess(state.currentCase.id), context.loadCaseKindData(state.currentCase.id)]); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
 			refreshGroupwareSilently().catch(() => {})
 		})
 		.catch((error) => { root.innerHTML = `<p class="bp-error">${esc(error.message)}</p>` })

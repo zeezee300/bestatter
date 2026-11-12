@@ -26,6 +26,7 @@ class CaseService {
 		private LabelService $labels,
 		private ?OrderTypeService $orderTypes = null,
 		private ?PrecareService $precare = null,
+		private ?CaseNumberService $caseNumbers = null,
 	) {
 	}
 
@@ -86,6 +87,12 @@ class CaseService {
 		$labelCaseIds = $this->labels->caseIdsForFilter(LabelRules::parseFilter($labels));
 		// 0.77.0: Suchbegriffe finden auch Text in Marker-Notizen.
 		$noteCaseIds = $search !== '' ? $this->labels->caseIdsForNoteTerms($this->searchTerms($search)) : [];
+		// 0.91.0: … und Text in Fallnotizen.
+		if ($search !== '') {
+			foreach ($this->noteCaseIdsForTerms($this->searchTerms($search)) as $term => $ids) {
+				$noteCaseIds[$term] = array_values(array_unique(array_merge($noteCaseIds[$term] ?? [], $ids)));
+			}
+		}
 
 		$query = $this->db->getQueryBuilder();
 		$query->select('*')->from('bestatter_cases');
@@ -98,7 +105,7 @@ class CaseService {
 		$this->applySearchConditions($count, $search, $status, $branch, $responsible, $searchSideOrderCaseIds, $sideOrders, $filterSideOrderCaseIds, $labelCaseIds, $noteCaseIds, $kind);
 
 		return [
-			'items' => $this->withLabels($this->withSideOrderSummaries(array_map([$this, 'mapCase'], $rows), $search)),
+			'items' => $this->withNoteSummaries($this->withLabels($this->withSideOrderSummaries(array_map([$this, 'mapCase'], $rows), $search))),
 			'total' => (int)$count->executeQuery()->fetchOne(),
 			'limit' => $limit,
 			'offset' => $offset,
@@ -141,6 +148,16 @@ class CaseService {
 
 		$data['first_name'] = $firstName;
 		$data['last_name'] = $lastName;
+		// 0.90.2: Trägt die Fallnummer die Kennung der Niederlassung, braucht der neue Fall eine Niederlassung – ohne Angabe die
+		// der zuständigen Person bzw. die einzige aktive (die Oberfläche belegt sie ohnehin so vor).
+		$branch = trim((string)($data['branch'] ?? $values['branch'] ?? ''));
+		if ($branch === '' && $this->caseNumbers !== null) {
+			$branch = $this->caseNumbers->defaultBranch((string)$data['responsible_employee']);
+			if ($branch !== '') {
+				$data['branch'] = $branch;
+				$values['branch'] = $branch;
+			}
+		}
 		$year = date('Y');
 		$lastError = null;
 
@@ -149,7 +166,7 @@ class CaseService {
 			try {
 				$this->db->beginTransaction();
 				$transactionOpen = true;
-				$number = $this->nextCaseNumber($year, $kind);
+				$number = $this->nextCaseNumber($year, $kind, $branch);
 				$id = $this->insertCase($number, $creationToken, $firstName, $lastName, $data, $values + ['caseKind' => $kind, 'orderType' => $orderType]);
 				$this->db->commit();
 				$transactionOpen = false;
@@ -631,7 +648,12 @@ class CaseService {
 	// erneut ausgibt.
 	// 0.89.7: je Vorgangsart ein eigener Zähler (CASE:{Jahr} für Sterbefälle wie bisher, ORDER:{Jahr}, PRECARE:{Jahr}); Aufträge und
 	// Vorsorgen erhalten das Präfix „A-“ bzw. „V-“ (CaseKinds::format()).
-	private function nextCaseNumber(string $year, string $kind = CaseKinds::DEATH): string {
+	// 0.90.2: Aufbau und Zählweise wahlweise mit Kennung der Niederlassung (CaseNumberService, Stammdaten → Niederlassungen);
+	// ohne diese Einstellung unverändert „2026-0001“ aus dem Zähler CASE:{Jahr}.
+	private function nextCaseNumber(string $year, string $kind = CaseKinds::DEATH, string $branch = ''): string {
+		if ($this->caseNumbers !== null) {
+			return $this->caseNumbers->next($kind, $year, $branch);
+		}
 		// 0.89.7: Zähler über DatabaseLocks (auch auf SQLite; bisher SELECT … FOR UPDATE).
 		return CaseKinds::format($kind, $year, DatabaseLocks::nextSequence($this->db, CaseKinds::sequenceKey($kind, $year)));
 	}
@@ -872,6 +894,69 @@ class CaseService {
 		foreach ($cases as &$case) {
 			$case['labels'] = $labels[(int)$case['id']] ?? [];
 			$case['hints'] = $hints[(int)$case['id']] ?? [];
+		}
+		unset($case);
+		return $cases;
+	}
+
+	/**
+	 * 0.91.0: Fallnotizen, deren Text einen Suchbegriff enthält (je Begriff die Fall-IDs). Die Vorauswahl per LIKE prüft auch
+	 * die JSON-Schreibweise (Umlaute als \u00fc in älteren Einträgen); der Text selbst wird danach exakt verglichen.
+	 * @param list<string> $terms
+	 * @return array<string, list<int>>
+	 */
+	private function noteCaseIdsForTerms(array $terms): array {
+		$result = [];
+		foreach ($terms as $term) {
+			$term = trim($term);
+			if ($term === '' || isset($result[$term])) {
+				continue;
+			}
+			$escaped = substr((string)json_encode($term), 1, -1);
+			$query = $this->db->getQueryBuilder();
+			$query->select('case_id', 'payload')->from('bestatter_records')
+				->where($query->expr()->eq('record_type', $query->createNamedParameter('note')))
+				->andWhere($query->expr()->isNotNull('case_id'))
+				->andWhere($query->expr()->orX(
+					$query->expr()->iLike('payload', $query->createNamedParameter('%' . $this->db->escapeLikeParameter($term) . '%')),
+					$query->expr()->iLike('payload', $query->createNamedParameter('%' . $this->db->escapeLikeParameter($escaped) . '%')),
+				))
+				->setMaxResults(500);
+			$ids = [];
+			foreach ($query->executeQuery()->fetchAllAssociative() as $row) {
+				$data = json_decode((string)($row['payload'] ?? ''), true);
+				if (is_array($data) && mb_stripos((string)($data['text'] ?? ''), $term) !== false) {
+					$ids[(int)$row['case_id']] = true;
+				}
+			}
+			$result[$term] = array_keys($ids);
+		}
+		return $result;
+	}
+
+	/** 0.91.0: Anzahl der Notizen und angeheftete Notizen (Kurztext) je Fall für die Fallliste. */
+	private function withNoteSummaries(array $cases): array {
+		$ids = array_values(array_filter(array_map(static fn (array $case): int => (int)$case['id'], $cases)));
+		if ($ids === []) {
+			return $cases;
+		}
+		$query = $this->db->getQueryBuilder();
+		$rows = $query->select('case_id', 'title', 'payload')->from('bestatter_records')
+			->where($query->expr()->eq('record_type', $query->createNamedParameter('note')))
+			->andWhere($query->expr()->in('case_id', $query->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+			->executeQuery()->fetchAllAssociative();
+		$summaries = [];
+		foreach ($rows as $row) {
+			$caseId = (int)$row['case_id'];
+			$summaries[$caseId] ??= ['count' => 0, 'pinned' => []];
+			$summaries[$caseId]['count']++;
+			$data = json_decode((string)($row['payload'] ?? ''), true);
+			if (is_array($data) && !empty($data['pinned'])) {
+				$summaries[$caseId]['pinned'][] = (string)$row['title'];
+			}
+		}
+		foreach ($cases as &$case) {
+			$case['noteSummary'] = $summaries[(int)$case['id']] ?? ['count' => 0, 'pinned' => []];
 		}
 		unset($case);
 		return $cases;

@@ -92,7 +92,7 @@ class StabilizationService {
 			$this->roleGroupsCheck(),
 			$this->storageCheck(count($team['members'] ?? [])),
 			$this->check('access', 'Rollen und Zugriff', count($team['members'] ?? []) > 0 ? 'OK' : 'ERROR', count($team['members'] ?? []) . ' Mitglied(er) der Gruppe ' . $this->installationConfig->memberGroup() . '; angemeldeter Benutzer ist ' . (($team['isBestatterAdmin'] ?? false) ? 'Administrator.' : 'Mitglied.')),
-			$this->check('branches', 'Niederlassungen', $activeBranches === [] ? 'ERROR' : ($incompleteBranches === [] ? 'OK' : 'WARN'), $activeBranches === [] ? 'Keine aktive Niederlassung vorhanden.' : (count($activeBranches) . ' aktive Niederlassung(en)' . ($incompleteBranches === [] ? ' sind für Rechnungen vollständig gepflegt.' : '; unvollständig: ' . implode(', ', $incompleteBranches) . '.')), $activeBranches === [] ? 'Unter Administration → Niederlassungen eine Niederlassung mit Anschrift, Steuernummer und Bankverbindung anlegen; ohne sie lassen sich weder Aufträge noch Rechnungen erstellen.' : ($incompleteBranches === [] ? '' : 'Platzhalter-Niederlassungen deaktivieren oder die für Rechnungen erforderlichen Adress- und Bankdaten ergänzen.'), $branchDetails, ['view' => 'administration', 'tab' => 'branches', 'label' => 'Niederlassungen öffnen']),
+			$this->check('branches', 'Niederlassungen', $activeBranches === [] ? 'ERROR' : ($incompleteBranches === [] ? 'OK' : 'WARN'), $activeBranches === [] ? 'Keine aktive Niederlassung vorhanden.' : (count($activeBranches) . ' aktive Niederlassung(en)' . ($incompleteBranches === [] ? ' sind für Rechnungen vollständig gepflegt.' : '; unvollständig: ' . implode(', ', $incompleteBranches) . '.')), $activeBranches === [] ? 'Unter Stammdaten → Niederlassungen eine Niederlassung mit Anschrift, Steuernummer und Bankverbindung anlegen; ohne sie lassen sich weder Aufträge noch Rechnungen erstellen.' : ($incompleteBranches === [] ? '' : 'Platzhalter-Niederlassungen deaktivieren oder die für Rechnungen erforderlichen Adress- und Bankdaten ergänzen.'), $branchDetails, ['view' => 'master-data', 'tab' => 'branches', 'label' => 'Niederlassungen öffnen']),
 			$this->check('templates', 'Dokumentvorlagen', $activeTemplates === [] || $missingTemplateFiles !== [] ? 'ERROR' : 'OK', count($activeTemplates) . ' aktive Vorlage(n)' . ($missingTemplateFiles === [] ? ' mit verwendbarer Quelldatei.' : '; keine verwendbare Quelldatei bei: ' . implode(', ', $missingTemplateFiles) . '.'), $missingTemplateFiles === [] ? 'Berücksichtigt werden alle aktiven DOCX-Vorlagen in ' . $this->installationConfig->templatesPath() . ' sowie mitgelieferte Paketvorlagen.' : 'Die genannten Dateien im konfigurierten Vorlagenordner bereitstellen oder die betroffenen Vorlagen deaktivieren.', $templateDetails, ['view' => 'customizing', 'tab' => 'documents', 'label' => 'Dokumentvorlagen öffnen']),
 			$this->pdfConversionCheck(),
 			$this->catalogReferenceCheck(),
@@ -112,6 +112,7 @@ class StabilizationService {
 			$this->paperlessCheck(),
 			$this->paperlessSetupCheck(),
 			$this->notificationCheck(),
+			$this->notesAppCheck(),
 			$this->maintenanceCheck(),
 			$this->backupCheck(),
 			$this->nextcloudCompatibilityCheck(),
@@ -130,24 +131,50 @@ class StabilizationService {
 
 	private function installationCheck(): array {
 		$settings = $this->installationConfig->settings();
-		$memberExists = $this->teamGroupExists($settings['memberGroup']);
-		$adminExists = array_filter($settings['adminGroups'], fn (string $name): bool => $this->teamGroupExists($name));
-		$status = !$memberExists ? 'ERROR' : ($adminExists === [] ? 'WARN' : 'OK');
-		$missingAdmin = array_values(array_filter(array_map(fn (string $name): string => $this->groupLookup->missingText($name), $settings['adminGroups'])));
-		return $this->check('installation', 'Installationsparameter', $status,
-			$status === 'OK' ? 'Rollen- und Ablageparameter sind zentral konfiguriert.' . ($missingAdmin === [] ? '' : ' Administrationsgruppen: ' . implode('; ', $missingAdmin) . '.') : (!$memberExists ? 'Die konfigurierte Mitgliedergruppe existiert nicht: ' . $this->groupLookup->missingText($settings['memberGroup']) . '.' : 'Keine konfigurierte Administrationsgruppe wurde gefunden; nur Nextcloud-Systemadministratoren besitzen Administrationsrechte. ' . implode('; ', $missingAdmin) . '.'),
-			'Änderungen an Ablagepfaden verschieben vorhandene Dateien nicht automatisch.', [
-				'Mitgliedergruppe: ' . $settings['memberGroup'],
-				'Administrationsgruppen: ' . implode(', ', $settings['adminGroups']),
-				'Fallakten: ' . $settings['paths']['cases'],
-				'Vorlagen: ' . $settings['paths']['templates'],
-			], ['view' => 'administration', 'tab' => 'system', 'label' => 'Installationsparameter öffnen']);
+		$member = $this->groupLookup->lookup($settings['memberGroup']);
+		$admins = array_map(fn (string $name): array => $this->groupLookup->lookup($name), $settings['adminGroups']);
+		$adminFound = array_filter($admins, static fn (array $group): bool => $group['exists']);
+		$adminMissing = array_values(array_filter($admins, static fn (array $group): bool => !$group['exists'] && $group['name'] !== ''));
+		$status = !$member['exists'] ? 'ERROR' : ($adminFound === [] ? 'WARN' : 'OK');
+		// 0.92.2: Meldung sagt, was fehlt und welche Folge das hat; der Hinweis sagt, wo und was einzutragen ist.
+		// Der Knopf springt zu den Installationsparametern auf derselben Seite und setzt den Cursor ins betroffene Feld.
+		if (!$member['exists']) {
+			$message = 'Die eingetragene Bestatter-Mitgliedergruppe „' . $member['name'] . '“ wurde in Nextcloud nicht gefunden.';
+			$hint = $this->groupFixHint('im Feld „Bestatter-Mitgliedergruppe“', [$member]);
+			$field = 'memberGroup';
+		} elseif ($adminFound === []) {
+			$names = implode(', ', array_map(static fn (array $group): string => '„' . $group['name'] . '“', $adminMissing));
+			$message = (count($adminMissing) === 1 ? 'Die eingetragene Administrationsgruppe ' . $names . ' wurde in Nextcloud nicht gefunden.' : 'Keine der eingetragenen Administrationsgruppen (' . $names . ') wurde in Nextcloud gefunden.')
+				. ' Bis das korrigiert ist, haben nur Nextcloud-Systemadministratoren Administrationsrechte in Bestatter.';
+			$hint = $this->groupFixHint('im Feld „Administrationsgruppen“', $adminMissing);
+			$field = 'adminGroups';
+		} else {
+			$message = 'Rollen- und Ablageparameter sind zentral konfiguriert.' . ($adminMissing === [] ? '' : ' Ohne Wirkung, weil in Nextcloud nicht gefunden: ' . implode(', ', array_map(static fn (array $group): string => 'Administrationsgruppe „' . $group['name'] . '“', $adminMissing)) . '.');
+			$hint = $adminMissing === [] ? 'Änderungen an Ablagepfaden verschieben vorhandene Dateien nicht automatisch.' : $this->groupFixHint('im Feld „Administrationsgruppen“', $adminMissing);
+			$field = $adminMissing === [] ? '' : 'adminGroups';
+		}
+		$details = [
+			'Mitgliedergruppe: ' . $settings['memberGroup'] . ($member['exists'] ? '' : ' (nicht gefunden)'),
+			'Administrationsgruppen: ' . implode(', ', $settings['adminGroups']),
+		];
+		foreach ([$member, ...$adminMissing] as $group) {
+			$text = $this->groupLookup->missingText($group['name']);
+			if ($text !== '') {
+				$details[] = $text;
+			}
+		}
+		$details[] = 'Fallakten: ' . $settings['paths']['cases'];
+		$details[] = 'Vorlagen: ' . $settings['paths']['templates'];
+		return $this->check('installation', 'Installationsparameter', $status, $message, $hint, array_values(array_unique($details)),
+			['view' => 'administration', 'tab' => 'system', 'anchor' => 'bp-installation-settings', 'field' => $field, 'label' => 'Installationsparameter öffnen']);
 	}
 
 	/** 0.83.2 – Rollengruppen der Abläufe: eingetragene Gruppen müssen als Gruppen-ID existieren. */
 	private function roleGroupsCheck(): array {
 		$details = [];
 		$missing = [];
+		$missingLookups = [];
+		$field = '';
 		foreach ($this->installationConfig->roleGroups() as $role => $group) {
 			$label = ProcessRules::ROLES[$role] ?? $role;
 			if ($group === '') {
@@ -160,12 +187,38 @@ class StabilizationService {
 				continue;
 			}
 			$missing[] = $label;
+			$missingLookups[] = $this->groupLookup->lookup($group);
+			$field = $field === '' ? 'role_' . $role : $field;
 			$details[] = $label . ': ' . $text;
 		}
 		return $this->check('role_groups', 'Rollengruppen für Abläufe', $missing === [] ? 'OK' : 'WARN',
 			$missing === [] ? 'Alle eingetragenen Rollengruppen sind in Nextcloud vorhanden.' : 'Für ' . implode(', ', $missing) . ' wurde die eingetragene Nextcloud-Gruppe nicht gefunden; Aufgaben dieser Rollen gehen an die Fallverantwortung.',
-			$missing === [] ? '' : 'Eingetragen wird die Gruppen-ID. Wurde eine Gruppe in der Benutzerverwaltung umbenannt, bleibt ihre ID die alte – dann die vorgeschlagene ID eintragen oder die Gruppe unter dem gewünschten Namen neu anlegen.',
-			$details, ['view' => 'administration', 'tab' => 'system', 'label' => 'Installationsparameter öffnen']);
+			$missing === [] ? '' : $this->groupFixHint('im Abschnitt „Rollen für Abläufe“', $missingLookups),
+			$details, ['view' => 'administration', 'tab' => 'system', 'anchor' => 'bp-installation-settings', 'field' => $field, 'label' => 'Installationsparameter öffnen']);
+	}
+
+	/**
+	 * 0.92.2 – Hinweis zur Korrektur nicht gefundener Gruppen: was die Ursache ist, wo die Gruppen-ID einzutragen ist
+	 * und welche. Vorher endete die Meldung mit „diese ID eintragen“, ohne Ort.
+	 *
+	 * @param list<array{name: string, exists: bool, suggestion: string, suggestionName: string}> $groups
+	 */
+	private function groupFixHint(string $where, array $groups): string {
+		$steps = [];
+		$explained = [];
+		$hasSuggestion = false;
+		foreach ($groups as $group) {
+			$explained[] = $group['suggestion'] === '' ? 'Eine Gruppe „' . $group['name'] . '“ gibt es in Nextcloud nicht.' : ucfirst($this->groupLookup->explain($group)) . '.';
+			if ($group['suggestion'] !== '') {
+				$hasSuggestion = true;
+				$steps[] = '„' . $group['name'] . '“ durch „' . $group['suggestion'] . '“ ersetzen';
+			} else {
+				$steps[] = '„' . $group['name'] . '“ in der Nextcloud-Benutzerverwaltung anlegen oder die Gruppen-ID einer vorhandenen Gruppe eintragen';
+			}
+		}
+		return implode(' ', array_unique($explained)) . ' Bestatter erkennt Gruppen an ihrer Gruppen-ID, nicht am angezeigten Namen. Abhilfe: oben auf dieser Seite unter „Installationsparameter“ ' . $where . ' ' . implode('; ', array_unique($steps)) . ' und „Installationsparameter speichern“ klicken.'
+			. ($hasSuggestion ? ' Neben dem Feld steht dafür ein Knopf, der die richtige Gruppen-ID einsetzt.' : '')
+			. ' Der Knopf „Installationsparameter öffnen“ springt direkt dorthin.';
 	}
 
 	private function teamGroupExists(string $groupName): bool {
@@ -232,6 +285,21 @@ class StabilizationService {
 			'E-Mail-Konfiguration: ' . ($mailConfigured ? 'vorhanden' : 'nicht erkannt'),
 			'Hintergrundmodus: ' . $backgroundMode,
 		], ['view' => 'administration', 'tab' => 'system', 'label' => 'Systemprüfung öffnen']);
+	}
+
+	/**
+	 * 0.91.0: Fallnotizen funktionieren ohne weitere App. Die Nextcloud-App „Notizen“ ist optional: Wer unterwegs in der
+	 * Kategorie „Bestatter“ notiert, übernimmt diese Notizen im Fall unter „Notizen“.
+	 */
+	private function notesAppCheck(): array {
+		$enabled = $this->appManager->isEnabledForUser('notes');
+		$message = $enabled
+			? 'Die Nextcloud-App „Notizen“ ist aktiv. Notizen der Kategorie „' . CaseNoteRules::NOTES_APP_CATEGORY . '“ lassen sich im Fall unter „Notizen“ übernehmen.'
+			: 'Die Nextcloud-App „Notizen“ ist nicht aktiv. Fallnotizen funktionieren trotzdem; nur die Übernahme aus „Notizen“ steht nicht zur Verfügung.';
+		return $this->check('notes_app', 'Nextcloud Notizen (optional)', 'OK', $message, $enabled ? '' : 'Bei Bedarf die App „Notizen“ (notes) im Nextcloud-App-Store installieren; die Mobil-Apps eignen sich zum Notieren unterwegs.', [
+			'App „Notizen“: ' . ($enabled ? 'aktiv' : 'nicht aktiv oder nicht installiert'),
+			'Kategorie für die Übernahme: ' . CaseNoteRules::NOTES_APP_CATEGORY,
+		]);
 	}
 
 	private function maintenanceCheck(): array {
@@ -332,11 +400,29 @@ class StabilizationService {
 		$types = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_schedule_types')->where($query->expr()->eq('active', $query->createNamedParameter(1)))->executeQuery()->fetchOne();
 		$query = $this->db->getQueryBuilder();
 		$resources = (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_resources')->where($query->expr()->eq('active', $query->createNamedParameter(1)))->andWhere($query->expr()->eq('conflict_relevant', $query->createNamedParameter(1)))->executeQuery()->fetchOne();
-		$status = $types === 0 ? 'ERROR' : ($resources === 0 ? 'WARN' : 'OK');
+		$issues = $this->schedulingAssignmentIssues();
+		$status = $types === 0 ? 'ERROR' : ($resources === 0 || $issues !== [] ? 'WARN' : 'OK');
+		$hint = match (true) {
+			$status === 'OK' => 'Personal wird zusätzlich direkt über die Terminzuständigkeit geprüft.',
+			$types > 0 && $resources > 0 => 'Unter Customizing → Terminplanung in der Matrix „Ressourcen je Terminart“ passende Ressourcen als zulässig markieren, unter Stammdaten → Ressourcen die Niederlassungen prüfen oder den Pflichtbedarf der Terminart senken. Sonst lässt sich ein Termin dieser Art nicht speichern.',
+			default => 'Unter Customizing → Terminplanung Terminarten prüfen und unter Stammdaten → Ressourcen mindestens Fahrzeuge, Räume oder Kapellen ergänzen, die nicht doppelt belegt werden dürfen.',
+		};
 		return $this->check('scheduling', 'Terminplanung und Disposition', $status,
-			$types . ' aktive Terminart(en), ' . $resources . ' konfliktrelevante Ressource(n).',
-			$status === 'OK' ? 'Personal wird zusätzlich direkt über die Terminzuständigkeit geprüft.' : 'Unter Customizing → Terminplanung Terminarten prüfen und mindestens Fahrzeuge, Räume oder Kapellen ergänzen, die nicht doppelt belegt werden dürfen.',
-			['Aktive Terminarten: ' . $types, 'Konfliktrelevante Ressourcen: ' . $resources], ['view' => 'customizing', 'tab' => 'scheduling', 'label' => 'Terminplanung öffnen']);
+			$types . ' aktive Terminart(en), ' . $resources . ' konfliktrelevante Ressource(n)' . ($issues === [] ? '.' : '; ' . count($issues) . ' Terminart(en) mit nicht erfüllbarem Pflichtbedarf.'),
+			$hint,
+			['Aktive Terminarten: ' . $types, 'Konfliktrelevante Ressourcen: ' . $resources, ...$issues], ['view' => 'customizing', 'tab' => 'scheduling', 'label' => 'Terminplanung öffnen']);
+	}
+
+	/**
+	 * 0.90.3: Pflichtbedarf je Terminart gegen die zulässigen Ressourcen (Matrix „Ressourcen je Terminart“).
+	 * 0.92.0: dieselbe Prüfung wie im Customizing – mit eigenen Ressourcentypen und je Niederlassung.
+	 */
+	private function schedulingAssignmentIssues(): array {
+		try {
+			return (new SchedulingService($this->db, null, $this->config))->assignmentIssues();
+		} catch (\Throwable) {
+			return [];
+		}
 	}
 
 	private function eInvoiceCheck(): array {

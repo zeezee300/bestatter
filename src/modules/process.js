@@ -111,8 +111,19 @@ export function createProcessModule(ctx) {
 			done && !options.compact ? `<button type="button" class="bp-secondary" data-process-reopen="${view.runId}">Wieder öffnen</button>` : '',
 			view.recordId && !options.compact ? `<button type="button" class="bp-secondary" data-process-open-task="${view.recordId}">Aufgabe öffnen</button>` : '',
 		].join('') : ''
+		// 0.90.4: Wartet der Schritt auf eine Fallangabe, lässt sie sich hier direkt beantworten (gilt dann für den ganzen Fall).
+		const answers = view.state === 'pending' && state.currentCase ? pendingAnswerButtons(view.pendingAttribute) : ''
 		const label = stateLabels[view.state] || view.state
-		return `<article class="bp-step bp-step-${esc(view.state)}${view.priority === 'KRITISCH' && open ? ' is-critical' : ''}"><span class="bp-step-icon" role="img" aria-label="${esc(label)}" title="${esc(label)}">${stateIcons[view.state] || '•'}</span><div class="bp-step-body"><b>${esc(view.title)}</b><small class="bp-step-meta">${esc(stepMeta(view).join(' · '))}${options.showTemplate && view.templateName ? ` · ${esc(view.templateName)}` : ''}</small>${notes.join('')}</div><div class="bp-step-actions">${actionButtons}${controls}</div></article>`
+		return `<article class="bp-step bp-step-${esc(view.state)}${view.priority === 'KRITISCH' && open ? ' is-critical' : ''}"><span class="bp-step-icon" role="img" aria-label="${esc(label)}" title="${esc(label)}">${stateIcons[view.state] || '•'}</span><div class="bp-step-body"><b>${esc(view.title)}</b><small class="bp-step-meta">${esc(stepMeta(view).join(' · '))}${options.showTemplate && view.templateName ? ` · ${esc(view.templateName)}` : ''}</small>${notes.join('')}</div><div class="bp-step-actions">${answers}${actionButtons}${controls}</div></article>`
+	}
+
+	// 0.90.4: Antworten auf die fehlende Fallangabe eines wartenden Schritts („?“ Angabe fehlt)
+	const pendingAnswers = { ceremony: 'Trauerfeier', pension: 'Rente' }
+	function pendingAnswerButtons(attribute) {
+		if (attribute === 'scope') return '<button type="button" class="bp-secondary bp-step-answer" data-process-open-view="master" title="Die Bestattungsart steht in den Stammdaten">Bestattungsart festlegen</button>'
+		const label = pendingAnswers[attribute]
+		if (!label) return ''
+		return [['1', 'ja'], ['0', 'nein']].map(([value, text]) => `<button type="button" class="bp-secondary bp-step-answer" data-process-answer="${esc(attribute)}" data-answer-value="${value}" title="Setzt das Fallmerkmal „${esc(label)}“ für diesen Fall auf „${text}“">${esc(label)}: ${text}</button>`).join('')
 	}
 
 	function attributesForm(process) {
@@ -120,7 +131,7 @@ export function createProcessModule(ctx) {
 		const tri = (name, value, labels) => `<select name="${name}">${[['', labels[0]], ['1', labels[1]], ['0', labels[2]]].map(([key, text]) => `<option value="${key}" ${String(value ?? '') === key ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>`
 		return `<form class="bp-process-attributes" id="process-attributes"><h4>Fallmerkmale für den Ablauf</h4><p class="bp-muted">Steuern, welche Schritte anfallen. Änderungen wirken sofort.</p>
 			<div class="bp-attribute-row"><span>Bestattungsart</span><span class="bp-attribute-value">${esc(attributes.funeralType || attributes.funeralScopeLabel || 'noch offen')} <button type="button" class="bp-link-button" data-process-open-view="master">ändern</button></span></div>
-			<label><span>Trauerfeier</span>${tri('ceremony', attributes.ceremony, ['noch offen', 'ja', 'nein'])}</label>
+			<label><span>Trauerfeier</span>${tri('ceremony', attributes.ceremony, ['noch offen', 'ja', 'nein'])}</label>${attributes.ceremonyConflict ? `<p class="bp-warning" role="status">${esc(attributes.ceremonyConflict)}</p>` : ''}
 			<label><span>Bezieht der/die Verstorbene eine Rente?</span>${tri('pension', attributes.pension, ['unbekannt', 'ja', 'nein'])}</label>
 			<label><span>Vereinbarte Anzahlung (€, je Fall)</span><input name="depositAmount" inputmode="decimal" placeholder="keine" value="${attributes.depositCents ? esc(centsToEuro(attributes.depositCents)) : ''}"></label>
 			<label><span>Anzahlung eingegangen am</span><input name="depositReceivedAt" type="date" value="${esc(attributes.depositReceivedAt || '')}" ${attributes.depositCents ? '' : 'disabled'}></label>
@@ -379,6 +390,15 @@ export function createProcessModule(ctx) {
 			if (view && action) await runStepAction(view, action)
 		}))
 		root.querySelectorAll('[data-process-open-view]').forEach((button) => button.addEventListener('click', () => openCaseTab(button.dataset.processOpenView)))
+		root.querySelectorAll('[data-process-answer]').forEach((button) => button.addEventListener('click', async () => {
+			const attribute = button.dataset.processAnswer; const value = button.dataset.answerValue
+			const label = pendingAnswers[attribute]; if (!label || !state.currentCase) return
+			root.querySelectorAll(`[data-process-answer="${attribute}"]`).forEach((entry) => { entry.disabled = true })
+			try {
+				state.process = await api(`${processUrl(state.currentCase.id)}/attributes`, { method: 'PUT', feedback: false, body: new URLSearchParams({ attributes: JSON.stringify({ [attribute]: value }), expectedUpdatedAt: state.currentCase.updatedAt || '' }) })
+				await afterProcessChange(`Fallmerkmal „${label}“: ${value === '1' ? 'ja' : 'nein'} – der Ablauf wurde angepasst. Ändern lässt es sich in der Übersicht unter „Fallmerkmale für den Ablauf“.`)
+			} catch (error) { root.querySelectorAll(`[data-process-answer="${attribute}"]`).forEach((entry) => { entry.disabled = false }); notifyError(error.message) }
+		}))
 		root.querySelector('#open-closure')?.addEventListener('click', () => showClosure(state.currentCase.id))
 		root.querySelector('#process-add-step-button')?.addEventListener('click', async () => {
 			const stepId = Number(root.querySelector('#process-add-step')?.value || 0)

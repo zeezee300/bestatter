@@ -39,7 +39,7 @@ export function createOrderFormModule(ctx) {
 	async function openOrderForm() {
 		try {
 			of().data = await api(caseUrl(), { loadingLabel: 'Auftragsformular wird geladen …' })
-			if (!of().data.forms.length) { notifyWarning('Es ist kein aktives Auftragsformular vorhanden. Bitte unter Einstellungen → Administration → Leistungen → Auftragsformulare anlegen.'); return }
+			if (!of().data.forms.length) { notifyWarning('Es ist kein aktives Auftragsformular vorhanden. Bitte unter Einstellungen → Stammdaten → Leistungen → Auftragsformulare anlegen.'); return }
 			const lastUsed = of().data.entries[0]?.formId
 			of().formId = of().data.forms.some((form) => Number(form.id) === Number(lastUsed)) ? Number(lastUsed) : Number(of().data.forms[0].id)
 			loadValues(currentForm())
@@ -200,7 +200,7 @@ export function createOrderFormModule(ctx) {
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Pflege der Vorlagen (Administration → Leistungen → Auftragsformulare)
+	// Pflege der Vorlagen (Stammdaten → Leistungen → Auftragsformulare)
 	// ---------------------------------------------------------------------------------------------
 	const kindLabels = { PRICE: 'Betrag', MEMO: 'Merkposten', NOTE: 'Hinweistext' }
 	const blankLine = () => ({ key: '', label: '', kind: 'PRICE', positionType: 'EL', vatRate: 19, textInput: false, textRequired: false, textLabel: '', quantityInput: false, quantityLabel: 'Stück' })

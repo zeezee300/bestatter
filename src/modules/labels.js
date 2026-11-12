@@ -5,7 +5,7 @@
  * - Auswahlfenster: Suche, Klick bzw. Enter schaltet sofort (ohne Speichern-Knopf), Listen-Marker mit Werten.
  * - Fallliste: Spalte „Hinweise“ (bis zu 4 Symbole), Menü „⋯“ bzw. Rechtsklick → „Marker …“,
  *   Klick auf ein Symbol filtert die Liste, Filterleiste mit Marker-Auswahl.
- * - Customizing → Marker: Pflege mit fester Farbpalette und Symbolauswahl (48 Tabler-Symbole).
+ * - Stammdaten → Marker: Pflege mit fester Farbpalette und Symbolauswahl (48 Tabler-Symbole).
  * - 0.77.0: Notiz je gesetztem Marker (Sprechblase am Chip, Punkt am Listensymbol, Notizfenster mit „Speichern“;
  *   Pflichtnotiz fragt das Notizfenster schon beim Setzen ab).
  */
@@ -91,7 +91,7 @@ export function createLabelsModule(ctx) {
 		const labels = item.labels || []
 		const hints = item.hints || []
 		const canAdd = activeLabels().length > 0
-		const add = canAdd ? `<button type="button" class="bp-label-add" id="label-picker-open" data-label-picker aria-haspopup="dialog" title="Marker setzen oder entfernen (Taste E)"><span aria-hidden="true">+</span> Marker</button>` : (catalog().canEdit ? '<span class="bp-muted bp-label-empty">Noch keine Marker aktiv – Customizing → Marker</span>' : '')
+		const add = canAdd ? `<button type="button" class="bp-label-add" id="label-picker-open" data-label-picker aria-haspopup="dialog" title="Marker setzen oder entfernen (Taste E)"><span aria-hidden="true">+</span> Marker</button>` : (catalog().canEdit ? '<span class="bp-muted bp-label-empty">Noch keine Marker aktiv – Stammdaten → Marker</span>' : '')
 		if (!labels.length && !hints.length && !add) return ''
 		return `<div class="bp-case-labels" aria-label="Marker und Hinweise">${labels.map((label) => labelChip(label, { removable: !label.inactive, withNote: true })).join('')}${hints.map(hintChip).join('')}${add}</div>`
 	}
@@ -354,7 +354,7 @@ export function createLabelsModule(ctx) {
 	function openCaseMenu(anchor, caseId, point = null) {
 		const item = (state.caseSearch?.items || []).find((entry) => Number(entry.id) === Number(caseId))
 		const element = openPopover(`<button type="button" role="menuitem" data-menu-labels>Marker …</button><button type="button" role="menuitem" data-menu-open>Fall öffnen</button>`, anchor, { className: 'bp-label-menu', role: 'menu', label: `Aktionen für ${item?.caseNumber || 'Fall'}`, point })
-		element.querySelector('[data-menu-labels]').addEventListener('click', () => { closePopover(false); if (!activeLabels().length) { notifyWarning('Es sind noch keine Marker aktiv (Customizing → Marker).'); return } openLabelPicker(anchor, caseId) })
+		element.querySelector('[data-menu-labels]').addEventListener('click', () => { closePopover(false); if (!activeLabels().length) { notifyWarning('Es sind noch keine Marker aktiv (Stammdaten → Marker).'); return } openLabelPicker(anchor, caseId) })
 		element.querySelector('[data-menu-open]').addEventListener('click', () => { closePopover(false); root.querySelector(`tr[data-case-id="${Number(caseId)}"]`)?.click() })
 		element.querySelector('button')?.focus()
 		element.addEventListener('keydown', (event) => {
@@ -444,7 +444,7 @@ export function createLabelsModule(ctx) {
 		button.click()
 	})
 
-	// ------------------------------------------------------------------ Customizing → Marker
+	// ------------------------------------------------------------------ Stammdaten → Marker
 
 	function labelsAdminView() {
 		const data = catalog()
@@ -507,7 +507,7 @@ export function createLabelsModule(ctx) {
 		const label = existing ? JSON.parse(JSON.stringify(existing)) : { key: '', name: '', description: '', kind: 'BOOL', color: 'SLATE', icon: 'tag', active: true, keepOnAnonymize: false, noteMode: 'OPTIONAL', noteHint: '', values: [] }
 		const noteModes = data.noteModes || { NONE: 'keine Notiz', OPTIONAL: 'Notiz möglich', REQUIRED: 'Notiz erforderlich' }
 		const colors = Object.entries(data.colors || {}).map(([colorKey, name]) => `<label class="bp-color-choice ${colorClass(colorKey)}" title="${esc(name)}"><input type="radio" name="color" value="${esc(colorKey)}" ${colorKey === label.color ? 'checked' : ''}><span class="bp-color-swatch" aria-hidden="true"></span><span>${esc(name)}</span></label>`).join('')
-		root.insertAdjacentHTML('beforeend', `<div class="bp-modal" role="dialog" aria-modal="true" aria-labelledby="label-dialog-title"><form class="bp-wide-modal bp-process-dialog bp-label-dialog"><div class="bp-panel-head"><div><p class="bp-eyebrow">Customizing → Marker</p><h2 id="label-dialog-title">${existing ? `Marker „${esc(existing.name)}“ bearbeiten` : 'Neuer Marker'}</h2></div><button type="button" class="bp-secondary" data-close-dialog>Schließen</button></div><div class="bp-process-dialog-body">
+		root.insertAdjacentHTML('beforeend', `<div class="bp-modal" role="dialog" aria-modal="true" aria-labelledby="label-dialog-title"><form class="bp-wide-modal bp-process-dialog bp-label-dialog"><div class="bp-panel-head"><div><p class="bp-eyebrow">Stammdaten → Marker</p><h2 id="label-dialog-title">${existing ? `Marker „${esc(existing.name)}“ bearbeiten` : 'Neuer Marker'}</h2></div><button type="button" class="bp-secondary" data-close-dialog>Schließen</button></div><div class="bp-process-dialog-body">
 			<div class="bp-label-preview" aria-live="polite"></div>
 			<fieldset><legend>Bezeichnung</legend><div class="bp-form-grid"><label class="bp-span-2"><span>Name</span><input name="name" value="${esc(label.name)}" maxlength="100" required></label><label><span>Art</span><select name="kind" ${existing ? 'disabled' : ''}><option value="BOOL" ${label.kind === 'BOOL' ? 'selected' : ''}>Ja/Nein</option><option value="LIST" ${label.kind === 'LIST' ? 'selected' : ''}>Liste mit Werten</option></select></label><label class="bp-span-3"><span>Beschreibung (erscheint als Hinweis am Marker)</span><textarea name="description" rows="2" maxlength="500">${esc(label.description || '')}</textarea></label></div><p class="bp-muted">Bitte sachlich und neutral formulieren – Marker sind Teil der Fallakte und erscheinen bei Auskunftsersuchen.</p></fieldset>
 			<fieldset data-values-section ${label.kind === 'LIST' ? '' : 'hidden'}><legend>Auswahlwerte</legend><div data-values>${(label.values || []).map((value) => valueRow(value, Boolean(existing))).join('')}</div><button type="button" class="bp-secondary" data-value-add>+ Wert</button><p class="bp-muted">Werte, die schon in Fällen verwendet wurden, werden beim Entfernen nur deaktiviert.</p></fieldset>

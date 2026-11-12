@@ -24,6 +24,7 @@ class Provider implements IProvider {
 		'action_failed' => 'Ablaufaktion „{title}“ ist fehlgeschlagen ({case})',
 		'workflow_failed' => 'Workflow „{title}“ ist fehlgeschlagen ({case})',
 		'backup_failed' => 'Automatische Datensicherung: {title}',
+		'note_mentioned' => 'Sie wurden in einer Notiz erwähnt ({case}): „{title}“',
 	];
 
 	public function __construct(
@@ -46,6 +47,10 @@ class Provider implements IProvider {
 		$caseId = (int)($parameters['caseId'] ?? 0);
 		if ($caseId > 0) {
 			$link = $this->urlGenerator->linkToRouteAbsolute('bestatter.page.index') . '?' . http_build_query(['caseId' => $caseId]);
+			// 0.91.0: Erwähnungen öffnen den Fall direkt im Reiter „Notizen“.
+			if ($event->getSubject() === 'note_mentioned') {
+				$link .= '&tab=notes';
+			}
 			$event->setLink($link);
 		}
 		$event->setIcon($this->urlGenerator->imagePath('bestatter', 'app.svg'));

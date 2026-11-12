@@ -9,8 +9,8 @@ use OCP\IDBConnection;
 use OCP\IUserSession;
 
 class RecordService {
-	/** 0.70.0: fallbezogene Einträge der gemeinsamen Fallakte (für alle Bestatter-Mitglieder sichtbar). */
-	private const CASE_SHARED_TYPES = ['document', 'deregistration'];
+	/** 0.70.0: fallbezogene Einträge der gemeinsamen Fallakte (für alle Bestatter-Mitglieder sichtbar); 0.91.0: Fallnotizen. */
+	private const CASE_SHARED_TYPES = ['document', 'deregistration', 'note'];
 	public function __construct(
 		private IDBConnection $db,
 		private IUserSession $userSession,
@@ -546,10 +546,16 @@ class RecordService {
 		// Fallback ohne Join: wird nur noch von delete() für die abschließende, bereits per
 		// Primärschlüssel auf eine einzelne Zeile eingegrenzte Re-Prüfung verwendet - dort
 		// ist die fehlende Indexierbarkeit unschädlich (kein Tabellen-Scan).
+		// 0.91.0: Einträge der gemeinsamen Fallakte dürfen alle ändern bzw. löschen, die sie sehen (wie get()/list()).
+		// Vorher traf die Änderung durch eine andere Person still keine Zeile.
 		return $query->expr()->orX(
 			$query->expr()->eq($prefix . 'owner_uid', $query->createNamedParameter($uid)),
 			$query->expr()->eq($prefix . 'assignee_uid', $query->createNamedParameter($uid)),
 			$query->expr()->like($prefix . 'payload', $query->createNamedParameter('%"' . $query->escapeLikeParameter($uid) . '"%')),
+			$query->expr()->andX(
+				$query->expr()->in($prefix . 'record_type', $query->createNamedParameter(self::CASE_SHARED_TYPES, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)),
+				$query->expr()->isNotNull($prefix . 'case_id'),
+			),
 		);
 	}
 

@@ -26,6 +26,8 @@ class InstallationConfigService {
 		'templates_folder' => 'Vorlagen',
 		'assistant_folder' => '.Assistenz',
 		'article_images_folder' => 'Artikelbilder',
+		// 0.90.1: Eingangsordner des Belegeingangs (Scanner, Handy, Mailanhänge, Direkt-Upload) im Arbeitsordner.
+		'inbox_folder' => 'Belegeingang',
 		'default_upload_folder' => '01 Stammdaten',
 		'order_folder' => '02 Auftrag',
 		'authorities_folder' => '03 Behörden',
@@ -73,6 +75,7 @@ class InstallationConfigService {
 			'templatesFolder' => $this->templatesFolder(),
 			'assistantFolder' => $this->assistantFolder(),
 			'articleImagesFolder' => $this->articleImagesFolder(),
+			'inboxFolder' => $this->inboxFolder(),
 			'defaultUploadFolder' => $this->defaultUploadFolder(),
 			'orderFolder' => $this->orderFolder(),
 			'authoritiesFolder' => $this->authoritiesFolder(),
@@ -90,6 +93,7 @@ class InstallationConfigService {
 				'templates' => $this->templatesPath(),
 				'assistant' => $this->join($this->storageRoot(), $this->assistantFolder()),
 				'articleImages' => $this->join($this->storageRoot(), $this->articleImagesFolder()),
+				'inbox' => $this->inboxPath(),
 			],
 		];
 	}
@@ -115,6 +119,8 @@ class InstallationConfigService {
 			'templates_folder' => $this->folderName((string)($input['templatesFolder'] ?? ''), 'Vorlagenordner'),
 			'assistant_folder' => $this->folderName((string)($input['assistantFolder'] ?? ''), 'Assistenzordner'),
 			'article_images_folder' => $this->folderName((string)($input['articleImagesFolder'] ?? ''), 'Artikelbilderordner'),
+			// 0.90.1: fehlt die Angabe (ältere Oberfläche, Ersteinrichtung), bleibt der bisherige Name.
+			'inbox_folder' => $this->folderName((string)($input['inboxFolder'] ?? $this->inboxFolder()), 'Ordner Belegeingang'),
 		];
 		// 0.72.0: Der Ordnerplan wird ausschließlich über CaseFolderPlanService geändert (mit Vorschau und
 		// Umbenennung der vorhandenen Fallordner). Die frühere Namensliste wird nur noch angenommen, wenn sie
@@ -162,9 +168,9 @@ class InstallationConfigService {
 			$values['role_groups'] = json_encode($roles, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 		}
 
-		$topLevel = [$values['cases_folder'], $values['orders_folder'], $values['precare_folder'], $values['templates_folder'], $values['assistant_folder'], $values['article_images_folder']];
+		$topLevel = [$values['cases_folder'], $values['orders_folder'], $values['precare_folder'], $values['templates_folder'], $values['assistant_folder'], $values['article_images_folder'], $values['inbox_folder']];
 		if (count(array_unique(array_map('mb_strtolower', $topLevel))) !== count($topLevel)) {
-			throw new \InvalidArgumentException('Fälle, Aufträge, Vorsorgen, Vorlagen, Assistenz und Artikelbilder brauchen verschiedene Ordnernamen.');
+			throw new \InvalidArgumentException('Fälle, Aufträge, Vorsorgen, Vorlagen, Assistenz, Artikelbilder und Belegeingang brauchen verschiedene Ordnernamen.');
 		}
 
 		foreach ($values as $key => $value) {
@@ -201,6 +207,13 @@ class InstallationConfigService {
 	}
 	public function articleImagesPath(): string {
 		return $this->join($this->storageRoot(), $this->articleImagesFolder());
+	}
+	/** 0.90.1: Eingangsordner des Belegeingangs (relativ zum Basisordner der Ablage). */
+	public function inboxPath(): string {
+		return $this->join($this->storageRoot(), $this->inboxFolder());
+	}
+	public function inboxFolder(): string {
+		return $this->value('inbox_folder');
 	}
 	public function assistantPath(): string {
 		return $this->join($this->storageRoot(), $this->assistantFolder());

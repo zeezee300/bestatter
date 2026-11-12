@@ -1,6 +1,8 @@
 import { mailButton, printButton } from './icons.js'
 import { UNSAVED_CASE_HINT } from './case-unsaved.js'
 import { DEFAULT_META } from './process-logic.js'
+import { offeredResources, groupByType, droppedKeys, normalizeKeys, requiredResources, resourceChips, resourceDisplayName, resourceTypeIcon, resourceTypeInfo, scheduleResources } from './scheduling-resources.js'
+import { availabilityChip, availabilitySummary, changeReasonRequired, defaultScheduleStatus, defaultTime, durationFromEnd, endTime, fromMinutes, scheduleChanges, splitDateTime, startFromTimelineClick, statusHint, timelineHtml, toMinutes, workingHours } from './schedule-form.js'
 
 export function createRecordsModule(ctx) {
 	const { root, urls, state, recordLabels, apiBase } = ctx
@@ -141,6 +143,22 @@ export function createRecordsModule(ctx) {
 		})
 	}
 
+	// 0.92.0: Ressourcen eines Termins als Chips mit Symbol; bei Aufgaben die Ressourcen des zugehörigen Termins
+	// (Aufgabe aus einem Termin über sourceScheduleId, oder Termin, der aus der Aufgabe angelegt wurde).
+	function linkedSchedule(task) {
+		const schedules = state.records?.schedule || []
+		const sourceId = Number(task?.data?.sourceScheduleId || task?.data?.link?.sourceScheduleId || 0)
+		if (sourceId) { const found = schedules.find((entry) => Number(entry.id) === sourceId); if (found) return found }
+		return schedules.find((entry) => Number(entry.data?.link?.parentRecordId || 0) === Number(task?.id || -1) && entry.status !== 'ABGESAGT') || null
+	}
+	function recordResourceChips(item, type = item?.type) {
+		const schedule = type === 'schedule' ? item : (type === 'task' ? linkedSchedule(item) : null)
+		if (!schedule) return ''
+		const chips = resourceChips(scheduleResources(schedule.data || {}, state.scheduling?.resources || []), state.scheduling?.resourceTypes, esc)
+		if (!chips) return ''
+		return type === 'task' ? `<span class="bp-resource-linked" title="${esc(`Ressourcen des Termins „${schedule.title}“`)}">${chips}</span>` : chips
+	}
+
 	function recordMeta(item, type) {
 		const syncState = item.data?.nextcloud?.remoteDeletedAt ? ' · in Nextcloud gelöscht, lokal erhalten' : (item.data?.nextcloud?.stored ? ' · Nextcloud synchronisiert' : (item.data?.nextcloud?.syncError ? ' · Synchronisationsfehler' : ''))
 		const assignee = recordAssigneeName(item)
@@ -190,7 +208,7 @@ export function createRecordsModule(ctx) {
 	}
 
 	// 0.89.4: Gleichzeitig angelegte Einträge (z. B. die Aufgaben eines Ablaufs) als ein aufklappbarer Eintrag.
-	const historyPlural = { TASK: 'Aufgaben', SCHEDULE: 'Termine', DOCUMENT: 'Dokumente', DEREGISTRATION: 'Abmeldungen', CONTACT: 'Kontakte', CASE_CONTACT: 'Kontakte', SIDE_ORDER: 'Nebenaufträge' }
+	const historyPlural = { TASK: 'Aufgaben', SCHEDULE: 'Termine', DOCUMENT: 'Dokumente', DEREGISTRATION: 'Abmeldungen', CONTACT: 'Kontakte', CASE_CONTACT: 'Kontakte', SIDE_ORDER: 'Nebenaufträge', NOTE: 'Notizen' }
 	const HISTORY_GROUP_WINDOW_MS = 120000
 	function historyGroups(items) {
 		const groups = []
@@ -228,7 +246,7 @@ export function createRecordsModule(ctx) {
 		if (type === 'activity') return historyRows(visible)
 		return `<div class="bp-record-list">${visible.map((item) => {
 			const caseNumber = recordCaseNumber(item)
-			return `<article class="bp-record-row" data-record-row="${item.id}"><label class="bp-record-check">${type === 'task' ? `<input type="checkbox" data-task-complete="${item.id}" ${item.status === 'ERLEDIGT' ? 'checked' : ''}>` : '<span>◷</span>'}</label><button class="bp-record-content" data-record-id="${item.id}" data-record-type="${type}"><b>${caseNumber ? `<span class="bp-case-number">Fall ${esc(caseNumber)}</span>` : ''}${esc(item.title)}</b><small>${recordMeta(item, type)}</small></button><div class="bp-record-badges">${recordBadges(item, type)}</div><button class="bp-secondary edit-record" data-record-id="${item.id}" data-record-type="${type}">Bearbeiten</button></article>`
+			return `<article class="bp-record-row" data-record-row="${item.id}"><label class="bp-record-check">${type === 'task' ? `<input type="checkbox" data-task-complete="${item.id}" ${item.status === 'ERLEDIGT' ? 'checked' : ''}>` : '<span>◷</span>'}</label><button class="bp-record-content" data-record-id="${item.id}" data-record-type="${type}"><b>${caseNumber ? `<span class="bp-case-number">Fall ${esc(caseNumber)}</span>` : ''}${esc(item.title)}</b><small>${recordMeta(item, type)}</small>${recordResourceChips(item, type)}</button><div class="bp-record-badges">${recordBadges(item, type)}</div><button class="bp-secondary edit-record" data-record-id="${item.id}" data-record-type="${type}">Bearbeiten</button></article>`
 		}).join('')}</div>`
 	}
 
@@ -313,15 +331,19 @@ export function createRecordsModule(ctx) {
 			try { scheduleHistory = await api(`${schedulingUrl()}/records/${item.id}/history`, { feedback: false }) } catch (_) { scheduleHistory = [] }
 		}
 		const now = new Date(); const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
-		const defaultDate = ['task','schedule'].includes(type) ? `${today}T00:00` : ''
+		// 0.90.5: Statt 00:00 Uhr beginnen neue Termine mit dem Arbeitsbeginn, Aufgaben sind zum Arbeitsende fällig (Customizing → Terminplanung).
+		const defaultDate = ['task','schedule'].includes(type) ? `${today}T${defaultTime(type, state.scheduling)}` : ''
 		const selectedCaseId = Number(item?.caseId || caseId || 0)
 		const selectedCase = state.cases.find((entry) => Number(entry.id) === selectedCaseId)
 		const linkedCase = item?.caseNumber || selectedCase?.caseNumber || (caseId && state.currentCase?.id === caseId ? state.currentCase.caseNumber : '')
 		const baseData = { ...(item?.data || {}), ...(preset.data || {}) }
+		// 0.90.5: Ob die Einordnung vorgegeben war, merken – sonst übernimmt ein neuer Termin sie aus der vorbelegten Terminart (Ablaufknopf „Termin anlegen“).
+		const scheduleKindGiven = Boolean(item?.data?.scheduleKind || preset.data?.scheduleKind)
 		if (type === 'schedule' && !baseData.scheduleKind) baseData.scheduleKind = 'INTERNAL_ACTIVITY'
 		const assigneeUid = baseData.assigneeUid || item?.assigneeUid || state.team.currentUid || currentUser()
 		const scheduleAssignees = new Set((baseData.assigneeUids || [state.team.currentUid || currentUser()]).map(String))
-		const assigneeField = type === 'task' ? `<label>Zuständig<select name="assigneeUid" required>${assigneeOptions(assigneeUid)}</select></label>` : (type === 'schedule' ? `<fieldset class="bp-member-picker"><legend>Zuständige Personen und persönliche Kalender</legend>${(state.team.members||[]).map((member)=>`<label class="bp-inline-check"><input type="checkbox" name="assigneeUids" value="${esc(member.uid)}" ${scheduleAssignees.has(member.uid)?'checked':''}> <span>${esc(member.displayName||member.uid)} <small>${esc(member.uid)}</small></span></label>`).join('')}</fieldset>` : '')
+		const memberName = (uid) => (state.team.members || []).find((member) => member.uid === uid)?.displayName || uid
+		const assigneeField = type === 'task' ? `<label>Zuständig<select name="assigneeUid" required>${assigneeOptions(assigneeUid)}</select></label>` : (type === 'schedule' ? `<fieldset class="bp-member-picker bp-schedule-people" id="schedule-people"><legend>Mitarbeitende</legend>${(state.team.members||[]).map((member)=>`<div class="bp-availability-row"><label class="bp-inline-check"><input type="checkbox" name="assigneeUids" value="${esc(member.uid)}" ${scheduleAssignees.has(member.uid)?'checked':''}> <span>${esc(member.displayName||member.uid)} <small>${esc(member.uid)}</small></span></label><span data-availability-uid="${esc(member.uid)}"></span></div>`).join('')}<small class="bp-muted">Die Termine erscheinen in den persönlichen Kalendern der gewählten Personen.</small></fieldset>` : '')
 		const configuredTypes=(state.scheduling?.types||[]).map((entry)=>({...entry,label:entry.name,title:entry.name,appointmentCategory:entry.name,source:'CONFIGURATION'}));const availableScheduleTypes=[...configuredTypes,...(state.schedulePresets||[]).filter((preset)=>!configuredTypes.some((entry)=>entry.key===preset.key))]
 		const schedulePresetOptions = availableScheduleTypes.map((entry) => `<option value="${esc(entry.key)}" ${entry.key === (baseData.scheduleTypeKey||baseData.schedulePresetKey) ? 'selected' : ''}>${esc(entry.label||entry.name)}</option>`).join('')
 		const externalContacts = (state.records.contact || []).slice().sort((a, b) => String(a.title).localeCompare(String(b.title), 'de'))
@@ -331,8 +353,22 @@ export function createRecordsModule(ctx) {
 			baseData.externalParticipantsAdditional || '',
 		].filter(Boolean).join('; ')
 		const scheduleCategories = [...new Set(['Aufbahrung','1. Trauerfeier','2. Trauerfeier','Beisetzung','Überführung','Abschiednahme','Behördentermin','Beratungsgespräch','Sonstiger externer Termin', ...availableScheduleTypes.map((entry) => entry.appointmentCategory || entry.name).filter(Boolean)])]
-		const initialScheduleType=availableScheduleTypes.find((entry)=>entry.key===(baseData.scheduleTypeKey||baseData.schedulePresetKey));const selectedResources=new Set((baseData.resourceKeys||(!editing?initialScheduleType?.defaultResourceKeys:[])||[]).map(String));const resourceFields=(state.scheduling?.resources||[]).map((resource)=>`<label class="bp-inline-check"><input type="checkbox" name="resourceKeys" value="${esc(resource.key)}" ${selectedResources.has(resource.key)?'checked':''}><span>${esc(resource.name)} <small>${esc(resource.resourceType)}</small></span></label>`).join('')
-		const scheduleFields = type === 'schedule' ? `<fieldset class="bp-field-section"><legend>Terminart und Disposition</legend><label><span>Terminart / Vorlage</span><select name="schedulePresetKey" id="schedule-preset"><option value="">Freie Eingabe</option>${schedulePresetOptions}</select><small>Übernimmt Dauer, Puffer und vorkonfigurierte Ressourcen; alle Angaben bleiben kontrolliert änderbar.</small></label><p class="bp-record-case-context" id="schedule-requirement-summary"></p><label><span>Fachliche Einordnung</span><select name="scheduleKind" id="schedule-kind"><option value="INTERNAL_ACTIVITY" ${baseData.scheduleKind !== 'EXTERNAL_APPOINTMENT' ? 'selected' : ''}>Interne Tätigkeit / prozessbedingter Termin</option><option value="EXTERNAL_APPOINTMENT" ${baseData.scheduleKind === 'EXTERNAL_APPOINTMENT' ? 'selected' : ''}>Externer Fixtermin</option></select></label><div class="bp-form-grid"><label><span>Dauer (Minuten)</span><input name="durationMinutes" type="number" min="15" step="15" value="${esc(baseData.durationMinutes || 60)}" required></label><label><span>Vorbereitungszeit</span><input name="bufferBeforeMinutes" type="number" min="0" step="5" value="${esc(baseData.bufferBeforeMinutes || 0)}"></label><label><span>Nachbereitungs-/Fahrzeit</span><input name="bufferAfterMinutes" type="number" min="0" step="5" value="${esc(baseData.bufferAfterMinutes || 0)}"></label></div>${resourceFields?`<fieldset class="bp-member-picker"><legend>Fahrzeuge, Räume, Kapellen und Ausstattung</legend>${resourceFields}</fieldset>`:'<p class="bp-muted">Noch keine zusätzlichen Ressourcen konfiguriert.</p>'}<div id="external-appointment-fields"><label><span>Externe Terminart</span><select name="appointmentCategory"><option value="">Bitte auswählen</option>${scheduleCategories.map((value)=>`<option ${value === baseData.appointmentCategory ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label><span>Ort</span><input name="location" value="${esc(baseData.location || '')}" placeholder="Friedhof, Kapelle oder Anschrift"></label><label><span>Externe Personen / Organisationen</span><input name="externalParticipants" list="external-contact-suggestions" value="${esc(externalParticipantsValue)}" placeholder="Namen oder Organisation eingeben"><datalist id="external-contact-suggestions">${externalContactSuggestions}</datalist><small>Passende Namen aus Nextcloud Kontakte werden vorgeschlagen. Mehrere Beteiligte mit Semikolon trennen.</small></label></div>${editing?'<label><span>Änderungsgrund</span><textarea name="changeReason" rows="2" placeholder="Erforderlich bei Änderungen an Zeitpunkt, Status (außer „Erledigt“), Ort, Beteiligten oder Ressourcen"></textarea><small>Wesentliche Terminänderungen werden mit Alt-/Neu-Werten protokolliert.</small></label>':'<label><span>Begründung bei Übersteuerung eines Konflikts</span><textarea name="changeReason" rows="2" placeholder="Nur erforderlich, wenn ein erkannter Terminkonflikt übersteuert wird"></textarea></label>'}<label class="bp-inline-check"><input type="checkbox" name="conflictOverride" value="1"> Erkannten Konflikt ausnahmsweise übersteuern (Begründung erforderlich)</label><p class="bp-record-case-context">Die Konfliktprüfung berücksichtigt Mitarbeitende, Ressourcen, Dauer und Puffer. Erst „Bestätigt“ startet konfigurierte Folgeaufgaben.</p></fieldset>` : ''
+		const initialScheduleType=availableScheduleTypes.find((entry)=>entry.key===(baseData.scheduleTypeKey||baseData.schedulePresetKey));// 0.90.3: Nur die Ressourcen anbieten, die der Terminart im Customizing (Matrix „Ressourcen je Terminart“) zugeordnet sind.
+		// 0.92.0: Mit Fallbezug nur Ressourcen der Niederlassung des Falls (oder „Alle Niederlassungen“).
+		const caseBranchKey = (caseIdValue) => { const id = Number(caseIdValue || 0); if (!id) return ''; const found = state.cases.find((entry) => Number(entry.id) === id) || (Number(state.currentCase?.id) === id ? state.currentCase : null); return String(found?.branch || found?.masterData?.branch || '') }
+		const branchLabel = (key) => (state.scheduling?.branches || []).find((branch) => branch.key === key)?.name || (state.branches || []).find((branch) => branch.key === key)?.name || key
+		let currentBranch = caseBranchKey(selectedCaseId)
+		const resourceTypes = state.scheduling?.resourceTypes
+		const previousResourceKeys=editing?normalizeKeys(item?.data?.resourceKeys||[]):[];const initialSelectedResources=normalizeKeys(baseData.resourceKeys||(!editing?initialScheduleType?.defaultResourceKeys:[])||[])
+		const resourcePickerHtml=(scheduleType,selectedKeys)=>{
+			const offered=offeredResources(scheduleType,state.scheduling?.resources||[],previousResourceKeys,currentBranch)
+			if(!scheduleType)return'<p class="bp-muted" data-resource-empty="no-type">Für Ressourcen bitte eine Terminart wählen.</p>'
+			if(!offered.length){const anyAllowed=offeredResources(scheduleType,state.scheduling?.resources||[],previousResourceKeys).length;return anyAllowed&&currentBranch?`<p class="bp-muted" data-resource-empty="none-in-branch">Für diese Terminart sind in der Niederlassung „${esc(branchLabel(currentBranch))}“ keine Ressourcen vorgesehen. Die Niederlassungen einer Ressource pflegen Administratoren unter Stammdaten → Ressourcen.</p>`:'<p class="bp-muted" data-resource-empty="none-assigned">Für diese Terminart sind keine Ressourcen vorgesehen. Die Zuordnung pflegen Administratoren unter Customizing → Terminplanung.</p>'}
+			return groupByType(offered,resourceTypes).map((group)=>`<div class="bp-resource-group" data-resource-group="${esc(group.type)}"><small>${resourceTypeIcon(group.type,resourceTypes,esc)} ${esc(group.label)}</small>${group.items.map((resource)=>`<div class="bp-availability-row"><label class="bp-inline-check"><input type="checkbox" name="resourceKeys" value="${esc(resource.key)}" ${selectedKeys.includes(resource.key)?'checked':''}><span>${esc(resource.name)}${resource.identifier?` <small class="bp-resource-identifier">${esc(resource.identifier)}</small>`:''}${resource.active===false?' <small>(nicht mehr aktiv)</small>':''}</span></label><span data-availability-resource="${esc(resource.key)}"></span></div>`).join('')}</div>`).join('')
+		}
+		const resourceNames=(keys)=>keys.map((key)=>{const resource=(state.scheduling?.resources||[]).find((entry)=>entry.key===key);return`„${resource?resourceDisplayName(resource):key}“`}).join(', ')
+		const initialDropped=type==='schedule'?droppedKeys(initialScheduleType,initialSelectedResources,state.scheduling?.resources||[],previousResourceKeys,currentBranch):[]
+		const initialResourceHint=initialDropped.length?`${resourceNames(initialDropped)} ${initialDropped.length===1?'ist':'sind'} für diese Terminart nicht vorgesehen und ${initialDropped.length===1?'wird':'werden'} beim Speichern entfernt.`:''
 		const predefinedTasks = [...new Set((state.process?.phases || []).flatMap((phase) => (phase.steps || []).map((view) => view.title)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de'))
 		const taskTitleList = type==='task' ? `<datalist id="predefined-task-titles">${predefinedTasks.map((title)=>`<option value="${esc(title)}"></option>`).join('')}</datalist>` : ''
 		const detailFields = baseData.kind === 'EMAIL_DRAFT'
@@ -351,43 +387,151 @@ export function createRecordsModule(ctx) {
 			return `<span class="bp-workflow-action-control"><button type="button" class="bp-secondary execute-process-action" data-action-key="${esc(action.key)}" ${action.executed && !action.repeatable ? 'disabled' : ''}>${action.executed && !action.repeatable ? '✓ ' : (action.retryable ? '↻ ' : '')}${esc(action.label)}</button>${resultButton}${recoveryHint}</span>`
 		}).join('')}</div></article></section>` : ''
 		const workflowActions = type === 'task' && editing ? `<section class="bp-follow-up"><h3>Freie Folgeaktion</h3><p>Für einen einmaligen, nicht vorkonfigurierten Folgeschritt.</p><div><button type="button" class="bp-secondary" data-follow-up="task">Folgeaufgabe anlegen</button><button type="button" class="bp-secondary" data-follow-up="schedule">Folgetermin / Frist anlegen</button></div></section>` : ''
-		const recordStatus = item?.status || preset.status || (type === 'schedule' ? 'ENTWURF' : (type === 'activity' ? 'DOKUMENTIERT' : 'OFFEN'))
+		// 0.90.5: Termine aus einem Ablaufschritt oder einer Aufgabe sind abgestimmt und werden „Bestätigt“ vorbelegt.
+		const recordStatus = item?.status || preset.status || (type === 'schedule' ? defaultScheduleStatus(baseData) : (type === 'activity' ? 'DOKUMENTIERT' : 'OFFEN'))
 		const statusValues = type === 'schedule' ? ['ENTWURF', 'BESTAETIGT', 'GEAENDERT', 'ABGESAGT', 'ERLEDIGT'] : [...new Set(['OFFEN', 'IN_BEARBEITUNG', 'ERLEDIGT', 'ENTWURF', 'DOKUMENTIERT', item?.status, preset.status].filter(Boolean))]
 		const statusLabels = { ENTWURF: 'Entwurf', BESTAETIGT: 'Bestätigt', GEAENDERT: 'Geändert – Folgeaufgaben prüfen', ABGESAGT: 'Abgesagt', ERLEDIGT: 'Erledigt', OFFEN: 'Offen', IN_BEARBEITUNG: 'In Bearbeitung', DOKUMENTIERT: 'Dokumentiert' }
+		const statusSelect = `<select name="status">${statusValues.map((value) => `<option value="${value}" ${value === recordStatus ? 'selected' : ''}>${statusLabels[value] || value}</option>`).join('')}</select>`
 		const dateValue = normalizeDateTime(item?.date || preset.date || defaultDate)
-		const dateFields = type === 'task' ? `<div class="bp-form-grid"><label><span>Fälligkeitsdatum</span><input name="taskDate" type="date" value="${esc(dateValue.slice(0,10))}" required></label><label><span>Fälligkeitszeit</span><input name="taskTime" type="time" value="${esc(dateValue.slice(11,16) || '00:00')}" required></label></div>` : `<label>${isEvent ? 'Beginn' : 'Datum'}<input name="date" type="datetime-local" value="${esc(dateValue)}" ${isEvent ? 'required' : ''}></label>`
-		root.insertAdjacentHTML('beforeend', `<div class="bp-modal"><form id="record-form" class="bp-record-form bp-record-form-${type}"><h2>${editing ? 'Bearbeiten' : 'Neu anlegen'} · ${recordLabels[type]}</h2>${fixedCase && linkedCase ? `<p class="bp-record-case-context">Fall ${esc(linkedCase)} · Die Fallnummer und der Rücksprung-Link werden auch in Nextcloud angezeigt.</p>` : ''}${caseField}${detailFields}${scheduleFields}<label>Bezeichnung<input name="title" ${type==='task'?'list="predefined-task-titles"':''} value="${esc(item?.title || preset.title || '')}" required>${type==='task'?'<small>Vorgegebene Aufgabe auswählen oder eigenen Freitext eingeben.</small>':''}</label>${taskTitleList}<label>Beschreibung<textarea name="description" rows="4">${esc(baseData.description || '')}</textarea></label>${dateFields}<label>Priorität<select name="priority">${[['KRITISCH', 'Kritisch'], ['HOCH', 'Hoch'], ['NORMAL', 'Normal'], ['NIEDRIG', 'Niedrig']].map(([value, label]) => `<option value="${value}" ${value === (baseData.priority || 'NORMAL') ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${assigneeField}<label>Status<select name="status">${statusValues.map((value) => `<option value="${value}" ${value === recordStatus ? 'selected' : ''}>${statusLabels[value] || value}</option>`).join('')}</select></label>${configuredWorkflowActions}${workflowActions}<p class="bp-save-state" id="record-form-state"></p><div class="bp-modal-actions"><button type="button" class="bp-secondary" id="cancel-record">Abbrechen</button><button class="bp-primary" id="save-record">${editing ? 'Änderungen speichern' : 'In Nextcloud speichern'}</button></div></form></div>`)
+		const priorityField = `<label>Priorität<select name="priority">${[['KRITISCH', 'Kritisch'], ['HOCH', 'Hoch'], ['NORMAL', 'Normal'], ['NIEDRIG', 'Niedrig']].map(([value, label]) => `<option value="${value}" ${value === (baseData.priority || 'NORMAL') ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`
+		const descriptionField = `<label>Beschreibung<textarea name="description" rows="${isEvent ? 3 : 4}">${esc(baseData.description || '')}</textarea></label>`
+		let body
+		if (isEvent) {
+			// 0.90.5: Terminformular im Stil des Nextcloud-Kalenders – Bezeichnung, dann „Wann“ (Datum, Beginn, Ende, Status) hervorgehoben,
+			// danach Terminart, Ort, Mitarbeitende und Ressourcen mit Verfügbarkeit; Selteneres unter „Weitere Angaben“.
+			const when = splitDateTime(dateValue)
+			const startValue = when.time || defaultTime('schedule', state.scheduling)
+			const durationValue = Math.max(15, Number(baseData.durationMinutes || initialScheduleType?.durationMinutes || 60))
+			const whenBlock = `<fieldset class="bp-schedule-when" id="schedule-when"><legend>Wann</legend><input type="hidden" name="date" value="${esc(when.date ? `${when.date}T${startValue}` : '')}"><input type="hidden" name="durationMinutes" value="${durationValue}"><div class="bp-when-row"><label><span>Datum</span><input name="scheduleDate" type="date" value="${esc(when.date || today)}" required></label><label><span>Beginn</span><input name="scheduleStart" type="time" step="300" value="${esc(startValue)}" required></label><span class="bp-when-dash" aria-hidden="true">–</span><label><span>Ende</span><input name="scheduleEnd" type="time" step="300" value="${esc(endTime(startValue, durationValue))}" required></label><span class="bp-when-duration" id="schedule-duration-label" aria-live="polite"></span></div><div class="bp-when-row bp-when-status"><label><span>Status</span>${statusSelect}</label><small class="bp-when-occupancy" id="schedule-occupancy"></small></div><small class="bp-when-hint" id="schedule-status-hint" aria-live="polite"></small></fieldset>`
+			const typeBlock = `<div class="bp-schedule-type"><label><span>Terminart</span><select name="schedulePresetKey" id="schedule-preset"><option value="">Freie Eingabe</option>${schedulePresetOptions}</select><small>Übernimmt Dauer, Vor- und Nachbereitung sowie die vorbelegten Ressourcen.</small></label><p class="bp-record-case-context" id="schedule-requirement-summary"></p></div>`
+			const externalBlock = `<div id="external-appointment-fields" class="bp-schedule-external"><label><span>Ort</span><input name="location" value="${esc(baseData.location || '')}" placeholder="Friedhof, Kapelle oder Anschrift"></label><label><span>Externe Personen / Organisationen</span><input name="externalParticipants" list="external-contact-suggestions" value="${esc(externalParticipantsValue)}" placeholder="Namen oder Organisation eingeben"><datalist id="external-contact-suggestions">${externalContactSuggestions}</datalist><small>Passende Namen aus Nextcloud Kontakte werden vorgeschlagen. Mehrere Beteiligte mit Semikolon trennen.</small></label><label id="schedule-category-field"><span>Externe Terminart</span><select name="appointmentCategory"><option value="">Bitte auswählen</option>${scheduleCategories.map((value)=>`<option ${value === baseData.appointmentCategory ? 'selected' : ''}>${value}</option>`).join('')}</select><small>Nur bei „Freie Eingabe“; sonst gilt die Terminart.</small></label></div>`
+			const resourceBlock = `<fieldset class="bp-member-picker bp-resource-picker" id="schedule-resource-picker"><legend>Ressourcen</legend><div id="schedule-resource-options">${resourcePickerHtml(initialScheduleType,initialSelectedResources)}</div><p class="bp-record-case-context" id="schedule-resource-hint" aria-live="polite" ${initialResourceHint?'':'hidden'}>${esc(initialResourceHint)}</p></fieldset>`
+			const availabilityBlock = `<section class="bp-schedule-availability" aria-label="Verfügbarkeit am Tag des Termins"><div class="bp-schedule-timeline" id="schedule-timeline"></div><p class="bp-availability-summary" id="schedule-availability-summary" aria-live="polite" hidden></p></section>`
+			const moreBlock = `<details class="bp-schedule-more" id="schedule-more"><summary>Weitere Angaben</summary><div class="bp-schedule-more-body">${descriptionField}${priorityField}<label><span>Fachliche Einordnung</span><select name="scheduleKind" id="schedule-kind"><option value="INTERNAL_ACTIVITY" ${baseData.scheduleKind !== 'EXTERNAL_APPOINTMENT' ? 'selected' : ''}>Interne Tätigkeit / prozessbedingter Termin</option><option value="EXTERNAL_APPOINTMENT" ${baseData.scheduleKind === 'EXTERNAL_APPOINTMENT' ? 'selected' : ''}>Externer Fixtermin</option></select></label><div class="bp-form-grid"><label><span>Vorbereitungszeit (Minuten)</span><input name="bufferBeforeMinutes" type="number" min="0" step="5" value="${esc(baseData.bufferBeforeMinutes || 0)}"></label><label><span>Nachbereitungs-/Fahrzeit (Minuten)</span><input name="bufferAfterMinutes" type="number" min="0" step="5" value="${esc(baseData.bufferAfterMinutes || 0)}"></label></div><p class="bp-record-case-context">Die Konfliktprüfung berücksichtigt Mitarbeitende, Ressourcen, Dauer sowie Vor- und Nachbereitung.</p></div></details>`
+			// 0.90.5: Änderungsgrund und Übersteuerung erscheinen nur, wenn sie gebraucht werden.
+			const reasonBlock = `<label id="schedule-change-reason" hidden><span>${editing ? 'Änderungsgrund' : 'Begründung der Übersteuerung'}</span><textarea name="changeReason" rows="2" placeholder="${editing ? 'Warum wird der bestätigte Termin geändert?' : 'Warum wird der Konflikt übersteuert?'}"></textarea><small>${editing ? 'Änderungen an einem bestätigten Termin werden mit Alt-/Neu-Werten protokolliert.' : 'Die Übersteuerung wird im Terminverlauf protokolliert.'}</small></label><label class="bp-inline-check" id="schedule-conflict-override" hidden><input type="checkbox" name="conflictOverride" value="1"> Erkannten Konflikt ausnahmsweise übersteuern (Begründung erforderlich)</label>`
+			body = `${caseField}<label class="bp-schedule-title-field"><span>Bezeichnung</span><input name="title" class="bp-schedule-title" value="${esc(item?.title || preset.title || '')}" placeholder="Bezeichnung des Termins" required></label>${whenBlock}${typeBlock}${externalBlock}${assigneeField}${resourceBlock}${availabilityBlock}${moreBlock}${reasonBlock}`
+		} else {
+			const dateFields = type === 'task' ? `<div class="bp-form-grid"><label><span>Fälligkeitsdatum</span><input name="taskDate" type="date" value="${esc(dateValue.slice(0,10))}" required></label><label><span>Fälligkeitszeit</span><input name="taskTime" type="time" value="${esc(dateValue.slice(11,16) || defaultTime('task', state.scheduling))}" required></label></div>` : `<label>Datum<input name="date" type="datetime-local" value="${esc(dateValue)}"></label>`
+			body = `${caseField}${detailFields}<label>Bezeichnung<input name="title" ${type==='task'?'list="predefined-task-titles"':''} value="${esc(item?.title || preset.title || '')}" required>${type==='task'?'<small>Vorgegebene Aufgabe auswählen oder eigenen Freitext eingeben.</small>':''}</label>${taskTitleList}${descriptionField}${dateFields}${priorityField}${assigneeField}<label>Status${statusSelect}</label>${configuredWorkflowActions}${workflowActions}`
+		}
+		root.insertAdjacentHTML('beforeend', `<div class="bp-modal"><form id="record-form" class="bp-record-form bp-record-form-${type}"><h2>${editing ? 'Bearbeiten' : 'Neu anlegen'} · ${recordLabels[type]}</h2>${fixedCase && linkedCase ? `<p class="bp-record-case-context">Fall ${esc(linkedCase)} · Die Fallnummer und der Rücksprung-Link werden auch in Nextcloud angezeigt.</p>` : ''}${body}<p class="bp-save-state" id="record-form-state"></p><div class="bp-modal-actions"><button type="button" class="bp-secondary" id="cancel-record">Abbrechen</button><button class="bp-primary" id="save-record">${editing ? 'Änderungen speichern' : 'In Nextcloud speichern'}</button></div></form></div>`)
 		const modals = root.querySelectorAll('.bp-modal'); const modal = modals[modals.length - 1]
 		const form = modal.querySelector('#record-form')
 		if (scheduleHistory.length) {
 			const historyRows = scheduleHistory.map((entry) => `<li><b>${esc(entry.action)}</b> · ${esc(entry.changedBy)} · ${esc(new Date(entry.createdAt).toLocaleString('de-DE'))}${entry.reason ? `<small>Grund: ${esc(entry.reason)}</small>` : ''}${(entry.changes||[]).map((change)=>`<small>${esc(change.label)}: ${esc(String(change.before||'–'))} → ${esc(String(change.after||'–'))}</small>`).join('')}</li>`).join('')
 			form.querySelector('.bp-save-state')?.insertAdjacentHTML('beforebegin', `<details class="bp-schedule-history"><summary>Änderungsverlauf (${scheduleHistory.length})</summary><ol>${historyRows}</ol></details>`)
 		}
-		const toggleExternalFields = () => { const external = form.elements.scheduleKind?.value === 'EXTERNAL_APPOINTMENT'; const section = modal.querySelector('#external-appointment-fields'); if (section) { section.hidden = !external; section.querySelectorAll('select,input').forEach((control) => { control.required = external && ['appointmentCategory','location'].includes(control.name) }) } }
+		const selectedType = () => availableScheduleTypes.find((entry) => entry.key === form.elements.schedulePresetKey?.value)
+		const toggleExternalFields = () => { const external = form.elements.scheduleKind?.value === 'EXTERNAL_APPOINTMENT'; const section = modal.querySelector('#external-appointment-fields'); if (section) { section.hidden = !external; const categoryField = modal.querySelector('#schedule-category-field'); const freeEntry = !selectedType(); if (categoryField) categoryField.hidden = !freeEntry; section.querySelectorAll('select,input').forEach((control) => { control.required = external && (control.name === 'location' || (control.name === 'appointmentCategory' && freeEntry)) }) } }
 		form.elements.scheduleKind?.addEventListener('change', toggleExternalFields); toggleExternalFields()
-		const showRequirements = (selected) => { const summary=modal.querySelector('#schedule-requirement-summary');if(!summary)return;const requirements=[['requiredStaff','Mitarbeitende'],['requiredVehicles','Fahrzeuge'],['requiredRooms','Räume'],['requiredChapels','Kapellen'],['requiredEquipment','Ausstattung']].filter(([key])=>Number(selected?.[key]||0)>0).map(([key,label])=>`${Number(selected[key])} × ${label}`);summary.textContent=requirements.length?`Erforderliche Disposition: ${requirements.join(', ')}`:'Für diese Terminart ist kein Mindestbedarf hinterlegt.' }
+		const showRequirements = (selected) => { const summary=modal.querySelector('#schedule-requirement-summary');if(!summary)return;const staff=Number(selected?.requiredStaff||0);const requirements=[...(staff>0?[`${staff} × Mitarbeitende`]:[]),...Object.entries(requiredResources(selected)).map(([key,count])=>`${count} × ${resourceTypeInfo(key,resourceTypes).plural}`)];summary.textContent=requirements.length?`Erforderliche Disposition: ${requirements.join(', ')}`:'Für diese Terminart ist kein Mindestbedarf hinterlegt.' }
+		const refreshResources = (scheduleType) => {
+			const container = modal.querySelector('#schedule-resource-options'); const hint = modal.querySelector('#schedule-resource-hint'); if (!container) return
+			const checked = [...form.querySelectorAll('[name="resourceKeys"]:checked')].map((input) => input.value)
+			const offered = offeredResources(scheduleType, state.scheduling?.resources || [], previousResourceKeys, currentBranch).map((resource) => resource.key)
+			const next = editing ? checked.filter((key) => offered.includes(key)) : normalizeKeys([...(scheduleType?.defaultResourceKeys || []), ...checked.filter((key) => offered.includes(key))]).filter((key) => offered.includes(key))
+			const dropped = checked.filter((key) => !offered.includes(key))
+			container.innerHTML = resourcePickerHtml(scheduleType, next)
+			if (hint) { hint.textContent = dropped.length ? `${resourceNames(dropped)} ${dropped.length === 1 ? 'passt' : 'passen'} nicht zu ${scheduleType ? `„${scheduleType.label || scheduleType.name}“` : '„Freie Eingabe“'}${currentBranch ? ` bzw. zur Niederlassung „${branchLabel(currentBranch)}“` : ''} und ${dropped.length === 1 ? 'wurde' : 'wurden'} abgewählt.` : ''; hint.hidden = !dropped.length }
+		}
+		// 0.90.5: Beginn, Ende und Dauer hängen zusammen; das verdeckte Feld „date“ trägt den Beginn wie bisher.
+		const buffers = () => ({ before: Math.max(0, Number(form.elements.bufferBeforeMinutes?.value || 0)), after: Math.max(0, Number(form.elements.bufferAfterMinutes?.value || 0)) })
+		const syncWhen = () => {
+			if (!isEvent) return
+			const start = form.elements.scheduleStart.value; const day = form.elements.scheduleDate.value
+			const duration = durationFromEnd(start, form.elements.scheduleEnd.value)
+			const label = modal.querySelector('#schedule-duration-label')
+			form.elements.scheduleEnd.setCustomValidity(duration === null && start && form.elements.scheduleEnd.value ? 'Das Ende muss mindestens 15 Minuten nach dem Beginn liegen.' : '')
+			if (duration !== null) form.elements.durationMinutes.value = String(duration)
+			if (label) label.textContent = duration === null ? 'Ende prüfen' : (duration >= 60 && duration % 60 === 0 ? `${duration / 60} Std.` : `${duration} Min.`)
+			form.elements.date.value = day && start ? `${day}T${start}` : ''
+			const occupancy = modal.querySelector('#schedule-occupancy'); const { before, after } = buffers()
+			if (occupancy) occupancy.textContent = duration !== null && (before || after) ? `Belegt ${fromMinutes(toMinutes(start) - before)}–${fromMinutes(toMinutes(start) + duration + after)} Uhr inkl. ${before} Min. Vor- und ${after} Min. Nachbereitung` : ''
+		}
+		const applyDuration = (minutes) => { if (!isEvent) return; form.elements.durationMinutes.value = String(Math.max(15, Number(minutes) || 60)); form.elements.scheduleEnd.value = endTime(form.elements.scheduleStart.value, form.elements.durationMinutes.value); syncWhen() }
+		const setStart = (value, day = form.elements.scheduleDate?.value) => { if (!isEvent) return; const duration = Number(form.elements.durationMinutes.value || 60); form.elements.scheduleDate.value = day; form.elements.scheduleStart.value = value; form.elements.scheduleEnd.value = endTime(value, duration); syncWhen() }
+		if (isEvent) {
+			form.elements.scheduleStart.addEventListener('input', () => { const duration = Number(form.elements.durationMinutes.value || 60); if (!Number.isNaN(toMinutes(form.elements.scheduleStart.value))) { form.elements.scheduleEnd.value = endTime(form.elements.scheduleStart.value, duration) } syncWhen() })
+			form.elements.scheduleEnd.addEventListener('input', syncWhen)
+			form.elements.scheduleDate.addEventListener('input', syncWhen)
+			syncWhen()
+		}
 		form.elements.schedulePresetKey?.addEventListener('change', () => {
-			const selected = availableScheduleTypes.find((entry) => entry.key === form.elements.schedulePresetKey.value)
+			const selected = selectedType()
 			showRequirements(selected)
-			if (!selected) return
+			refreshResources(selected)
+			if (!selected) { toggleExternalFields(); return }
 			form.elements.scheduleKind.value = selected.scheduleKind || 'EXTERNAL_APPOINTMENT'
 			form.elements.appointmentCategory.value = selected.appointmentCategory || ''
 			form.elements.title.value = selected.title || selected.label || ''
 			form.elements.description.value = selected.description || ''
 			form.elements.priority.value = selected.priority || 'NORMAL'
-			form.elements.durationMinutes.value = selected.durationMinutes || 60
 			form.elements.bufferBeforeMinutes.value = selected.bufferBeforeMinutes || 0
 			form.elements.bufferAfterMinutes.value = selected.bufferAfterMinutes || 0
-			if (!editing) form.querySelectorAll('[name="resourceKeys"]').forEach((input)=>{input.checked=(selected.defaultResourceKeys||[]).includes(input.value)})
-			if (!editing && form.elements.date && Number(selected.dueOffsetDays || 0) !== 0) {
+			applyDuration(selected.durationMinutes || 60)
+			if (!editing && form.elements.scheduleDate && Number(selected.dueOffsetDays || 0) !== 0) {
 				const proposed = new Date(); proposed.setDate(proposed.getDate() + Number(selected.dueOffsetDays))
-				form.elements.date.value = `${proposed.getFullYear()}-${String(proposed.getMonth()+1).padStart(2,'0')}-${String(proposed.getDate()).padStart(2,'0')}T00:00`
+				setStart(defaultTime('schedule', state.scheduling), `${proposed.getFullYear()}-${String(proposed.getMonth()+1).padStart(2,'0')}-${String(proposed.getDate()).padStart(2,'0')}`)
 			}
 			toggleExternalFields()
 		})
-		showRequirements(availableScheduleTypes.find((entry)=>entry.key===form.elements.schedulePresetKey?.value))
+		showRequirements(selectedType())
+		// 0.92.0: Wechsel des Falls (Niederlassung) baut die Ressourcenauswahl neu auf.
+		if (isEvent && form.elements.caseId?.tagName === 'SELECT') form.elements.caseId.addEventListener('change', () => { currentBranch = caseBranchKey(form.elements.caseId.value); refreshResources(selectedType()) })
 		// 0.89.10: Vorbelegte Terminvorlage (z. B. aus einem Ablaufschritt) setzt Einordnung und Terminart gleich mit.
-		{ const preset = availableScheduleTypes.find((entry)=>entry.key===form.elements.schedulePresetKey?.value); if (preset && !baseData.scheduleKind && form.elements.scheduleKind) { form.elements.scheduleKind.value = preset.scheduleKind || 'EXTERNAL_APPOINTMENT'; if (form.elements.appointmentCategory && !form.elements.appointmentCategory.value) form.elements.appointmentCategory.value = preset.appointmentCategory || ''; toggleExternalFields() } }
+		{ const preset = selectedType(); if (preset && !scheduleKindGiven && form.elements.scheduleKind) { form.elements.scheduleKind.value = preset.scheduleKind || 'EXTERNAL_APPOINTMENT'; if (form.elements.appointmentCategory && !form.elements.appointmentCategory.value) form.elements.appointmentCategory.value = preset.appointmentCategory || ''; toggleExternalFields() } }
+		// 0.90.5: Ein neuer Termin mit vorbelegter Terminart übernimmt deren Dauer, Vor- und Nachbereitung.
+		if (isEvent && !editing && selectedType() && !baseData.durationMinutes) { const preset = selectedType(); if (preset.bufferBeforeMinutes) form.elements.bufferBeforeMinutes.value = preset.bufferBeforeMinutes; if (preset.bufferAfterMinutes) form.elements.bufferAfterMinutes.value = preset.bufferAfterMinutes; applyDuration(preset.durationMinutes || 60) }
+		const currentScheduleValues = () => ({ title: form.elements.title.value, date: form.elements.date?.value || '', status: form.elements.status.value, data: { location: form.elements.scheduleKind?.value === 'EXTERNAL_APPOINTMENT' ? (form.elements.location?.value || '') : '', durationMinutes: Math.max(15, Number(form.elements.durationMinutes?.value || 60)), bufferBeforeMinutes: buffers().before, bufferAfterMinutes: buffers().after, assigneeUids: [...form.querySelectorAll('[name="assigneeUids"]:checked')].map((input) => input.value), resourceKeys: [...form.querySelectorAll('[name="resourceKeys"]:checked')].map((input) => input.value), externalParticipants: form.elements.scheduleKind?.value === 'EXTERNAL_APPOINTMENT' ? String(form.elements.externalParticipants?.value || '').split(';').map((value) => value.trim()).filter(Boolean).join('; ') : '' } })
+		const updateScheduleHints = () => {
+			if (!isEvent) return
+			const hint = modal.querySelector('#schedule-status-hint'); if (hint) hint.textContent = statusHint(form.elements.status.value)
+			const override = form.elements.conflictOverride?.checked
+			const required = editing && changeReasonRequired(item.status, form.elements.status.value, scheduleChanges({ title: item.title, date: item.date || '', status: item.status, data: item.data || {} }, currentScheduleValues()))
+			const reason = modal.querySelector('#schedule-change-reason')
+			if (reason) { reason.hidden = !(required || override); form.elements.changeReason.required = Boolean(required || override) }
+		}
+		// 0.90.5: Verfügbarkeit der gewählten Personen und Ressourcen am Tag des Termins (verzögert, ältere Antworten werden verworfen).
+		let availabilityTimer = null; let availabilitySeq = 0
+		const availabilityNames = (entry) => entry.uid !== undefined ? memberName(entry.uid) : (entry.name || entry.key)
+		const renderAvailability = (result) => {
+			modal.querySelectorAll('[data-availability-uid],[data-availability-resource]').forEach((slot) => { slot.innerHTML = '' })
+			const timeline = modal.querySelector('#schedule-timeline'); const summary = modal.querySelector('#schedule-availability-summary')
+			if (!result) { if (timeline) timeline.innerHTML = ''; if (summary) { summary.hidden = true; summary.textContent = '' } return }
+			for (const entry of result.people || []) { const slot = modal.querySelector(`[data-availability-uid="${CSS.escape(entry.uid)}"]`); if (slot) slot.innerHTML = availabilityChip(entry, esc) }
+			for (const entry of result.resources || []) { const slot = modal.querySelector(`[data-availability-resource="${CSS.escape(entry.key)}"]`); if (slot) slot.innerHTML = availabilityChip(entry, esc) }
+			if (timeline) timeline.innerHTML = timelineHtml(result, { names: availabilityNames, esc, hours: result.workingHours || workingHours(state.scheduling), window: result.window, buffers: buffers() })
+			const text = availabilitySummary(result, availabilityNames)
+			if (summary) { summary.hidden = !text; summary.textContent = text?.text || ''; summary.dataset.state = text?.state || '' }
+		}
+		const loadAvailability = () => {
+			if (!isEvent) return
+			clearTimeout(availabilityTimer)
+			availabilityTimer = setTimeout(async () => {
+				const uids = [...form.querySelectorAll('[name="assigneeUids"]:checked')].map((input) => input.value)
+				const keys = [...form.querySelectorAll('[name="resourceKeys"]:checked')].map((input) => input.value)
+				const date = form.elements.date.value
+				if (!date || (!uids.length && !keys.length)) { renderAvailability(null); return }
+				const seq = ++availabilitySeq
+				const params = new URLSearchParams({ date, durationMinutes: String(form.elements.durationMinutes.value || 60), bufferBeforeMinutes: String(buffers().before), bufferAfterMinutes: String(buffers().after), uids: uids.join(','), resources: keys.join(','), exclude: String(editing ? item.id : 0) })
+				try {
+					const result = await api(`${schedulingUrl()}/availability?${params}`, { feedback: false })
+					if (seq === availabilitySeq) renderAvailability(result && Array.isArray(result.people) ? result : null)
+				} catch (_) { if (seq === availabilitySeq) renderAvailability(null) }
+			}, 250)
+		}
+		if (isEvent) {
+			form.addEventListener('input', () => { updateScheduleHints(); loadAvailability() })
+			form.addEventListener('change', () => { updateScheduleHints(); loadAvailability() })
+			modal.querySelector('#schedule-timeline')?.addEventListener('click', (event) => {
+				const track = event.target.closest?.('[data-timeline-track]'); const timeline = event.target.closest?.('.bp-timeline'); if (!track || !timeline || event.target.closest('.bp-timeline-block')) return
+				const box = track.getBoundingClientRect(); if (!box.width) return
+				setStart(startFromTimelineClick((event.clientX - box.left) / box.width, { from: Number(timeline.dataset.rangeFrom), to: Number(timeline.dataset.rangeTo) }, Number(form.elements.durationMinutes.value || 60), buffers()))
+				updateScheduleHints(); loadAvailability()
+			})
+			updateScheduleHints(); loadAvailability()
+		}
 		const persist = async () => {
 			const data = Object.fromEntries(new FormData(form))
 			const externalParticipantNames = type === 'schedule' ? String(data.externalParticipants || '').split(';').map((value) => value.trim()).filter(Boolean) : []
@@ -397,12 +541,12 @@ export function createRecordsModule(ctx) {
 			const matchedNames = new Set(linkedExternalContacts.map((contact) => String(contact.title).toLocaleLowerCase('de')))
 			const externalParticipantsAdditional = externalParticipantNames.filter((name) => !matchedNames.has(name.toLocaleLowerCase('de'))).join('; ')
 			const externalParticipants = externalParticipantNames.join('; ')
-			const payload = JSON.stringify({ ...baseData, description: data.description || '', priority: data.priority || 'NORMAL', ...(type === 'task' ? { assigneeUid: data.assigneeUid || assigneeUid } : {}), ...(type === 'schedule' ? { assigneeUids: [...form.querySelectorAll('[name="assigneeUids"]:checked')].map((input)=>input.value), resourceKeys:[...form.querySelectorAll('[name="resourceKeys"]:checked')].map((input)=>input.value), schedulePresetKey: data.schedulePresetKey || '', scheduleTypeKey:data.schedulePresetKey||'', durationMinutes: Math.max(15, Number(data.durationMinutes || 60)), bufferBeforeMinutes:Math.max(0,Number(data.bufferBeforeMinutes||0)),bufferAfterMinutes:Math.max(0,Number(data.bufferAfterMinutes||0)),changeReason:data.changeReason||'',conflictOverride:Boolean(data.conflictOverride), scheduleKind: data.scheduleKind || 'INTERNAL_ACTIVITY', appointmentCategory: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? (data.appointmentCategory || '') : '', location: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? (data.location || '') : '', externalContactIds: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalContactIds : [], externalContacts: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? linkedExternalContacts : [], externalParticipantsAdditional: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalParticipantsAdditional : '', externalParticipants: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalParticipants : '' } : {}), ...(baseData.kind === 'EMAIL_DRAFT' ? { recipient: data.recipient || '', recipientCategory: data.recipientCategory || baseData.recipientCategory || '' } : {}), ...(type === 'activity' || baseData.kind === 'CONTACT_ACTIVITY' ? { kind: 'CONTACT_ACTIVITY', contact: data.contact || '', channel: data.channel || 'Telefon' } : {}) })
+			const payload = JSON.stringify({ ...baseData, description: data.description || '', priority: data.priority || 'NORMAL', ...(type === 'task' ? { assigneeUid: data.assigneeUid || assigneeUid } : {}), ...(type === 'schedule' ? { assigneeUids: [...form.querySelectorAll('[name="assigneeUids"]:checked')].map((input)=>input.value), resourceKeys:[...form.querySelectorAll('[name="resourceKeys"]:checked')].map((input)=>input.value), schedulePresetKey: data.schedulePresetKey || '', scheduleTypeKey:data.schedulePresetKey||'', durationMinutes: Math.max(15, Number(data.durationMinutes || 60)), bufferBeforeMinutes:Math.max(0,Number(data.bufferBeforeMinutes||0)),bufferAfterMinutes:Math.max(0,Number(data.bufferAfterMinutes||0)),changeReason:data.changeReason||'',conflictOverride:Boolean(data.conflictOverride), scheduleKind: data.scheduleKind || 'INTERNAL_ACTIVITY', appointmentCategory: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? (data.schedulePresetKey ? (selectedType()?.appointmentCategory || data.appointmentCategory || '') : (data.appointmentCategory || '')) : '', location: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? (data.location || '') : '', externalContactIds: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalContactIds : [], externalContacts: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? linkedExternalContacts : [], externalParticipantsAdditional: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalParticipantsAdditional : '', externalParticipants: data.scheduleKind === 'EXTERNAL_APPOINTMENT' ? externalParticipants : '' } : {}), ...(baseData.kind === 'EMAIL_DRAFT' ? { recipient: data.recipient || '', recipientCategory: data.recipientCategory || baseData.recipientCategory || '' } : {}), ...(type === 'activity' || baseData.kind === 'CONTACT_ACTIVITY' ? { kind: 'CONTACT_ACTIVITY', contact: data.contact || '', channel: data.channel || 'Telefon' } : {}) })
 			const url = editing ? recordItemUrl(item.id) : recordUrl(type)
-			const recordDate = type === 'task' ? `${data.taskDate}T${data.taskTime || '00:00'}` : (data.date || '')
+			const recordDate = type === 'task' ? `${data.taskDate}T${data.taskTime || defaultTime('task', state.scheduling)}` : (data.date || '')
 			return api(url, { method: editing ? 'PUT' : 'POST', body: new URLSearchParams({ title: data.title, date: recordDate, status: data.status, caseId: Number(data.caseId || 0), data: payload }) })
 		}
-		modal.querySelector('#cancel-record').onclick = () => modal.remove()
+		modal.querySelector('#cancel-record').onclick = () => { clearTimeout(availabilityTimer); modal.remove() }
 		form.onsubmit = async (event) => {
 			event.preventDefault()
 			const status = modal.querySelector('#record-form-state')
@@ -410,22 +554,31 @@ export function createRecordsModule(ctx) {
 			submit.disabled = true
 			status.textContent = 'Speichert …'; status.dataset.state = 'saving'
 			try {
+				if (isEvent) syncWhen()
 				const saved = await persist()
+				clearTimeout(availabilityTimer)
 				modal.remove()
 				await loadRecordType(type, state.view === 'case-detail' ? state.currentCase.id : 0)
 				if (type === 'schedule') await loadRecordType('task', state.view === 'case-detail' ? state.currentCase.id : 0)
 				if (['task', 'schedule'].includes(type) && state.view === 'case-detail' && Number(saved.caseId) === Number(state.currentCase?.id)) {
+					// 0.90.5: Hat ein bestätigter Trauerfeier-Termin das Fallmerkmal gesetzt, den Fall neu laden (sonst meldet das nächste Speichern einen Konflikt).
+					if (saved.process?.ceremonyAdopted && urls?.cases) { try { state.currentCase = await api(`${urls.cases}/${state.currentCase.id}`, { feedback: false }) } catch (_) { /* Anzeige bleibt bis zum nächsten Laden */ } }
 					await ctx.loadProcess?.(state.currentCase.id)
 					if (type === 'schedule') await loadRecordType('task', state.currentCase.id)
 				}
 				render()
+				if (saved.process?.ceremonyAdopted) notifySuccess('Fallmerkmal „Trauerfeier“ auf „ja“ gesetzt – der Fall hat jetzt einen bestätigten Trauerfeier-Termin.')
 				if (saved.process?.created) notifySuccess(`Ablauf: ${saved.process.created} neue Aufgabe(n) angelegt${saved.process.completed ? `, ${saved.process.completed} automatisch erledigt` : ''}.`)
 				// Befund #23 (2026-09-20): reactivatedActions wurde von der Schnittstelle bereits geliefert, aber bisher
 				// nirgends angezeigt — die Reaktivierung geschah bisher unsichtbar für den Anwender im Tagesgeschäft.
 				if (type === 'schedule' && Number(saved.reactivatedActions?.tasks || 0) > 0) notifyWarning(`${saved.reactivatedActions.tasks} verknüpfte Aufgabe(n) wurden wegen der Terminänderung zur erneuten Prüfung markiert.`)
 			} catch (error) {
 				status.textContent = error.message; status.dataset.state = 'error'; submit.disabled = false
-				if(type==='schedule'){const suggestions=[...String(error.message).matchAll(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}) Uhr/g)].map((match)=>({label:match[0],value:`${match[3]}-${match[2]}-${match[1]}T${match[4]}:${match[5]}`}));if(suggestions.length){const choices=document.createElement('div');choices.className='bp-alternative-slots';choices.setAttribute('aria-label','Alternative Termine');suggestions.forEach((suggestion)=>{const button=document.createElement('button');button.type='button';button.className='bp-secondary';button.textContent=suggestion.label;button.onclick=()=>{form.elements.date.value=suggestion.value;status.textContent='Alternativtermin übernommen. Bitte erneut speichern.';status.dataset.state='warning';choices.remove();form.elements.date.focus()};choices.append(button)});status.after(choices)}}
+				if(type==='schedule'){
+					// 0.90.5: Erst nach einer Konfliktmeldung lässt sich der Konflikt übersteuern.
+					if (/^Terminkonflikt/.test(String(error.message))) { const override = modal.querySelector('#schedule-conflict-override'); if (override) override.hidden = false }
+					if (/Änderungsgrund/.test(String(error.message))) { const reason = modal.querySelector('#schedule-change-reason'); if (reason) { reason.hidden = false; form.elements.changeReason.required = true; form.elements.changeReason.focus() } }
+					const suggestions=[...String(error.message).matchAll(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}) Uhr/g)].map((match)=>({label:match[0],day:`${match[3]}-${match[2]}-${match[1]}`,time:`${match[4]}:${match[5]}`}));if(suggestions.length){modal.querySelector('.bp-alternative-slots')?.remove();const choices=document.createElement('div');choices.className='bp-alternative-slots';choices.setAttribute('aria-label','Alternative Termine');suggestions.forEach((suggestion)=>{const button=document.createElement('button');button.type='button';button.className='bp-secondary';button.textContent=suggestion.label;button.onclick=()=>{setStart(suggestion.time, suggestion.day);updateScheduleHints();loadAvailability();status.textContent='Alternativtermin übernommen. Bitte erneut speichern.';status.dataset.state='warning';choices.remove();form.elements.scheduleStart.focus()};choices.append(button)});status.after(choices)}}
 			}
 		}
 		modal.querySelectorAll('[data-follow-up]').forEach((button) => button.addEventListener('click', async () => {
@@ -498,5 +651,5 @@ export function createRecordsModule(ctx) {
 	}
 
 
-	return { filteredTaskRecords, filterOptions, taskToolbar, selectableRecordValues, recordToolbar, filteredRecordRecords, formatRecordDate, recordBadges, recordMeta, recordRows, recordsView, documentOutputRow, technicalFilesToggle, normalizeDateTime, caseOptions, showActionDocumentResult, showRecordForm, showEditRecord, saveRecord, showContactForm }
+	return { recordResourceChips, filteredTaskRecords, filterOptions, taskToolbar, selectableRecordValues, recordToolbar, filteredRecordRecords, formatRecordDate, recordBadges, recordMeta, recordRows, recordsView, documentOutputRow, technicalFilesToggle, normalizeDateTime, caseOptions, showActionDocumentResult, showRecordForm, showEditRecord, saveRecord, showContactForm }
 }

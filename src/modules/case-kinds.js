@@ -75,7 +75,7 @@ export function caseEyebrow(item) {
  * führen Person, Anschrift und Wünsche – unter denselben Feldschlüsseln wie im Sterbefall, damit die Übernahme ohne
  * Umschlüsselung gelingt.
  */
-const ADMINISTRATION_SECTIONS = [['Zuständigkeit', ['responsible_employee', 'branch']], ['Fallführung', ['status', 'notes', 'close_reason', 'closed_at']]]
+const ADMINISTRATION_SECTIONS = [['Zuständigkeit', ['responsible_employee', 'branch']], ['Fallführung', ['status', 'close_reason', 'closed_at']]]
 export const ORDER_DECEASED_SECTIONS = {
 	'Verstorbene Person': [
 		['Persönliche Angaben', ['salutation', 'title', 'first_name', 'last_name', 'birth_name']],

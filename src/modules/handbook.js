@@ -9,7 +9,7 @@ export const handbookSlug = (text) => String(text).toLowerCase()
 
 export const HANDBOOK_VIEWS = {
 	dashboard: 'dashboard', capture: 'schnellerfassung', cases: 'fallakte', orders: 'auftraege-vorsorgen', precare: 'auftraege-vorsorgen', task: 'aufgaben-termine', schedule: 'aufgaben-termine',
-	document: 'dokumente', inbox: 'belegeingang', accounting: 'buchhaltung', administration: 'administration', customizing: 'customizing',
+	document: 'dokumente', inbox: 'belegeingang', accounting: 'buchhaltung', 'master-data': 'stammdaten-betrieb', administration: 'administration', customizing: 'customizing',
 }
 export const HANDBOOK_CASE_TABS = {
 	overview: 'fallakte-reiter-uebersicht', master: 'stammdaten', order: 'auftrag', 'side-orders': 'nebenauftraege', contact: 'kontakte',
@@ -17,14 +17,19 @@ export const HANDBOOK_CASE_TABS = {
 	services: 'leistungen', finances: 'finanzen', history: 'datenschutz',
 }
 export const HANDBOOK_ADMIN_TABS = {
-	onboarding: 'administration-ersteinrichtung', cockpit: 'administration-betriebs-cockpit', services: 'administration-leistungen-leistungskatalog',
-	branches: 'administration-niederlassungen-und-laenderprofile', invoices: 'administration-rechnungswesen', paperless: 'administration-paperless',
+	onboarding: 'administration-ersteinrichtung', cockpit: 'administration-betriebs-cockpit', invoices: 'administration-rechnungswesen', paperless: 'administration-paperless',
 	reports: 'administration-kennzahlen-auswertungen', assistant: 'administration-assistenz', backup: 'datensicherung', setup: 'administration-einrichtungspaket', system: 'administration-systempruefung',
 }
 export const HANDBOOK_CUSTOMIZING_TABS = {
-	processes: 'customizing-ablaeufe', 'value-lists': 'customizing-wertelisten', 'burial-rules': 'customizing-variantenregeln', surcharges: 'customizing-zuschlagsstaffeln',
-	scheduling: 'customizing-terminplanung', documents: 'customizing-dokumentvorlagen', deregistration: 'customizing-abmeldungen', labels: 'customizing-marker', 'document-kinds': 'customizing-dokumentarten', 'order-choices': 'customizing-ankreuzfelder', 'mail-templates': 'customizing-e-mail-vorlagen',
+	processes: 'customizing-ablaeufe', 'burial-rules': 'customizing-variantenregeln', surcharges: 'customizing-zuschlagsstaffeln',
+	scheduling: 'customizing-terminplanung', documents: 'customizing-dokumentvorlagen', deregistration: 'customizing-abmeldungen', 'document-kinds': 'customizing-dokumentarten', 'order-choices': 'customizing-ankreuzfelder', 'mail-templates': 'customizing-e-mail-vorlagen',
 	'order-types': 'customizing-auftragsarten', precare: 'customizing-vorsorge',
+}
+
+// 0.92.0: Einstellungen → Stammdaten (Kapitel „Stammdaten des Betriebs“)
+export const HANDBOOK_MASTER_DATA_TABS = {
+	branches: 'stammdaten-betrieb-niederlassungen-und-laenderprofile', resources: 'stammdaten-betrieb-ressourcen', services: 'stammdaten-betrieb-leistungen-leistungskatalog',
+	'value-lists': 'stammdaten-betrieb-wertelisten', labels: 'stammdaten-betrieb-marker',
 }
 
 export function handbookUrl() {
@@ -35,6 +40,7 @@ export function handbookUrl() {
 /** Sprungmarke für den aktuellen Arbeitsbereich. */
 export function handbookAnchor(state) {
 	if (state.view === 'case-detail') return HANDBOOK_CASE_TABS[state.caseTab] || 'fallakte'
+	if (state.view === 'master-data') return HANDBOOK_MASTER_DATA_TABS[state.masterDataTab] || 'stammdaten-betrieb'
 	if (state.view === 'administration') return HANDBOOK_ADMIN_TABS[state.administrationTab] || 'administration'
 	if (state.view === 'customizing') return HANDBOOK_CUSTOMIZING_TABS[state.customizingTab] || 'customizing'
 	return HANDBOOK_VIEWS[state.view] || ''

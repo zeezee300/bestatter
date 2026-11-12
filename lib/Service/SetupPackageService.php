@@ -11,7 +11,8 @@ use OCP\IDBConnection;
 /**
  * 0.75.3 – Kundenspezifisches Einrichtungspaket (OP-063): ZIP mit paket.json und den Inhalten, die zu einem
  * Bestattungsunternehmen gehören – Warengruppen, Leistungskatalog, Preislisten, Dokumentvorlagen (DOCX und Textvorlagen),
- * Auftragsformulare, Ablaufvorlagen, Niederlassungen (0.89.8, Stammdaten ohne Bankverbindung) und Logos je Niederlassung.
+ * Auftragsformulare, Ablaufvorlagen, Niederlassungen (0.89.8, Stammdaten ohne Bankverbindung), Logos je Niederlassung,
+ * Wertelisten und Terminplanung (0.92.0: Terminarten, Ressourcen und ihre Zuordnung).
  * Keine Falldaten, keine Zugangs- oder Bankdaten.
  *
  * Einspielen in zwei Schritten: preview() zeigt je Eintrag den Stand (neu/vorhanden) und die vorgeschlagene Aktion;
@@ -25,17 +26,18 @@ class SetupPackageService {
 	/** 0.89.5: Einstellungen mit Verweisen auf den Katalog (Ankreuzfelder, typische Fremdkosten, Variantenregeln, Zuschlagsstaffeln) nach dem Katalog. */
 	/** 0.89.7: Auftragsarten (Aufträge ohne Sterbefall) vor den Abläufen, die für Aufträge gelten. */
 	/** 0.89.8: Niederlassungen zuerst – Preislisten und Logos verweisen auf sie. */
-	public const TYPES = ['branches', 'article-groups', 'articles', 'price-list', 'document-template', 'order-form', 'labels', 'document-kinds', 'order-types', 'process-template', 'order-choices', 'typical-costs', 'variant-rules', 'surcharge-rules', 'logo'];
+	/** 0.92.0: Wertelisten (mit den Ressourcentypen) und Terminplanung (Terminarten, Ressourcen, Zuordnung) direkt danach. */
+	public const TYPES = ['branches', 'value-lists', 'scheduling', 'article-groups', 'articles', 'price-list', 'document-template', 'order-form', 'labels', 'document-kinds', 'order-types', 'process-template', 'order-choices', 'typical-costs', 'variant-rules', 'surcharge-rules', 'logo'];
 	public const TYPE_LABELS = [
 		'article-groups' => 'Warengruppen', 'articles' => 'Leistungskatalog (Artikel)', 'price-list' => 'Preisliste', 'document-template' => 'Dokumentvorlage',
 		'order-form' => 'Auftragsformular', 'labels' => 'Marker', 'document-kinds' => 'Dokumentarten', 'process-template' => 'Ablaufvorlage',
 		'order-choices' => 'Ankreuzfelder (Auftrag)', 'typical-costs' => 'Typische Fremdkosten', 'variant-rules' => 'Variantenregeln', 'surcharge-rules' => 'Zuschlagsstaffeln', 'logo' => 'Logo',
-		'order-types' => 'Auftragsarten', 'branches' => 'Niederlassungen',
+		'order-types' => 'Auftragsarten', 'branches' => 'Niederlassungen', 'value-lists' => 'Wertelisten', 'scheduling' => 'Terminplanung (Terminarten und Ressourcen)',
 	];
 	public const BRANCH_FORMAT = 'bestatter-branches';
 	/** 0.89.8: übertragene Felder einer Niederlassung – bewusst ohne Bankverbindung und ohne zugeordnete Personen. */
 	public const BRANCH_FIELDS = ['key', 'name', 'street', 'postalCode', 'city', 'country', 'countryCode', 'federalState', 'invoiceProfile', 'paymentQrStandard',
-		'phone', 'email', 'paymentTermDays', 'vatId', 'taxNumber', 'registerCourt', 'registerNumber', 'managingDirectors', 'electronicAddress', 'active', 'sortOrder'];
+		'phone', 'email', 'numberCode', 'paymentTermDays', 'vatId', 'taxNumber', 'registerCourt', 'registerNumber', 'managingDirectors', 'electronicAddress', 'active', 'sortOrder'];
 	/** Dateien der Einstellungen im Paket. */
 	private const SETTING_FILES = ['order-choices' => ['ORDER_CHOICES', 'einstellungen/Ankreuzfelder.json'], 'typical-costs' => ['TYPICAL_COSTS', 'einstellungen/Fremdkosten.json'],
 		'variant-rules' => ['VARIANT_RULES', 'einstellungen/Variantenregeln.json'], 'surcharge-rules' => ['SURCHARGE_RULES', 'einstellungen/Zuschlagsstaffeln.json'],
@@ -64,6 +66,8 @@ class SetupPackageService {
 		private SurchargeRuleService $surcharges,
 		private CatalogReferenceService $references,
 		private ?OrderTypeService $orderTypes = null,
+		private ?CustomizingService $customizing = null,
+		private ?SchedulingService $scheduling = null,
 	) {
 	}
 
@@ -90,6 +94,13 @@ class SetupPackageService {
 		};
 		if (in_array('branches', $types, true) && $this->configuration->branches() !== []) {
 			$add('branches', 'BRANCHES', 'Niederlassungen', 'niederlassungen/Niederlassungen.json', $this->branchesExport());
+		}
+		// 0.92.0: Wertelisten (auch Ressourcentypen mit Mehrzahl und Symbol) und Terminplanung.
+		if (in_array('value-lists', $types, true) && $this->customizing !== null) {
+			$add('value-lists', 'VALUE_LISTS', 'Wertelisten', 'wertelisten/Wertelisten.json', $this->customizing->exportExchange());
+		}
+		if (in_array('scheduling', $types, true) && $this->scheduling !== null) {
+			$add('scheduling', 'SCHEDULING', 'Terminplanung', 'terminplanung/Terminplanung.json', $this->scheduling->exportExchange());
 		}
 		if (in_array('article-groups', $types, true)) {
 			$add('article-groups', 'GROUPS', 'Warengruppen', 'leistungskatalog/Warengruppen.csv', $this->structure->exportGroupsCsv());
@@ -179,7 +190,7 @@ class SetupPackageService {
 		return ['manifest' => array_diff_key($manifest, ['contents' => true]) + ['itemCount' => count($items)], 'items' => $items, 'warnings' => $warnings];
 	}
 
-	/** @param array{groups:array<string,bool>,articles:array<string,bool>} $catalog Warengruppen und Artikelnummern nach dem Einspielen */
+	/** @param array{groups:array<string,bool>,articles:array<string,bool>,branches:array<string,bool>,resourceTypes:array<string,bool>} $catalog Warengruppen, Artikelnummern, Niederlassungen und Ressourcentypen nach dem Einspielen */
 	private function previewItem(int $index, array $entry, array $files, array $catalog): array {
 		$type = (string)$entry['type'];
 		$key = (string)$entry['key'];
@@ -208,7 +219,38 @@ class SetupPackageService {
 					$item['actions'] = ['UPDATE', 'SKIP'];
 					$item['defaultAction'] = $new + $changed > 0 ? 'UPDATE' : 'SKIP';
 					if ($new > 0) {
-						$item['warnings'][] = 'Bankverbindung der neuen Niederlassung(en) danach unter Administration → Niederlassungen bzw. in der Ersteinrichtung eintragen.';
+						$item['warnings'][] = 'Bankverbindung der neuen Niederlassung(en) danach unter Stammdaten → Niederlassungen bzw. in der Ersteinrichtung eintragen.';
+					}
+					break;
+				case 'value-lists':
+					$lists = CustomizingService::parseExchange($content);
+					$summary = $this->requireCustomizing()->exchangePreview($lists);
+					$item['exists'] = $summary['changed'] + $summary['same'] > 0;
+					$item['status'] = $item['exists'] ? 'VORHANDEN' : 'NEU';
+					$item['details'] = $summary['lists'] . ' Wertelisten: ' . $summary['new'] . ' neue Werte, ' . $summary['changed'] . ' geändert, ' . $summary['same'] . ' unverändert. Vorhandene Werte werden weder gelöscht noch umsortiert.';
+					$item['actions'] = ['UPDATE', 'SKIP'];
+					$item['defaultAction'] = $summary['new'] + $summary['changed'] > 0 ? 'UPDATE' : 'SKIP';
+					if ($summary['unknownLists'] !== []) {
+						$item['warnings'][] = 'Diese Wertelisten gibt es in der installierten Version nicht (werden übersprungen): ' . implode(', ', $summary['unknownLists']) . '.';
+					}
+					if ($summary['fixed'] !== []) {
+						$item['warnings'][] = 'Feste Systemwerte lassen sich nicht ergänzen (werden übersprungen): ' . implode(', ', array_slice($summary['fixed'], 0, 10)) . '.';
+					}
+					break;
+				case 'scheduling':
+					$parsed = SchedulingService::parseExchange($content);
+					$summary = $this->requireScheduling()->exchangePreview($parsed, array_keys($catalog['resourceTypes'] ?? []), array_keys($catalog['branches'] ?? []));
+					$t = $summary['types'];
+					$r = $summary['resources'];
+					$item['exists'] = $t['changed'] + $t['same'] + $r['changed'] + $r['same'] > 0;
+					$item['status'] = $item['exists'] ? 'VORHANDEN' : 'NEU';
+					$item['details'] = count($parsed['scheduleTypes']) . ' Terminarten (' . $t['new'] . ' neu, ' . $t['changed'] . ' geändert, ' . $t['same'] . ' unverändert), '
+						. count($parsed['resources']) . ' Ressourcen (' . $r['new'] . ' neu, ' . $r['changed'] . ' geändert, ' . $r['same'] . ' unverändert). Gleiche Schlüssel werden aktualisiert, eigene Einträge bleiben, gelöscht wird nichts.';
+					$item['actions'] = ['UPDATE', 'SKIP'];
+					$item['defaultAction'] = $t['new'] + $t['changed'] + $r['new'] + $r['changed'] > 0 ? 'UPDATE' : 'SKIP';
+					$item['warnings'] = [...$item['warnings'], ...$summary['warnings']];
+					if ($r['new'] > 0) {
+						$item['warnings'][] = 'Neue Ressourcen danach unter Stammdaten → Ressourcen prüfen (Kennung, Niederlassung, aktiv).';
 					}
 					break;
 				case 'article-groups':
@@ -416,6 +458,13 @@ class SetupPackageService {
 					$existing === null ? $created++ : $updated++;
 				}
 				return $created . ' angelegt, ' . $updated . ' aktualisiert (ohne Bankverbindung)';
+			case 'value-lists':
+				$r = $this->requireCustomizing()->importExchange($content);
+				return $r['created'] . ' Werte angelegt, ' . $r['updated'] . ' aktualisiert' . ($r['skipped'] !== [] ? '; übersprungen: ' . implode('; ', $r['skipped']) : '');
+			case 'scheduling':
+				$r = $this->requireScheduling()->importExchange($content);
+				return 'Terminarten: ' . $r['typesCreated'] . ' angelegt, ' . $r['typesUpdated'] . ' aktualisiert; Ressourcen: ' . $r['resourcesCreated'] . ' angelegt, ' . $r['resourcesUpdated'] . ' aktualisiert'
+					. ($r['skipped'] !== [] ? '; übersprungen: ' . implode('; ', $r['skipped']) : '');
 			case 'article-groups':
 				$r = $this->structure->importGroupsCsv($content);
 				return ($r['created'] ?? 0) . ' angelegt, ' . ($r['updated'] ?? 0) . ' aktualisiert' . (($r['areasCreated'] ?? 0) > 0 ? ', ' . $r['areasCreated'] . ' Bereiche angelegt' : '');
@@ -584,7 +633,7 @@ class SetupPackageService {
 		}
 	}
 
-	/** Warengruppen-Schlüssel und Artikelnummern dieser Installation zuzüglich derer im Paket. @return array{groups:array<string,bool>,articles:array<string,bool>} */
+	/** Warengruppen-Schlüssel und Artikelnummern dieser Installation zuzüglich derer im Paket, dazu Niederlassungen und Ressourcentypen des Pakets. @return array{groups:array<string,bool>,articles:array<string,bool>,branches:array<string,bool>,resourceTypes:array<string,bool>} */
 	private function catalogAfterImport(array $manifest, array $files): array {
 		$branches = [];
 		foreach ($manifest['contents'] as $entry) {
@@ -592,6 +641,22 @@ class SetupPackageService {
 				try {
 					foreach (self::parseBranches($files[$entry['file']] ?? '') as $branch) {
 						$branches[$branch['key']] = true;
+					}
+				} catch (\Throwable) { /* Fehler zeigt die Vorschau des Eintrags */
+				}
+			}
+		}
+		// 0.92.0: Ressourcentypen, die das Paket in der Werteliste „Ressourcentypen“ mitbringt (für die Terminplanung).
+		$resourceTypes = [];
+		foreach ($manifest['contents'] as $entry) {
+			if (($entry['type'] ?? '') === 'value-lists') {
+				try {
+					foreach (CustomizingService::parseExchange($files[$entry['file']] ?? '') as $list) {
+						if ($list['key'] === SchedulingRules::RESOURCE_TYPE_LIST) {
+							foreach ($list['items'] as $type) {
+								$resourceTypes[$type['value']] = true;
+							}
+						}
 					}
 				} catch (\Throwable) { /* Fehler zeigt die Vorschau des Eintrags */
 				}
@@ -618,7 +683,15 @@ class SetupPackageService {
 			} catch (\Throwable) { /* Fehler zeigt die Vorschau des Eintrags */
 			}
 		}
-		return ['groups' => array_map(static fn (): bool => true, $groups), 'articles' => array_map(static fn (): bool => true, $articles), 'branches' => $branches];
+		return ['groups' => array_map(static fn (): bool => true, $groups), 'articles' => array_map(static fn (): bool => true, $articles), 'branches' => $branches, 'resourceTypes' => $resourceTypes];
+	}
+
+	private function requireCustomizing(): CustomizingService {
+		return $this->customizing ?? throw new \RuntimeException('Wertelisten sind nicht verfügbar.');
+	}
+
+	private function requireScheduling(): SchedulingService {
+		return $this->scheduling ?? throw new \RuntimeException('Die Terminplanung ist nicht verfügbar.');
 	}
 
 	private function applyDocumentTemplate(string $key, array $meta, string $content, string $action): string {

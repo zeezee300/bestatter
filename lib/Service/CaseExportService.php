@@ -53,6 +53,33 @@ class CaseExportService {
 		return $result;
 	}
 
+	/**
+	 * 0.91.0: Packt die Exportdateien in ein ZIP (im Speicher über eine temporäre Datei).
+	 * @param array<string, string> $files Dateiname => Inhalt
+	 */
+	public static function zip(array $files): string {
+		if (!class_exists(\ZipArchive::class)) {
+			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive ist für den Fallexport erforderlich.');
+		}
+		$path = tempnam(sys_get_temp_dir(), 'bestatter-export-');
+		if ($path === false) {
+			throw new \RuntimeException('Der Fallexport konnte nicht vorbereitet werden.');
+		}
+		try {
+			$zip = new \ZipArchive();
+			if ($zip->open($path, \ZipArchive::OVERWRITE) !== true) {
+				throw new \RuntimeException('Der Fallexport konnte nicht vorbereitet werden.');
+			}
+			foreach ($files as $name => $content) {
+				$zip->addFromString((string)$name, $content);
+			}
+			$zip->close();
+			return (string)file_get_contents($path);
+		} finally {
+			@unlink($path);
+		}
+	}
+
 	private function rows(string $table, string $field, int $value): array {
 		$query = $this->db->getQueryBuilder();
 		return $query->select('*')->from($table)->where($query->expr()->eq($field, $query->createNamedParameter($value)))->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();

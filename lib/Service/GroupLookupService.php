@@ -47,11 +47,23 @@ class GroupLookupService {
 			return '';
 		}
 		$text = 'Nextcloud-Gruppe „' . $lookup['name'] . '“ nicht gefunden';
-		if ($lookup['suggestion'] !== '') {
-			$text .= mb_strtolower($lookup['suggestion']) === mb_strtolower($lookup['name'])
-				? ' – es gibt sie mit der Gruppen-ID „' . $lookup['suggestion'] . '“ (andere Groß-/Kleinschreibung); diese ID eintragen'
-				: ' – eine Gruppe mit diesem Anzeigenamen hat die Gruppen-ID „' . $lookup['suggestion'] . '“ (umbenannte Gruppe); diese ID eintragen';
+		return $lookup['suggestion'] === '' ? $text : $text . ' – ' . $this->explain($lookup);
+	}
+
+	/**
+	 * 0.92.2 – Erklärung zu einer nicht gefundenen Gruppe ohne den einleitenden Satz, damit Systemprüfung und
+	 * Installationsparameter sie in eigene Sätze einbauen können (vorher endete der Hinweis mit „diese ID eintragen“,
+	 * ohne zu sagen, wo).
+	 *
+	 * @param array{name: string, exists: bool, suggestion: string, suggestionName: string} $lookup
+	 */
+	public function explain(array $lookup): string {
+		if ($lookup['suggestion'] === '') {
+			return 'eine Gruppe mit dieser Gruppen-ID oder diesem Namen gibt es nicht';
 		}
-		return $text;
+		if (mb_strtolower($lookup['suggestion']) === mb_strtolower($lookup['name'])) {
+			return 'die Gruppen-ID wird „' . $lookup['suggestion'] . '“ geschrieben (andere Groß-/Kleinschreibung)';
+		}
+		return '„' . $lookup['name'] . '“ ist nur der angezeigte Name einer umbenannten Gruppe, ihre Gruppen-ID lautet „' . $lookup['suggestion'] . '“';
 	}
 }

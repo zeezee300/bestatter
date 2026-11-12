@@ -2,6 +2,98 @@
 
 Je Version ein Abschnitt `## x.y.z – Titel` (Format des Nextcloud App Stores).
 
+## 0.92.5 – Korrektur: Nach der Wiederherstellung kein Nextcloud-Upgrade mehr nötig
+
+- **Restore:** Die Wiederherstellung übernahm aus der Sicherung auch die von Nextcloud verwalteten App-Angaben, darunter die installierte Version. War die Sicherung mit einer älteren App-Version erstellt, meldete Nextcloud danach „Nextcloud or one of the apps require upgrade“. Diese Angaben bleiben jetzt am Ziel unverändert.
+
+## 0.92.4 – Korrektur: Wiederherstellung trotz Protokoll aus der Einrichtung
+
+- **Restore in eine neu aufgebaute Installation:** 0.92.3 hielt Protokolleinträge aus Installation und Einrichtungspaket fälschlich für Protokoll zu Fällen und brach mit „Das Ziel enthält bereits Falldaten (… Protokolleinträge zu Fällen)“ ab. Einträge ohne Fallbezug werden jetzt richtig erkannt und – wie die übrigen Einstellungen – durch den Stand der Sicherung ersetzt.
+
+## 0.92.3 – Wiederherstellung in eine neu aufgebaute Installation
+
+- **Restore in eine neue Installation:** Ein Sicherungspaket ließ sich in eine frisch installierte App nicht einspielen („Das Ziel enthält bereits Bestatter-Daten“), weil schon die automatisch angelegte Standardpreisliste, die Wertelisten oder ein eingespieltes Einrichtungspaket als vorhandene Daten galten. Gesperrt wird jetzt nur noch, wenn das Ziel Falldaten enthält (Fälle, Aufgaben, Termine, Rechnungen, Protokoll zu Fällen). Einstellungen und Stammdaten der Zielinstallation werden durch den Stand der Sicherung ersetzt; vorher legt die App automatisch einen App-Snapshot des Zielstands im Sicherungsordner ab.
+- **Klare Meldung:** Ist das Ziel nicht frei, nennt der Restore die vorhandenen Falldaten mit Anzahl. Der Prüflauf zeigt zusätzlich, welche Einstellungen und Stammdaten beim Einspielen ersetzt werden.
+- **Vorhandene Dateien:** Liegt eine Datei mit gleichem Inhalt schon am Ziel (z. B. eine mitgelieferte Dokumentvorlage), wird sie übersprungen. Eine abweichende Dokumentvorlage oder ein abweichendes Artikelbild bleibt mit dem Zusatz „(vor Wiederherstellung …)“ erhalten, die gesicherte Fassung wird eingespielt. In Fallakten bleibt es beim Abbruch.
+
+## 0.92.2 – Systemprüfung: Gruppen verständlich melden
+
+- **„Installationsparameter öffnen“ wirkt wieder:** Der Knopf in der Systemprüfung springt jetzt zum Abschnitt „Installationsparameter“ auf derselben Seite und setzt den Cursor in das betroffene Feld (z. B. „Administrationsgruppen“). Bisher blieb die Seite unverändert stehen. Knöpfe „Systemprüfung öffnen“, die in der Systemprüfung auf sich selbst zeigten, entfallen dort.
+- **Klare Meldung bei nicht gefundenen Gruppen:** Die Systemprüfung nennt die eingetragene Gruppe, die Folge (z. B. „nur Nextcloud-Systemadministratoren haben Administrationsrechte“) und genau, wo welche Gruppen-ID einzutragen ist. Wurde eine Gruppe in Nextcloud umbenannt, steht dabei, dass der neue Name nur der angezeigte Name ist und wie die Gruppen-ID lautet.
+- **Gruppen-ID mit einem Klick übernehmen:** Unter „Installationsparameter“ steht an Mitglieder-, Administrations- und Rollengruppen ein Hinweis, wenn Nextcloud die Gruppe nicht kennt – bei umbenannten Gruppen oder anderer Schreibweise mit einem Knopf, der die richtige Gruppen-ID einsetzt. Nach „Installationsparameter speichern“ wird die Systemprüfung sofort neu ausgeführt.
+
+## 0.92.1 – Niederlassung speichern, Rechnungsnummer mit Kennung
+
+- **Niederlassung speichern:** Unter Stammdaten → „Niederlassungen“ hat jede Niederlassung jetzt eine deutlich sichtbare Schaltfläche „Niederlassung speichern“ – oben neben dem Namen und unten in der Karte. Sie sichert alle Angaben auf einmal, auch die Kennung sowie die Bank- und Unternehmensdaten. Bisher gab es dafür zwei Schaltflächen; „Bank- und Unternehmensdaten speichern“ verwarf dabei andere noch nicht gespeicherte Eingaben der Karte, etwa die Kennung. Ungespeicherte Eingaben zeigt die Karte jetzt an.
+- **Rechnungsnummer mit Kennung der Niederlassung:** Neuer Baustein {KENNUNG} für den „Aufbau der Rechnungsnummer“ (Administration → Rechnungswesen). Er setzt die kurze Kennung der Niederlassung ein, die auch in der Fallnummer steht (z. B. RE-HB-2026-000001); {BRANCH} bleibt der Niederlassungsschlüssel. Beide lassen sich frei kombinieren. Bausteine werden per Klick eingefügt, fertige Beispiele lassen sich übernehmen, und die Vorschau zeigt das Ergebnis sofort.
+- **Korrektur:** „Rechnungseinstellungen speichern“ reagierte nicht; die Einstellungen werden wieder gespeichert und bestätigt.
+
+## 0.92.0 – Stammdaten und Ressourcen
+
+- **Neuer Bereich „Stammdaten“:** Unter Einstellungen → „Stammdaten“ stehen jetzt gesammelt die Reiter „Niederlassungen“, „Ressourcen“, „Leistungen“, „Wertelisten“ und „Marker“. Bisher lagen sie verteilt unter Administration und Customizing. Terminarten, Pflichtbedarf und die Zuordnung „Ressourcen je Terminart“ bleiben unter Customizing → Terminplanung.
+- **Ressourcen mit mehr Angaben:** Jede Ressource hat jetzt „Nummer / Kennung“ (z. B. das Kennzeichen HB-RL 333 oder „Raum 2“), eine Beschreibung, die Niederlassungen, in denen sie angeboten wird (Standard „Alle Niederlassungen“), und die letzte Änderung mit Name und Zeitpunkt. Im Dialog lässt sich auch gleich festlegen, bei welchen Terminarten die Ressource verwendbar ist.
+- **Ressourcentypen selbst pflegen:** Kapelle, Raum, Fahrzeug und Ausstattung stehen in der neuen Werteliste „Ressourcentypen“. Eigene Typen wie Kühlzelle oder Anhänger lassen sich ergänzen, jeweils mit Mehrzahl und einem kleinen Symbol. Der Pflichtbedarf einer Terminart gilt für alle Typen.
+- **Symbole überall:** Ressourcen erscheinen mit ihrem Symbol im Terminformular, in Terminlisten, in der Übersicht, bei Aufgaben mit Terminbezug und in der Zuordnung je Terminart.
+- **Ressourcen je Niederlassung:** Im Terminformular stehen nur die Ressourcen der Niederlassung des Falls zur Wahl. Die Zuordnung je Terminart lässt sich nach Niederlassung filtern, und die Systemprüfung meldet, wenn eine Niederlassung den Pflichtbedarf einer Terminart nicht erfüllen kann.
+- **Kalender:** Die Beschreibung des Kalendereintrags nennt die gebuchten Ressourcen mit Kennung.
+- **Einrichtungspaket:** Neue Inhalte „Wertelisten“ (auch die Ressourcentypen) und „Terminplanung“ (Terminarten mit Pflichtbedarf, Ressourcen und ihre Zuordnung). So lassen sich Ressourcen aus einer Testinstallation übernehmen; vorhandene Einträge werden ergänzt, nie gelöscht. Das Standard-Einrichtungspaket bringt acht Beispielressourcen mit (inaktiv).
+
+## 0.91.1 – Gesprächsnotiz als Notiz
+
+- **Gesprächsnotiz der Schnellerfassung im Reiter „Notizen“:** Die Gesprächsnotiz aus der Schnellerfassung wird beim Anlegen des Falls als Notiz mit der Kategorie „Gesprächsnotiz“ gespeichert – mit Name und Uhrzeit der erfassenden Person. Sehr lange Gesprächsnotizen werden auf mehrere Notizen verteilt.
+- **Ein Ort für interne Notizen:** Das Stammdatenfeld „Interne Notizen“ entfällt. Vermerke wie „Aus Auftrag … weitergeführt“ oder „Aus Vorsorge … übernommen“ stehen jetzt als Notiz „Intern“ im neuen Sterbefall.
+- **Neue Kategorie „Gesprächsnotiz“:** Sie steht in Customizing → Wertelisten unter „Kategorie der Notiz“ an erster Stelle und wird in bestehende Installationen übernommen.
+- **Stammdatenblatt:** Der Platzhalter {{case.notes}} enthält jetzt die Gesprächsnotizen und angehefteten Notizen des Falls (mit Datum, in einer Zeile). Alle anderen Notizen bleiben intern.
+- **Herkunft sichtbar:** An Notizen aus der Schnellerfassung, aus Vorgangsübergängen und aus Nextcloud Notizen steht, woher sie stammen – auch im Markdown-Export.
+
+## 0.91.0 – Notizen zum Fall
+
+- **Neuer Reiter „Notizen“:** Direkt nach „Übersicht“ stehen kurze interne Notizen zum Fall – wie Kommentare mit Name, Datum und Uhrzeit, wahlweise mit Kategorie (z. B. Telefonat, Absprache mit Angehörigen, Rückruf). Wichtige Notizen lassen sich anheften; sie stehen dann oben, in der Übersicht und als Hinweis im Fallkopf. Alle mit Zugriff auf den Fall können Notizen bearbeiten und löschen; jede Änderung steht im Fall-Verlauf.
+- **„+ Notiz“ von überall:** Im Fallkopf (oder mit der Taste N) öffnet sich ein kleines Fenster für eine schnelle Notiz, ohne den Reiter zu wechseln.
+- **Kolleginnen und Kollegen erwähnen:** Mit „@“ und dem Namen wird jemand erwähnt und erhält eine Nextcloud-Benachrichtigung, die direkt zu den Notizen des Falls führt.
+- **Notizen vom Handy übernehmen:** Wer unterwegs die Nextcloud-App „Notizen“ nutzt, legt Notizen in der Kategorie „Bestatter“ an und schreibt die Fallnummer in den Titel. Im Fall übernimmt „Aus Nextcloud Notizen übernehmen“ sie mit einem Klick.
+- **Suche, Fallliste und Export:** Die Fallsuche findet auch Text in Notizen, die Fallliste zeigt ein Notizsymbol. „Falldaten exportieren“ liefert jetzt eine ZIP-Datei mit dem Fallexport und allen Notizen als lesbare Markdown-Datei; im Reiter lassen sich die Notizen auch einzeln als Markdown herunterladen.
+- **Kategorien pflegen:** Die Kategorien stehen in Customizing → Wertelisten unter „Kategorie der Notiz“.
+- **Korrektur:** Abmeldungen und Dokumente einer Fallakte, die eine andere Person angelegt hatte, ließen sich in einzelnen Fällen nicht ändern, obwohl sie sichtbar waren.
+
+## 0.90.5 – Übersichtlicheres Terminformular mit Verfügbarkeit
+
+- **Neues Terminformular:** Aufgebaut wie ein Termin im Nextcloud-Kalender – oben die Bezeichnung, darunter hervorgehoben „Wann“ mit Datum, Beginn, Ende und Status. Beginn und Ende hängen zusammen; die Belegung einschließlich Vor- und Nachbereitung steht darunter. Beschreibung, Priorität, Einordnung und Puffer liegen unter „Weitere Angaben“; Änderungsgrund und Konfliktübersteuerung erscheinen nur, wenn sie gebraucht werden.
+- **Verfügbarkeit wie in Outlook:** Hinter jeder gewählten Person und Ressource steht, ob sie frei ist oder durch welchen Termin sie belegt ist. Eine Tagesleiste zeigt die Belegung des Tages; ein Klick auf eine freie Stelle übernimmt die Uhrzeit.
+- **Arbeitszeit statt 0:00 Uhr:** Unter Customizing → Terminplanung lässt sich die Arbeitszeit einstellen (Standard 07:00–18:00 Uhr). Neue Termine beginnen zum Arbeitsbeginn, neue Aufgaben sind zum Arbeitsende fällig; auch die Alternativen bei Terminkonflikten richten sich danach.
+- **Termine aus dem Ablauf gleich bestätigt:** Termine, die aus einem Ablaufschritt oder einer Aufgabe heraus angelegt werden, sind „Bestätigt“ vorbelegt.
+- **Kein Änderungsgrund für Entwürfe:** Änderungen an einem Entwurf – auch das Bestätigen – und das erneute Bestätigen nach „Geändert“ brauchen keinen Grund mehr.
+- **Trauerfeier-Termin beantwortet „Trauerfeier ja/nein“:** Ein bestätigter Termin „1. Trauerfeier“ oder „2. Trauerfeier“ setzt das offene Fallmerkmal „Trauerfeier“ auf „ja“ (mit Eintrag im Fall-Verlauf). Schritte wie „Termin für Trauerfeier abstimmen“ warten dann nicht mehr. Ein eingetragenes „nein“ bleibt bestehen; die Übersicht weist auf den Widerspruch hin.
+
+## 0.90.4 – Fehlende Fallangaben direkt am Schritt beantworten
+
+- **Schritte mit „?“ (Angabe fehlt):** Wartet ein Ablaufschritt auf eine Angabe im Fall – etwa „Termin für Trauerfeier abstimmen“ auf „Trauerfeier ja/nein“ –, beantworten Sie sie jetzt direkt in der Zeile mit „Trauerfeier: ja“ oder „Trauerfeier: nein“ (entsprechend „Rente: ja/nein“). Das gilt in der Übersicht, im Reiter „Aufgaben“ und im Reiter „Termine / Fristen“. Der Ablauf passt sich sofort an: Bei „ja“ wird der Schritt zur offenen Aufgabe, bei „nein“ entfällt er. Fehlt die Bestattungsart, führt „Bestattungsart festlegen“ in die Stammdaten. Bisher ging das nur über die Fallmerkmale in der Übersicht.
+
+## 0.90.3 – Ressourcen passend zur Terminart
+
+- **Nur passende Ressourcen im Termin:** Das Terminformular bietet nur noch die Kapellen, Räume, Fahrzeuge und Ausstattung an, die für die gewählte Terminart vorgesehen sind – bei einer Trauerfeier zum Beispiel die Kapelle, aber nicht den Aufbewahrungsraum. Ohne Terminart gibt es keine Ressourcen. Beim Wechsel der Terminart werden nicht passende Ressourcen abgewählt und genannt. Auch der Server nimmt nur zulässige Ressourcen an.
+- **Matrix „Ressourcen je Terminart“:** Unter Customizing → Terminplanung legen Sie je Ressource und Terminart „zulässig“ und „vorbelegt“ fest. „Zuordnung vorschlagen“ füllt Terminarten ohne Zuordnung nach Art der Ressource vor. Ein Hinweis und die Systemprüfung melden, wenn der Pflichtbedarf einer Terminart mit den zulässigen Ressourcen nicht erfüllbar ist. Bisher vorbelegte Ressourcen gelten nach dem Update als zulässig.
+- **Terminplanung aufgeräumt:** Deaktivierte Terminarten und Ressourcen bleiben im Customizing sichtbar und lassen sich wieder aktivieren. Im Formular stehen die Ressourcen nach Art gruppiert mit deutscher Bezeichnung; Mitarbeitende werden nur noch unter „Zuständige Personen“ gewählt, nicht als Ressource. Neue Terminarten und Ressourcen erhalten ihren Schlüssel automatisch aus der Bezeichnung.
+
+## 0.90.2 – Fallnummern mit Niederlassung
+
+- **Fallnummer mit Kennung der Niederlassung:** Unter Administration → Niederlassungen lässt sich wählen, ob Fall-, Auftrags- und Vorsorgenummern den Standort zeigen – vorn (HB-2026-0001) oder nach dem Jahr (2026-HB-0001), mit einer gemeinsamen Folge für alle Niederlassungen oder einer eigenen je Niederlassung. Ohne Einstellung bleibt alles wie bisher (2026-0001).
+- **Kennung je Niederlassung:** neues Feld „Kennung in Fallnummern“ (1 bis 5 Großbuchstaben oder Ziffern, z. B. HB oder 01); es reist im Einrichtungspaket mit. Vergebene Nummern ändern sich nie, auch nicht nach einer Umstellung.
+- **Erkennung:** Ablageordner, Belegeingang, das Paperless-Feld „Fallnummer“ sowie Aufgaben- und Termintitel verstehen die Nummern mit Kennung.
+- **Assistent und Bedienhilfe:** Fragen zur Bedienung im Bestatter-Assistenten („Wie pflege ich Ressourcen?“) beantwortet jetzt die Bedienhilfe aus dem Handbuch; findet sie nichts – auch bei Anfragen, die der Assistent nicht versteht –, erscheint die Frage ohne Namen unter „Offene Hilfefragen“. Neuer Hilfetext zum Pflegen von Ressourcen (Fahrzeuge, Räume, Kapellen, Ausstattung).
+- **Repository:** Die automatische Prüfung baut kein Installationspaket mehr; README auf den aktuellen Funktionsumfang gebracht.
+
+## 0.90.1 – Korrekturen aus dem Pilotbetrieb, Belegeingang ohne Paperless
+
+- **Buchhaltung:** Das Dateiformat (DATEV-Format, Buchungsstapel, Formatversion 13) steht jetzt als Hinweis unter der Überschrift statt als Plakette neben den Reitern, die wie ein Knopf ohne Funktion aussah. Dazu ein Markenhinweis: DATEV ist eine eingetragene Marke der DATEV eG; die App ist kein DATEV-Produkt.
+- **Dokumente zum Fall:** Der Knopf „Mit Geschäfts-Postfach senden“ überdeckt Titel und Dateiname des Dokuments nicht mehr; auch der Versandverlauf ist wieder lesbar.
+- **Administration → Assistenz:** Nach „Einstellungen speichern“ steht dort die Uhrzeit der Speicherung statt wieder „Noch nicht geändert.“. Neu ist die Anzeige, ob ein Chat-Anbieter für die Bedienhilfe eingerichtet ist.
+- **Bedienhilfe:** Fragen, die sie nicht beantworten kann, landen automatisch und ohne Namen unter „Offene Hilfefragen“ – mit Grund und Anzahl, wenn dieselbe Frage öfter gestellt wird. Die Suche versteht zusammengesetzte Wörter und Partizipien besser (zum Beispiel „Wie können Rechnungsdaten exportiert werden?“). Neuer Hilfetext zum Einrichten eines Sprachmodells (LLM) für die Bedienhilfe.
+- **Belegeingang – Eingangsordner:** Neben Paperless-ngx füllt jetzt auch der Nextcloud-Ordner *Bestatter/Belegeingang* den Belegeingang. Scanner, die Nextcloud-App am Handy (*Dokument scannen*), der Desktop-Client oder ein in der Mail-App gespeicherter Anhang legen Belege dort ab; sie erscheinen beim Öffnen sofort, sonst nach etwa fünf Minuten. Der Ordnername ist unter den Installationsparametern einstellbar.
+- **Belegeingang – Direkt hochladen:** „Dateien hochladen“ oder Dateien auf die Fläche ziehen (PDF, XML, JPG, PNG, TIFF bis 50 MB).
+- **E-Rechnungen:** XRechnung (CII und UBL) und ZUGFeRD/Factur-X werden ausgelesen – als XML-Datei oder im PDF eingebettet. Lieferant, Rechnungsnummer, Datum, Fälligkeit und Betrag sind vorbelegt, auf Wunsch werden alle Positionen übernommen; Abweichungen (Steuersatz, Nachlass, Gutschrift, Fremdwährung) werden gemeldet.
+- **Texterkennung ohne Paperless:** Digital erzeugte PDFs liest die App selbst, Scans über die Nextcloud-Texterkennung, sofern unter Administration → Assistenz freigegeben. Daraus entstehen Vorschläge für Dokumentart und Fall; abgelegt wird erst nach Bestätigung. Übernommene Dateien verlassen den Eingangsordner, „Nicht übernehmen“ verschiebt sie in den Unterordner „Nicht übernommen“.
+
 ## 0.90.0 – Buchhaltungsexport (DATEV)
 
 - **Neuer Bereich „Buchhaltung“:** Freigegebene Rechnungen, Stornorechnungen und Gutschriften werden als DATEV-Buchungsstapel (EXTF, Formatversion 13) für die Steuerberatung exportiert – ohne Nacherfassung. Sichtbar für Bestatter-Administratoren und die Rollengruppe „Buchhaltung“.

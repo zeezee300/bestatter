@@ -32,6 +32,8 @@ return ['routes' => [
 	['name' => 'integrationApi#assignPaperlessDocument', 'url' => '/api/integrations/paperless/inbox/{id}/assign', 'verb' => 'POST'],
 	['name' => 'integrationApi#discardPaperlessDocument', 'url' => '/api/integrations/paperless/inbox/{id}/discard', 'verb' => 'POST'],
 	['name' => 'integrationApi#refreshPaperlessDocument', 'url' => '/api/integrations/paperless/inbox/{id}/refresh', 'verb' => 'POST'],
+	// 0.90.1: Direkt-Upload in den Eingangsordner des Belegeingangs
+	['name' => 'integrationApi#uploadInboxFile', 'url' => '/api/integrations/inbox/files', 'verb' => 'POST'],
 	['name' => 'integrationApi#paperlessCaseDeregistrations', 'url' => '/api/integrations/paperless/cases/{caseId}/deregistrations', 'verb' => 'GET'],
 	['name' => 'integrationApi#paperlessDocumentTypes', 'url' => '/api/integrations/paperless/document-types', 'verb' => 'GET'],
 	// 0.80.0 – Dokumentarten (OP-058)
@@ -89,6 +91,16 @@ return ['routes' => [
 	['name' => 'caseApi#updateMasterData', 'url' => '/api/cases/{id}/master-data', 'verb' => 'PUT'],
 	['name' => 'caseApi#ensureFolder', 'url' => '/api/cases/{id}/folder', 'verb' => 'POST'],
 	['name' => 'caseApi#exportCase', 'url' => '/api/cases/{id}/export.json', 'verb' => 'GET'],
+	// 0.91.0: Falldaten als ZIP (Fallexport-JSON und Notizen als Markdown)
+	['name' => 'caseApi#exportCaseZip', 'url' => '/api/cases/{id}/export.zip', 'verb' => 'GET'],
+	// 0.91.0: Fallnotizen
+	['name' => 'caseNoteApi#notes', 'url' => '/api/cases/{caseId}/notes', 'verb' => 'GET'],
+	['name' => 'caseNoteApi#createNote', 'url' => '/api/cases/{caseId}/notes', 'verb' => 'POST'],
+	['name' => 'caseNoteApi#exportMarkdown', 'url' => '/api/cases/{caseId}/notes/export.md', 'verb' => 'GET'],
+	['name' => 'caseNoteApi#notesAppCandidates', 'url' => '/api/cases/{caseId}/notes/nextcloud-notes', 'verb' => 'GET'],
+	['name' => 'caseNoteApi#importNotesApp', 'url' => '/api/cases/{caseId}/notes/nextcloud-notes', 'verb' => 'POST'],
+	['name' => 'caseNoteApi#updateNote', 'url' => '/api/cases/{caseId}/notes/{id}', 'verb' => 'PUT'],
+	['name' => 'caseNoteApi#deleteNote', 'url' => '/api/cases/{caseId}/notes/{id}', 'verb' => 'DELETE'],
 	// 0.89.7: Auftragsarten, Vorsorge, Einlösen einer Vorsorge, Auftrag als Sterbefall weiterführen
 	['name' => 'caseKindApi#orderTypes', 'url' => '/api/order-types', 'verb' => 'GET'],
 	['name' => 'caseKindApi#saveOrderTypes', 'url' => '/api/order-types', 'verb' => 'PUT'],
@@ -213,6 +225,8 @@ return ['routes' => [
 	['name' => 'setupPackageApi#applyPackage', 'url' => '/api/setup-package/apply', 'verb' => 'POST'],
 	['name' => 'catalogApi#invoiceSettings', 'url' => '/api/invoice-settings', 'verb' => 'GET'],
 	['name' => 'catalogApi#saveInvoiceSettings', 'url' => '/api/invoice-settings', 'verb' => 'PUT'],
+	['name' => 'catalogApi#caseNumberSettings', 'url' => '/api/case-number-settings', 'verb' => 'GET'],
+	['name' => 'catalogApi#saveCaseNumberSettings', 'url' => '/api/case-number-settings', 'verb' => 'PUT'],
 	['name' => 'catalogApi#deleteConfiguration', 'url' => '/api/configuration/{type}/{id}', 'verb' => 'DELETE'],
 	['name' => 'documentApi#orderDocumentList', 'url' => '/api/cases/{id}/order-documents', 'verb' => 'GET'],
 	['name' => 'documentApi#generateOrderDocuments', 'url' => '/api/cases/{id}/order-documents', 'verb' => 'POST'],
@@ -259,6 +273,9 @@ return ['routes' => [
 	['name' => 'recordApi#schedulingCatalog', 'url' => '/api/scheduling', 'verb' => 'GET'],
 	['name' => 'recordApi#saveScheduleType', 'url' => '/api/scheduling/types/{id}', 'verb' => 'PUT'],
 	['name' => 'recordApi#saveScheduleResource', 'url' => '/api/scheduling/resources/{id}', 'verb' => 'PUT'],
+	['name' => 'recordApi#saveScheduleAssignments', 'url' => '/api/scheduling/assignments', 'verb' => 'PUT'],
+	['name' => 'recordApi#scheduleAvailability', 'url' => '/api/scheduling/availability', 'verb' => 'GET'],
+	['name' => 'recordApi#saveSchedulingWorkingHours', 'url' => '/api/scheduling/working-hours', 'verb' => 'PUT'],
 	['name' => 'recordApi#scheduleHistory', 'url' => '/api/scheduling/records/{id}/history', 'verb' => 'GET'],
 	['name' => 'recordApi#availableActions', 'url' => '/api/records/{recordId}/actions', 'verb' => 'GET'],
 	['name' => 'recordApi#executeAction', 'url' => '/api/records/{recordId}/actions/{actionKey}', 'verb' => 'POST'],

@@ -106,7 +106,7 @@ class EInvoiceService {
 		$standardRated = (float)$xpath->evaluate('count(//ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax[ram:CategoryCode="S"])') > 0;
 		$sellerTax = trim((string)$xpath->evaluate('string(//ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID)'));
 		if ($standardRated && $sellerTax === '') {
-			$errors[] = 'USt-IdNr. oder Steuernummer der Niederlassung fehlt (BR-S-02). Bitte unter Administration → Niederlassungen ergänzen.';
+			$errors[] = 'USt-IdNr. oder Steuernummer der Niederlassung fehlt (BR-S-02). Bitte unter Stammdaten → Niederlassungen ergänzen.';
 		}
 		$sellerIdentifier = trim((string)$xpath->evaluate('string(//ram:SellerTradeParty/ram:ID)')) . trim((string)$xpath->evaluate('string(//ram:SellerTradeParty/ram:SpecifiedLegalOrganization/ram:ID)')) . trim((string)$xpath->evaluate('string(//ram:SellerTradeParty/ram:SpecifiedTaxRegistration/ram:ID[@schemeID="VA"])'));
 		if ($sellerIdentifier === '') {

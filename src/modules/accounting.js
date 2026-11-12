@@ -174,9 +174,9 @@ export function createAccountingModule(ctx) {
 
 	function accountingView() {
 		const tab = acc().tab
-		const tabs = `<div class="bp-subtabs"><div>${ACCOUNTING_TABS.map(([key, label]) => `<button type="button" data-accounting-tab="${key}" ${tab === key ? 'class="active"' : ''}>${esc(label)}</button>`).join('')}</div><span class="bp-version-badge" title="DATEV-Format">DATEV Buchungsstapel · Formatversion ${esc(String(acc().overview?.formatVersion || 13))}</span></div>`
+		const tabs = `<div class="bp-subtabs"><div>${ACCOUNTING_TABS.map(([key, label]) => `<button type="button" data-accounting-tab="${key}" ${tab === key ? 'class="active"' : ''}>${esc(label)}</button>`).join('')}</div></div>`
 		const body = { export: exportTab, protocol: protocolTab, debtors: debtorsTab, settings: settingsTab }[tab] || exportTab
-		return `${tabs}<div class="bp-page-head"><div><p class="bp-eyebrow">Buchhaltung</p><h2>Buchhaltungsexport (DATEV)</h2><p class="bp-muted">Rechnungen, Stornorechnungen und Gutschriften als DATEV-Buchungsstapel für die Steuerberatung.</p></div></div>${acc().overview ? body() : '<p class="bp-muted">Wird geladen …</p>'}`
+		return `${tabs}<div class="bp-page-head"><div><p class="bp-eyebrow">Buchhaltung</p><h2>Buchhaltungsexport (DATEV)</h2><p class="bp-muted">Rechnungen, Stornorechnungen und Gutschriften als Buchungsstapel im DATEV-Format für die Steuerberatung.</p><p class="bp-muted bp-accounting-format" title="Dateiformat des Exports">Dateiformat: DATEV-Format (EXTF), Buchungsstapel, Formatversion ${esc(String(acc().overview?.formatVersion || 13))}. DATEV ist eine eingetragene Marke der DATEV eG. Diese App ist kein Produkt der DATEV eG; die Schnittstelle wurde nicht von DATEV geprüft.</p></div></div>${acc().overview ? body() : '<p class="bp-muted">Wird geladen …</p>'}`
 	}
 
 	async function runPreview() {

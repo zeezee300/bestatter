@@ -2374,3 +2374,195 @@ html.bp-signing #header { visibility: hidden; }
 #bestatter-app .bp-view-accounting > .bp-warning, #bestatter-app .bp-view-accounting > .bp-compliance-note { margin-bottom: 14px; }
 #bestatter-app .bp-accounting-preview h4 { margin: 18px 0 8px; }
 #bestatter-app .bp-accounting-preview details { margin: 12px 0; }
+
+/* 0.90.1: Zeilen „E-Mail aus dem Geschäfts-Postfach“ und „Versandverlauf“ haben kein Symbol vorn. Mit dem allgemeinen
+   Raster der Datensatzzeilen (32px | Text | auto | auto) landete der Text in der 32-px-Spalte und der Knopf
+   „Mit Geschäfts-Postfach senden“ legte sich über Titel und Dateiname. */
+#bestatter-app .bp-record-row.bp-mail-row { grid-template-columns: minmax(0,1fr) auto; }
+#bestatter-app .bp-record-row.bp-mail-history-row { grid-template-columns: minmax(0,1fr); }
+#bestatter-app .bp-record-row.bp-mail-row .bp-record-content { overflow-wrap: anywhere; }
+#bestatter-app .bp-record-row.bp-mail-row > .business-mail-send { justify-self: end; white-space: nowrap; }
+@media (max-width: 680px) {
+	#bestatter-app .bp-record-row.bp-mail-row { grid-template-columns: minmax(0,1fr); }
+	#bestatter-app .bp-record-row.bp-mail-row > .business-mail-send { justify-self: start; white-space: normal; }
+}
+
+/* 0.90.1: Buchhaltung – Hinweis zum Dateiformat statt Plakette im Reiterband */
+#bestatter-app .bp-accounting-format { margin-top: 4px; font-size: 12px; }
+
+/* 0.90.1: Belegeingang – Quellen (Eingangsordner, Upload, Paperless), Ablagefläche, E-Rechnung */
+#bestatter-app .bp-inbox-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 10px; }
+#bestatter-app .bp-inbox-sources > div { display: grid; gap: 4px; align-content: start; padding: 10px 12px; border: 1px solid var(--bp-line); border-radius: 10px; background: var(--bp-soft); }
+#bestatter-app .bp-inbox-sources code { overflow-wrap: anywhere; }
+#bestatter-app .bp-inbox-sources small { color: var(--bp-muted); }
+#bestatter-app .bp-inbox-note { margin: 4px 0 10px; }
+#bestatter-app .bp-inbox-dropzone { outline: 2px dashed transparent; outline-offset: -6px; transition: outline-color .15s, background-color .15s; }
+#bestatter-app .bp-inbox-dropzone.is-dragover { outline-color: var(--color-primary-element, #0b7a75); background: #eef7f6; }
+#bestatter-app .bp-inbox-einvoice { margin: 2px 0 6px; }
+#bestatter-app .bp-inbox-einvoice-lines { display: grid; gap: 6px; }
+#bestatter-app .bp-inbox-einvoice-lines table td, #bestatter-app .bp-inbox-einvoice-lines table th { padding: 6px 8px; }
+#bestatter-app .bp-paperless-card small { display: block; }
+@media (max-width: 900px) { #bestatter-app .bp-inbox-sources { grid-template-columns: 1fr; } }
+/* 0.90.2: Kennungen der Niederlassungen unter Administration → Niederlassungen → Fallnummern */
+#bestatter-app .bp-case-number-codes { list-style: none; padding: 0; margin: 4px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+#bestatter-app .bp-case-number-codes b { display: inline-block; min-width: 2.5em; font-family: var(--font-face-monospace, monospace); }
+/* 0.90.2: Antworten der Bedienhilfe im Bestatter-Assistenten */
+#bestatter-app .bp-assistant-help { display: grid; gap: 6px; margin-top: 8px; }
+#bestatter-app .bp-assistant-help h3 { margin: 0; font-size: 14px; }
+#bestatter-app .bp-assistant-help p { margin: 0; overflow-wrap: anywhere; }
+/* 0.90.3: Ressourcen je Terminart (Matrix im Customizing) und gruppierte Auswahl im Terminformular */
+#bestatter-app .bp-assignment-matrix th[scope="col"] { min-width: 8.5rem; vertical-align: bottom; }
+#bestatter-app .bp-assignment-matrix th[scope="row"] { text-align: start; font-weight: 500; min-width: 10rem; }
+#bestatter-app .bp-assignment-matrix .bp-assignment-group th { text-align: start; font-weight: 600; color: var(--bp-muted); background: var(--color-background-dark, #f2f2f2); }
+#bestatter-app .bp-assignment-cell { white-space: nowrap; }
+#bestatter-app .bp-assignment-cell .bp-inline-check { display: flex; gap: 4px; align-items: center; min-height: 28px; }
+#bestatter-app .bp-assignment-matrix tr.is-inactive th[scope="row"], #bestatter-app tr[data-schedule-resource].is-inactive input[data-name] { color: var(--bp-muted); }
+#bestatter-app #schedule-assignment-issues .bp-warning ul { margin: 6px 0 0; padding-inline-start: 1.2rem; }
+#bestatter-app .bp-resource-picker { grid-template-columns: 1fr; }
+#bestatter-app .bp-resource-group { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; }
+#bestatter-app .bp-resource-group > small { flex-basis: 100%; font-weight: 600; }
+#bestatter-app #schedule-assignment-issues .bp-warning { color: var(--color-warning-text, #713f12); background: var(--color-warning-hover, #fff7d6); border: 1px solid #d99b20; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+
+/* 0.90.5: Terminformular im Stil des Nextcloud-Kalenders – „Wann“ hervorgehoben, Verfügbarkeit und Tagesleiste. */
+#bestatter-app .bp-record-form-schedule .bp-schedule-title-field > span { font-size: .85em; color: var(--bp-muted); }
+#bestatter-app .bp-record-form-schedule .bp-schedule-title { font-size: 1.3em; font-weight: 600; border: 0; border-bottom: 2px solid var(--bp-line); border-radius: 0; padding: 4px 0; background: transparent; width: 100%; }
+#bestatter-app .bp-record-form-schedule .bp-schedule-title:focus { border-bottom-color: var(--color-primary-element, var(--bp-teal)); outline: none; }
+#bestatter-app .bp-schedule-when { display: grid; gap: 10px; margin: 4px 0; padding: 14px 16px; border: 0; border-radius: 12px; background: var(--color-primary-element-light, #e8f5f4); }
+#bestatter-app .bp-schedule-when legend { padding: 0; font-weight: 700; float: left; margin-bottom: 4px; }
+#bestatter-app .bp-when-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; clear: both; }
+#bestatter-app .bp-when-row label { display: grid; gap: 2px; min-width: 0; margin: 0; }
+#bestatter-app .bp-when-row label > span { font-size: .8em; font-weight: 600; letter-spacing: .02em; }
+#bestatter-app .bp-schedule-when input[type="date"], #bestatter-app .bp-schedule-when input[type="time"] { font-size: 1.15em; font-weight: 600; font-variant-numeric: tabular-nums; min-height: 40px; }
+#bestatter-app .bp-when-dash { padding-bottom: 10px; color: var(--bp-muted); font-size: 1.2em; }
+#bestatter-app .bp-when-duration { padding-bottom: 10px; color: var(--bp-muted); font-variant-numeric: tabular-nums; }
+#bestatter-app .bp-when-status { justify-content: space-between; }
+#bestatter-app .bp-when-occupancy, #bestatter-app .bp-when-hint { color: var(--bp-muted); }
+#bestatter-app .bp-schedule-type, #bestatter-app .bp-schedule-external { display: grid; gap: 8px; }
+#bestatter-app .bp-availability-row { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; justify-content: space-between; }
+#bestatter-app .bp-availability { font-size: .82em; border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+#bestatter-app .bp-availability.is-free { background: var(--color-success-light, #e3f3e6); color: var(--color-success-text, #1d6b34); }
+#bestatter-app .bp-availability.is-busy { background: var(--color-error-light, #fbe7e5); color: var(--color-error-text, #a3271d); white-space: normal; }
+#bestatter-app .bp-availability.is-unchecked { background: var(--color-warning-light, #fdf3d8); color: var(--color-warning-text, #7a5600); }
+#bestatter-app .bp-schedule-availability { display: grid; gap: 6px; }
+#bestatter-app .bp-timeline { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--bp-line); border-radius: 10px; overflow-x: auto; }
+#bestatter-app .bp-timeline-row { display: grid; grid-template-columns: 130px minmax(360px, 1fr); gap: 8px; align-items: center; }
+#bestatter-app .bp-timeline-name { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bestatter-app .bp-timeline-ticks { position: relative; height: 14px; }
+#bestatter-app .bp-timeline-ticks span { position: absolute; transform: translateX(-50%); font-size: .72em; color: var(--bp-muted); font-variant-numeric: tabular-nums; }
+#bestatter-app .bp-timeline-track { position: relative; height: 22px; border-radius: 6px; background: var(--color-background-hover, #f2f4f5); cursor: pointer; }
+#bestatter-app .bp-timeline-block { position: absolute; top: 2px; bottom: 2px; overflow: hidden; padding: 0 4px; border-radius: 4px; border: 1px solid var(--bp-muted); background: var(--color-background-dark, #dfe3e6); font-size: .7em; line-height: 16px; white-space: nowrap; cursor: default; }
+#bestatter-app .bp-timeline-block.is-conflict { border-color: var(--color-error, #c62828); background: var(--color-error-light, #fbe7e5); color: var(--color-error-text, #a3271d); }
+#bestatter-app .bp-timeline-own { position: absolute; top: 0; bottom: 0; border: 2px solid var(--color-primary-element, var(--bp-teal)); border-radius: 5px; pointer-events: none; }
+#bestatter-app .bp-timeline-buffer { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, transparent 0 4px, var(--color-primary-element-light, #d9eff0) 4px 8px); }
+#bestatter-app .bp-availability-summary { margin: 0; padding: 6px 10px; border-radius: 8px; font-size: .9em; }
+#bestatter-app .bp-availability-summary[data-state="ok"] { background: var(--color-success-light, #e3f3e6); color: var(--color-success-text, #1d6b34); }
+#bestatter-app .bp-availability-summary[data-state="busy"] { background: var(--color-error-light, #fbe7e5); color: var(--color-error-text, #a3271d); }
+#bestatter-app .bp-schedule-more { border-top: 1px solid var(--bp-line); padding-top: 8px; }
+#bestatter-app .bp-schedule-more > summary { cursor: pointer; font-weight: 600; color: var(--color-primary-element, var(--bp-teal)); }
+#bestatter-app .bp-schedule-more-body { display: grid; gap: 10px; margin-top: 10px; }
+@media (max-width: 640px) { #bestatter-app .bp-timeline-row { grid-template-columns: 90px minmax(300px, 1fr); } }
+#bestatter-app .bp-schedule-people { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+#bestatter-app .bp-schedule-people > small { grid-column: 1 / -1; }
+#bestatter-app .bp-schedule-people .bp-availability-row, #bestatter-app .bp-resource-picker .bp-availability-row { justify-content: flex-start; }
+
+/* 0.91.0: Fallnotizen (Reiter „Notizen“, „+ Notiz“ im Fallkopf, Übersicht, Fallliste) */
+#bestatter-app .bp-note-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+#bestatter-app .bp-note-quick { display: inline-flex; align-items: center; gap: 6px; }
+#bestatter-app .bp-note-pinned-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 12px; border: 1px solid #e3b341; border-radius: 999px; background: #fff8e1; color: #6b4e00; font-size: 13px; cursor: pointer; }
+#bestatter-app .bp-note-pinned-chip:focus-visible { outline: 2px solid var(--bp-teal); outline-offset: 2px; }
+#bestatter-app .bp-notes-panel .bp-panel-head { gap: 12px; flex-wrap: wrap; }
+#bestatter-app .bp-note-form { display: grid; gap: 8px; margin: 0 0 16px; }
+#bestatter-app .bp-note-input { position: relative; }
+#bestatter-app .bp-note-input textarea { width: 100%; min-height: 72px; resize: vertical; font: inherit; line-height: 1.45; }
+#bestatter-app .bp-note-form-row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; }
+#bestatter-app .bp-note-form-category { display: grid; gap: 4px; min-width: 200px; }
+#bestatter-app .bp-note-form-category span, #bestatter-app .bp-note-filters label > span { font-size: 13px; color: var(--bp-muted); }
+#bestatter-app .bp-note-count { font-size: 12px; margin-left: auto; }
+#bestatter-app .bp-note-form-actions { display: flex; gap: 8px; }
+#bestatter-app .bp-note-mentions:empty, #bestatter-app .bp-note-form .bp-save-state:empty { display: none; }
+#bestatter-app .bp-note-mentions, #bestatter-app .bp-note-form .bp-save-state { margin: 0; font-size: 13px; }
+#bestatter-app .bp-note-suggestions { position: absolute; z-index: 20; left: 8px; top: calc(100% - 4px); min-width: 240px; max-height: 240px; overflow: auto; margin: 0; padding: 4px; list-style: none; background: var(--bp-surface); border: 1px solid var(--bp-line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.16); }
+#bestatter-app .bp-note-suggestions li { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+#bestatter-app .bp-note-suggestions li small { color: var(--bp-muted); }
+#bestatter-app .bp-note-suggestions li[aria-selected="true"], #bestatter-app .bp-note-suggestions li:hover { background: var(--bp-soft); }
+#bestatter-app .bp-note-filters { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 0 0 12px; padding-top: 12px; border-top: 1px solid var(--bp-line); }
+#bestatter-app .bp-note-filters label { display: grid; gap: 4px; }
+#bestatter-app .bp-note-search { flex: 1 1 220px; }
+#bestatter-app .bp-note-list { display: grid; gap: 10px; }
+#bestatter-app .bp-note { padding: 12px 14px; border: 1px solid var(--bp-line); border-left: 4px solid var(--bp-line); border-radius: 10px; background: var(--bp-surface); }
+#bestatter-app .bp-note.is-pinned { border-left-color: #e3b341; background: #fffdf5; }
+#bestatter-app .bp-note-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+#bestatter-app .bp-note-author { font-weight: 600; }
+#bestatter-app .bp-note-pinned { display: inline-flex; color: #8a6400; }
+#bestatter-app .bp-note-category { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--bp-soft); border: 1px solid var(--bp-line); font-size: 12px; }
+#bestatter-app .bp-note-text { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+#bestatter-app .bp-note-mention { color: var(--bp-teal-dark); font-weight: 600; }
+#bestatter-app .bp-note-actions { margin-top: 8px; gap: 4px 14px; }
+#bestatter-app .bp-note-actions .bp-link-button { min-height: 32px; }
+#bestatter-app .bp-notes-pinned .bp-panel-head { margin-bottom: 8px; }
+#bestatter-app .bp-notes-pinned .bp-note + .bp-note { margin-top: 8px; }
+#bestatter-app .bp-note-summary h3 { overflow-wrap: anywhere; }
+#bestatter-app .bp-note-summary .bp-row-actions { margin-top: 10px; }
+#bestatter-app .bp-note-dot { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; color: var(--bp-muted); vertical-align: middle; }
+#bestatter-app .bp-note-dot small { font-size: 11px; }
+#bestatter-app .bp-note-dot.is-pinned { color: #8a6400; }
+#bestatter-app .bp-modal > .bp-note-dialog { width: min(680px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 22px 24px; background: var(--bp-surface); border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+#bestatter-app .bp-modal > .bp-note-dialog > form.bp-note-form { width: auto; max-height: none; padding: 0; overflow: visible; background: transparent; border-radius: 0; box-shadow: none; margin: 0; }
+#bestatter-app .bp-modal > form.bp-note-dialog { width: min(760px, 100%); }
+#bestatter-app .bp-note-import-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
+#bestatter-app .bp-note-import-list li { padding: 10px; border: 1px solid var(--bp-line); border-radius: 10px; }
+#bestatter-app .bp-note-import-list .bp-inline-check { align-items: flex-start; }
+#bestatter-app .bp-note-import-list small { display: block; }
+#bestatter-app .bp-note-import-preview { margin-top: 4px; white-space: pre-wrap; color: var(--bp-ink); }
+@media (max-width: 640px) { #bestatter-app .bp-note-count { margin-left: 0; } #bestatter-app .bp-note-form-actions { width: 100%; } #bestatter-app .bp-note-form-actions button { flex: 1; } }
+
+/* 0.92.0: Stammdaten → Ressourcen, Symbole der Ressourcentypen (Terminformular, Terminlisten, Aufgaben mit Terminbezug, Matrix) */
+#bestatter-app .bp-resource-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-width: 22px; border-radius: 6px; background: var(--color-primary-element-light, #e8f5f4); color: var(--color-primary-element, var(--bp-teal)); vertical-align: middle; }
+#bestatter-app .bp-resource-icon-large { width: 40px; height: 40px; min-width: 40px; border-radius: 10px; }
+#bestatter-app .bp-resource-icon-large .bp-resource-svg { width: 24px; height: 24px; }
+#bestatter-app .bp-resource-svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+#bestatter-app .bp-resource-chips { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
+#bestatter-app .bp-resource-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--bp-ink); }
+#bestatter-app .bp-resource-chip .bp-resource-icon { width: 18px; height: 18px; min-width: 18px; border-radius: 5px; }
+#bestatter-app .bp-resource-chip .bp-resource-svg { width: 13px; height: 13px; }
+#bestatter-app .bp-resource-more { padding: 0 6px; border-radius: 9px; background: var(--color-background-dark, #f2f2f2); color: var(--bp-muted); }
+#bestatter-app .bp-resource-linked .bp-resource-chips { opacity: .9; }
+#bestatter-app .bp-resource-identifier { font-family: var(--font-face-monospace, monospace); font-size: .92em; color: var(--bp-muted); white-space: nowrap; }
+#bestatter-app .bp-resource-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; margin: 8px 0 12px; }
+#bestatter-app .bp-resource-filters label:not(.bp-inline-check) { display: grid; gap: 2px; min-width: 12rem; }
+#bestatter-app .bp-resource-filters label > span { font-size: 13px; color: var(--bp-muted); }
+#bestatter-app .bp-resource-table .bp-resource-group-row th { text-align: start; font-weight: 600; background: var(--color-background-dark, #f2f2f2); }
+#bestatter-app .bp-resource-table .bp-resource-group-row small { color: var(--bp-muted); font-weight: 400; margin-inline-start: 6px; }
+#bestatter-app .bp-resource-table tr.is-inactive td { color: var(--bp-muted); }
+#bestatter-app .bp-resource-type-cell { white-space: nowrap; }
+#bestatter-app .bp-resource-type-cell > span:last-child { margin-inline-start: 6px; }
+#bestatter-app .bp-resource-description { display: block; color: var(--bp-muted); max-width: 32rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bestatter-app .bp-resource-changed { white-space: nowrap; font-size: 13px; }
+#bestatter-app .bp-resource-dialog { display: grid; gap: 12px; }
+#bestatter-app .bp-resource-usage th[scope="row"] { text-transform: none; letter-spacing: normal; font-weight: 500; font-size: 14px; color: var(--bp-ink); background: transparent; }
+#bestatter-app .bp-resource-filters input[type="search"] { min-width: 20rem; }
+#bestatter-app .bp-resource-dialog textarea { width: 100%; }
+#bestatter-app .bp-resource-branches { display: grid; gap: 6px; border: 1px solid var(--bp-line); border-radius: 10px; padding: 10px 12px; }
+#bestatter-app .bp-resource-branch-list { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-inline-start: 22px; }
+#bestatter-app .bp-resource-usage summary { cursor: pointer; font-weight: 600; }
+#bestatter-app .bp-resource-meta code { font-size: .92em; }
+#bestatter-app .bp-resource-icon-pick { display: inline-flex; gap: 6px; align-items: center; }
+#bestatter-app .bp-assignment-matrix th[scope="row"] small { display: block; color: var(--bp-muted); font-weight: 400; }
+#bestatter-app .bp-assignment-matrix .bp-assignment-group th .bp-resource-icon, #bestatter-app .bp-resource-group > small .bp-resource-icon { margin-inline-end: 4px; }
+#bestatter-app .bp-inline-filter { display: inline-flex; gap: 6px; align-items: center; }
+#bestatter-app .bp-schedule-requirements label > span .bp-resource-icon { width: 18px; height: 18px; min-width: 18px; }
+@media (max-width: 640px) { #bestatter-app .bp-resource-filters label:not(.bp-inline-check) { min-width: 100%; } #bestatter-app .bp-resource-changed { white-space: normal; } }
+
+/* 0.92.1: Niederlassungskarte mit einer Speicherschaltfläche; Bausteine der Rechnungsnummer per Klick. */
+#bestatter-app .bp-branch-card-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--bp-line); }
+#bestatter-app .bp-branch-card-head h4 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+#bestatter-app .bp-branch-card[data-dirty="1"] { border-color: #d99b20; }
+#bestatter-app .bp-card-state[data-state="warning"] { color: var(--color-warning-text, #8a4b08); font-weight: 600; }
+#bestatter-app .bp-branch-card .bp-row-actions small { flex-basis: 100%; }
+#bestatter-app .bp-token-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#bestatter-app .bp-token-buttons button { min-height: 32px; padding: 2px 10px; font-family: var(--font-monospace, monospace); font-size: 12px; }
+#bestatter-app [data-invoice-number-problems] { margin: 8px 0; }
+#bestatter-app [data-invoice-number-problems] ul { margin: 6px 0 0; padding-inline-start: 1.2rem; }
+/* 0.92.2: nicht gefundene Nextcloud-Gruppe direkt am Feld der Installationsparameter, mit Knopf zum Übernehmen der Gruppen-ID */
+#bestatter-app .bp-group-check { display: block; margin-top: 4px; line-height: 1.4; }
+#bestatter-app .bp-group-check .bp-group-suggest { font-weight: 600; }

@@ -500,7 +500,7 @@ class DocumentService {
 			'medical_examiner' => 'Dr. med. Julia Cordes',
 			'nationality' => 'Deutsch',
 			'newborn_lifetime_hours' => '',
-			'notes' => 'Interne Testnotiz für die Dokumentenvorschau, keine echten Falldaten.',
+			'notes' => '08.09.2026: Gesprächsnotiz für die Dokumentenvorschau, keine echten Falldaten.',
 			'other_previous_names' => '',
 			'place_found' => '',
 			'place_of_death' => 'Klinikum Bremen-Mitte',
@@ -2505,9 +2505,34 @@ class DocumentService {
 		if ($kind === CaseKinds::PRECARE) {
 			$overrides += $this->precareValues((int)($case['id'] ?? 0), $m);
 		}
+		// 0.91.1: {{case.notes}} = Gesprächsnotizen und angeheftete Notizen (das Stammdatenfeld „Interne Notizen“ entfällt).
+		if ((int)($case['id'] ?? 0) > 0) {
+			$overrides['{{case.notes}}'] = $this->caseNotesText((int)$case['id']);
+		}
 		// 0.76.0: {{marker}} und {{marker.SCHLUESSEL}}
 		$labelValues = $this->labels !== null && (int)($case['id'] ?? 0) > 0 ? $this->labels->placeholderValues((int)$case['id']) : [];
 		return array_merge($values, $overrides, $labelValues);
+	}
+
+	/** 0.91.1: Text für {{case.notes}} aus den Fallnotizen (siehe CaseNoteRules::documentText). */
+	private function caseNotesText(int $caseId): string {
+		try {
+			$query = $this->db->getQueryBuilder();
+			$rows = $query->select('payload', 'record_date')->from('bestatter_records')
+				->where($query->expr()->eq('case_id', $query->createNamedParameter($caseId)))
+				->andWhere($query->expr()->eq('record_type', $query->createNamedParameter(CaseNoteRules::RECORD_TYPE)))
+				->executeQuery()->fetchAllAssociative();
+			$notes = [];
+			foreach ($rows as $row) {
+				$data = json_decode((string)$row['payload'], true);
+				if (is_array($data)) {
+					$notes[] = ['text' => $data['text'] ?? '', 'category' => $data['category'] ?? '', 'pinned' => !empty($data['pinned']), 'date' => (string)$row['record_date']];
+				}
+			}
+			return CaseNoteRules::documentText($notes);
+		} catch (\Throwable) {
+			return '';
+		}
 	}
 
 	/**

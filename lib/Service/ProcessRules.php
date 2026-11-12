@@ -476,6 +476,49 @@ final class ProcessRules {
 	 *                     'ceremony' => '1'|'0'|'', 'pension' => '1'|'0'|'', 'depositCents' => int]
 	 * @return array{0:string,1:string} [YES|NO|PENDING, Begründung für PENDING/NO]
 	 */
+	/** 0.90.4: Begründungen für PENDING – an ihnen erkennt pendingAttribute(), welche Angabe fehlt. */
+	public const PENDING_SCOPE = 'wartet auf die Bestattungsart';
+	public const PENDING_CEREMONY = 'wartet auf die Angabe „Trauerfeier ja/nein“';
+	public const PENDING_PENSION = 'wartet auf die Angabe „Rente ja/nein“';
+
+	/**
+	 * 0.90.4: Welche Fallangabe fehlt einem wartenden Schritt („?“ Angabe fehlt)? Damit lässt sie sich direkt am Schritt
+	 * beantworten (Trauerfeier/Rente ja oder nein) bzw. bei der Bestattungsart in den Stammdaten nachtragen.
+	 *
+	 * @return string 'scope'|'ceremony'|'pension' oder '' (keine fehlende Angabe)
+	 */
+	public static function pendingAttribute(array $applies, array $facts): string {
+		[$result, $reason] = self::evaluateApplies($applies, $facts);
+		if ($result !== 'PENDING') {
+			return '';
+		}
+		return match ($reason) {
+			self::PENDING_SCOPE => 'scope',
+			self::PENDING_CEREMONY => 'ceremony',
+			self::PENDING_PENSION => 'pension',
+			default => '',
+		};
+	}
+
+	/**
+	 * 0.90.5: Frühester bestätigter (oder schon stattgefundener) Termin einer der Terminarten, z. B. die Trauerfeier für das
+	 * Fallmerkmal „Trauerfeier“. $schedules wie ProcessService::facts()['schedules'] (presetKey, confirmed, date).
+	 *
+	 * @param list<string> $typeKeys
+	 */
+	public static function confirmedSchedule(array $schedules, array $typeKeys): ?array {
+		$found = null;
+		foreach ($schedules as $schedule) {
+			if (empty($schedule['confirmed']) || !in_array(strtoupper((string)($schedule['presetKey'] ?? '')), $typeKeys, true)) {
+				continue;
+			}
+			if ($found === null || strcmp((string)($schedule['date'] ?? ''), (string)($found['date'] ?? '')) < 0) {
+				$found = $schedule;
+			}
+		}
+		return $found;
+	}
+
 	public static function evaluateApplies(array $applies, array $facts): array {
 		// 0.89.7: Vorgangsarten der Ablaufvorlage (caseKinds; leer = nur Sterbefall wie bisher). Vorlagen für andere Arten
 		// erscheinen im Fall gar nicht (NO ohne vorhandene Aufgaben wird in der Übersicht ausgeblendet).
@@ -488,7 +531,7 @@ final class ProcessRules {
 		$caseScope = strtoupper((string)($facts['scope'] ?? ''));
 		if ($scope !== 'ALL') {
 			if ($caseScope === '') {
-				return ['PENDING', 'wartet auf die Bestattungsart'];
+				return ['PENDING', self::PENDING_SCOPE];
 			}
 			$matches = match ($scope) {
 				'CREMATION' => $caseScope === 'CREMATION',
@@ -505,7 +548,7 @@ final class ProcessRules {
 		$caseCeremony = (string)($facts['ceremony'] ?? '');
 		if ($ceremony !== 'ANY') {
 			if ($caseCeremony === '') {
-				return ['PENDING', 'wartet auf die Angabe „Trauerfeier ja/nein“'];
+				return ['PENDING', self::PENDING_CEREMONY];
 			}
 			if (($ceremony === 'YES') !== ($caseCeremony === '1')) {
 				return ['NO', $ceremony === 'YES' ? 'nur mit Trauerfeier' : 'nur ohne Trauerfeier'];
@@ -514,7 +557,7 @@ final class ProcessRules {
 		if (strtoupper((string)($applies['pension'] ?? 'ANY')) === 'YES') {
 			$casePension = (string)($facts['pension'] ?? '');
 			if ($casePension === '') {
-				return ['PENDING', 'wartet auf die Angabe „Rente ja/nein“'];
+				return ['PENDING', self::PENDING_PENSION];
 			}
 			if ($casePension !== '1') {
 				return ['NO', 'nur bei Rentenbezug'];

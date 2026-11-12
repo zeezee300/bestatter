@@ -259,6 +259,8 @@ class AuditService {
 			$changes = match (true) {
 				// 0.76.0: Marker – Klartext („Kostenträger: Sozialamt“) statt Feldvergleich.
 				strtoupper($objectType) === 'LABEL' => $this->labelSummary($before, $after),
+				// 0.91.0: Fallnotiz – Text, Kategorie, Anheften und Erwähnungen im Klartext.
+				strtoupper($objectType) === 'NOTE' => $this->noteSummary($before, $after),
 				$action === 'DELETED' && is_array($before) && $after === null => $this->contextSummary($objectType, $before),
 				$action === 'CREATED' && is_array($after) && $before === null => $this->contextSummary($objectType, $after),
 				default => $this->diff($objectType, $before, $after),
@@ -358,6 +360,50 @@ class AuditService {
 			return array_merge([['key' => '__context__', 'label' => '', 'before' => '', 'after' => 'Marker: ' . $text($before)]], $note($before) !== '' ? [['key' => 'note', 'label' => 'Notiz', 'before' => $note($before), 'after' => '']] : []);
 		}
 		return [];
+	}
+
+	/**
+	 * 0.91.0: Kurzbeschreibung einer Fallnotiz für den Fall-Verlauf. Weil alle Personen mit Zugriff auf den Fall Notizen
+	 * ändern und löschen dürfen, steht der Text vorher/nachher im Verlauf (beim Anonymisieren entfernt redactCase() ihn).
+	 */
+	private function noteSummary(mixed $before, mixed $after): array {
+		$data = static fn (mixed $value): array => is_array($value) && is_array($value['data'] ?? null) ? $value['data'] : [];
+		$old = $data($before);
+		$new = $data($after);
+		$text = static fn (array $values): string => trim((string)($values['text'] ?? ''));
+		$category = static fn (array $values): string => trim((string)($values['category'] ?? ''));
+		$mentions = static fn (array $values): string => implode(', ', array_map('strval', (array)($values['mentions'] ?? [])));
+		if (!is_array($before) && is_array($after)) {
+			$rows = [];
+			if ($category($new) !== '') {
+				$rows[] = ['key' => '__context__', 'label' => '', 'before' => '', 'after' => 'Kategorie: ' . $category($new)];
+			}
+			$rows[] = ['key' => 'note_text', 'text' => $text($new)];
+			if ($mentions($new) !== '') {
+				$rows[] = ['key' => 'note_mentions', 'text' => 'Erwähnt: ' . $mentions($new)];
+			}
+			return $rows;
+		}
+		if (is_array($before) && !is_array($after)) {
+			return [['key' => 'note_text', 'text' => 'Gelöschter Text: ' . $text($old)]];
+		}
+		$rows = [];
+		if ($text($old) !== $text($new)) {
+			$rows[] = ['key' => 'note_text', 'label' => 'Text', 'before' => $text($old), 'after' => $text($new)];
+		}
+		if ($category($old) !== $category($new)) {
+			$rows[] = ['key' => 'note_category', 'label' => 'Kategorie', 'before' => $category($old) ?: '–', 'after' => $category($new) ?: '–'];
+		}
+		if (!empty($old['pinned']) !== !empty($new['pinned'])) {
+			$rows[] = ['key' => 'note_pinned', 'label' => 'Angeheftet', 'before' => !empty($old['pinned']) ? 'ja' : 'nein', 'after' => !empty($new['pinned']) ? 'ja' : 'nein'];
+		}
+		if ($mentions($old) !== $mentions($new)) {
+			$rows[] = ['key' => 'note_mentions', 'label' => 'Erwähnt', 'before' => $mentions($old) ?: '–', 'after' => $mentions($new) ?: '–'];
+		}
+		if ($rows !== [] && $text($old) === $text($new)) {
+			array_unshift($rows, ['key' => '__context__', 'label' => '', 'before' => '', 'after' => 'Notiz: ' . (string)($after['title'] ?? '')]);
+		}
+		return $rows;
 	}
 
 	/** Liefert bei CREATED/DELETED eine knappe Kennung des betroffenen Datensatzes (Titel bzw. Name), siehe Aufrufstelle in caseHistory(). */

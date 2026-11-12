@@ -144,7 +144,7 @@ class HelpAssistantService {
 			$answer = self::NO_SOURCE;
 			$sources = [];
 		}
-		return ['taskId' => $taskId, 'status' => $status, 'answer' => $answer, 'sources' => $this->sourceLabels($sources, true), 'message' => in_array($status, ['FAILED', 'CANCELLED'], true) ? 'Die Bedienhilfe konnte keine Antwort erzeugen. Bitte erneut versuchen oder den Support fragen.' : ''];
+		return ['taskId' => $taskId, 'status' => $status, 'question' => $question, 'answer' => $answer, 'sources' => $this->sourceLabels($sources, true), 'message' => in_array($status, ['FAILED', 'CANCELLED'], true) ? 'Die Bedienhilfe konnte keine Antwort erzeugen. Bitte erneut versuchen oder den Support fragen.' : ''];
 	}
 
 	/**
@@ -258,7 +258,8 @@ class HelpAssistantService {
 		foreach ($this->terms($text) as $term) {
 			$alternatives = [$term];
 			foreach ($groups as $group) {
-				if (self::matchesAny([$term], $group) || in_array($term, $group, true)) {
+				// Synonymgruppen nur über den Begriff selbst, nicht über Wortanfänge zusammengesetzter Wörter („vertragsnachtrag“ ≠ „vertrag“).
+				if (self::matchesAny([$term], $group, false) || in_array($term, $group, true)) {
 					$alternatives = array_merge($alternatives, $group);
 				}
 			}
@@ -267,10 +268,15 @@ class HelpAssistantService {
 		return $terms;
 	}
 
-	private static function matchesAny(array $alternatives, array $candidates): bool {
+	/**
+	 * Ein Begriff passt, wenn er im Wort steckt („rechnung“ in „schlussrechnung“). 0.90.1: zusätzlich zusammengesetzte
+	 * Wörter der Frage, die mit einem Wort des Textes beginnen („rechnungsdat“ aus „Rechnungsdaten“ findet „rechnung“) –
+	 * erst ab sechs Zeichen, damit kurze Wortanfänge („fall“, „auftr“) nicht alles treffen.
+	 */
+	private static function matchesAny(array $alternatives, array $candidates, bool $compounds = true): bool {
 		foreach ($alternatives as $term) {
 			foreach ($candidates as $candidate) {
-				if ($candidate === $term || (mb_strlen($term) >= 4 && str_contains($candidate, $term))) {
+				if ($candidate === $term || (mb_strlen($term) >= 4 && str_contains($candidate, $term)) || ($compounds && mb_strlen($candidate) >= 6 && mb_strlen($term) > mb_strlen($candidate) && str_starts_with($term, $candidate))) {
 					return true;
 				}
 			}
@@ -280,11 +286,15 @@ class HelpAssistantService {
 
 	private function terms(string $text): array {
 		$words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($text)) ?: [];
-		$stop = ['wie','was','ist','sind','ich','wir','kann','können','einen','eine','einer','ein','die','der','das','den','dem','und','oder','für','mit','zur','zum','bei','auf','aus','bitte','bedeutet','im','in','von','mir','noch','nicht','mache','machen'];
+		// 0.90.1: Hilfsverben („werden“, „wird“, „muss“ …) und „man“ sind keine Suchbegriffe – „werd“ stand sonst in fast jedem Text
+		// und hob bei Fragen wie „Wie können Rechnungsdaten exportiert werden?“ die Zahl der nötigen Treffer an.
+		$stop = ['wie','was','ist','sind','ich','wir','kann','können','einen','eine','einer','ein','die','der','das','den','dem','und','oder','für','mit','zur','zum','bei','auf','aus','bitte','bedeutet','im','in','von','mir','noch','nicht','mache','machen','werden','wurde','wurden','worden','werde','man','soll','sollen','muss','müssen','darf','dürfen'];
 		$words = array_filter($words, static fn (string $word): bool => !in_array($word, $stop, true));
 		return array_values(array_unique(array_filter(array_map(static function (string $word): string {
 			// 0.73.1: einfache deutsche Grundformbildung (Erfassungsbogen/-bögen, einlesen/lese, Rechnungen).
 			if (mb_strlen($word) > 5) {
+				// 0.90.1: Partizipien auf -iert/-ierte (exportiert, importierte) auf den Stamm von „exportieren“ zurückführen.
+				$word = preg_replace('/ier(t|te|ten|tes|ter)$/u', 'ier', $word) ?? $word;
 				$word = preg_replace('/(ern|en|er|es|e|n|s)$/u', '', $word) ?? $word;
 			}
 			return $word;

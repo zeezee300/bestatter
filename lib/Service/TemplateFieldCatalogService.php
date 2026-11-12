@@ -103,6 +103,7 @@ class TemplateFieldCatalogService {
 			'{{case.id}}' => 'Fallnummer (wie case.number)',
 			'{{case.invoice_has_prior}}' => 'Frühere Teilrechnungen vorhanden (1 = ja)',
 			'{{case.number}}' => 'Fallnummer',
+			'{{case.notes}}' => 'Notizen zum Fall: Gesprächsnotizen und angeheftete Notizen (mit Datum, eine Zeile)',
 			'{{case.order_client_email}}' => 'E-Mail Auftraggeber/in',
 			'{{case.order_client_first_name}}' => 'Vorname Auftraggeber/in',
 			'{{case.order_client_mobile}}' => 'Mobilnummer Auftraggeber/in',

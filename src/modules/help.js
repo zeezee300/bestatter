@@ -13,11 +13,14 @@ export function createHelpModule(ctx) {
 	const help = () => state.help
 	const url = `${apiBase}/assistant/help`
 	const FINAL = ['SUCCESSFUL', 'FOUND', 'NO_SOURCE']
+	const RECORDED_NOTE = '<p class="bp-help-feedback bp-muted">Diese Frage geht ohne Ihren Namen an die Bestatter-Administration (Offene Hilfefragen), damit Handbuch und Bedienhilfe ergänzt werden können.</p>'
 	const sourceHref = (source) => source.kind === 'section' && source.id ? `${handbookUrl()}#${source.id}` : handbookHelpLink(source.heading)
 	const sources = (entry) => (entry.sources || []).length && entry.status !== 'FOUND' ? `<small class="bp-help-sources">Quelle im Handbuch: ${(entry.sources || []).map((source) => `<a href="${esc(sourceHref(source))}" target="_blank" rel="noopener">${esc(source.heading)}</a>`).join(', ')}</small>` : ''
 	const topicBlock = (topic, open) => `<details class="bp-help-topic" ${open ? 'open' : ''}><summary>${esc(topic.title)}</summary><p>${esc(topic.text)}</p><a href="${esc(handbookHelpLink(topic.title))}" target="_blank" rel="noopener">Im Handbuch öffnen</a></details>`
 	const foundBlock = (entry) => entry.status === 'FOUND' ? `<p class="bp-muted">Passende Stellen aus dem Handbuch:</p>${(entry.sources || []).map((source, index) => `<details class="bp-help-topic" ${index === 0 ? 'open' : ''}><summary>${esc(source.heading)}</summary><p>${esc(source.excerpt || '')}</p><a href="${esc(sourceHref(source))}" target="_blank" rel="noopener">Im Handbuch öffnen</a></details>`).join('')}` : ''
 	const feedbackBlock = (entry, index) => {
+		// 0.90.1: Unbeantwortete Fragen (kein Hilfetext, Chat-Anbieter ohne Antwort) erfasst der Server selbst.
+		if (entry.feedback === 'AUTO') return RECORDED_NOTE
 		if (!FINAL.includes(entry.status)) return ''
 		if (entry.feedback === 'YES') return '<p class="bp-help-feedback bp-muted">Danke für die Rückmeldung.</p>'
 		if (entry.feedback === 'NO') return '<p class="bp-help-feedback bp-muted">Danke – die Frage geht ohne Ihren Namen an die Bestatter-Administration (Offene Hilfefragen).</p>'
@@ -39,8 +42,8 @@ export function createHelpModule(ctx) {
 	function helpView() {
 		if (!help().available) return ''
 		const note = help().chat
-			? 'Antworten werden automatisch aus freigegebenen Bedienhinweisen erzeugt. Maßgeblich sind die Dokumentation und im Zweifel der Support. Der administrativ eingerichtete Chat-Anbieter kann extern sein; bitte keine personenbezogenen Falldaten eingeben.'
-			: 'Die Antworten zeigen die passenden Stellen aus dem Handbuch. Bitte keine personenbezogenen Falldaten eingeben.'
+			? 'Antworten werden automatisch aus freigegebenen Bedienhinweisen erzeugt. Maßgeblich sind die Dokumentation und im Zweifel der Support. Der administrativ eingerichtete Chat-Anbieter kann extern sein; bitte keine personenbezogenen Falldaten eingeben. Unbeantwortete Fragen gehen ohne Namen an die Administration.'
+			: 'Die Antworten zeigen die passenden Stellen aus dem Handbuch. Bitte keine personenbezogenen Falldaten eingeben. Unbeantwortete Fragen gehen ohne Namen an die Administration.'
 		return `<aside class="bp-help-panel ${help().open ? 'open' : ''}" id="bestatter-help" aria-label="Bedienhilfe" aria-hidden="${help().open ? 'false' : 'true'}">
 			<header><div><p class="bp-eyebrow">Dokumentierte Bedienung</p><h2>Hilfe-Assistent</h2></div><button type="button" class="bp-icon-button" id="help-close" aria-label="Hilfe schließen">×</button></header>
 			${help().open ? topicsView() : ''}
@@ -70,12 +73,13 @@ export function createHelpModule(ctx) {
 	async function poll(entry, attempts = 0) {
 		if (attempts >= 40) { entry.status = 'DELAYED'; entry.message = 'Die Verarbeitung dauert länger. Bitte später den Status erneut prüfen.'; help().pending = false; render(); return }
 		try {
-			const result = await api(`${url}/status/${Number(entry.taskId)}`, { feedback: false })
+			const result = await api(`${url}/status/${Number(entry.taskId)}?context=${encodeURIComponent(entry.context || '')}`, { feedback: false })
 			entry.status = result.status
 			if (['SUCCESSFUL', 'FAILED', 'CANCELLED'].includes(result.status)) {
 				entry.answer = result.answer || ''
 				entry.message = result.message || ''
 				entry.sources = result.sources || []
+				if (result.recorded) { entry.feedback = 'AUTO'; state.helpFeedback = undefined }
 				help().pending = false; render(); return
 			}
 			render()
@@ -107,6 +111,7 @@ export function createHelpModule(ctx) {
 			try {
 				const result = await api(url, { method: 'POST', feedback: false, body: new URLSearchParams({ question, context }) })
 				entry.status = result.status; entry.sources = result.sources || []
+				if (result.recorded) { entry.feedback = 'AUTO'; state.helpFeedback = undefined }
 				if (result.status === 'NO_SOURCE' || result.status === 'FOUND') { entry.answer = result.answer || ''; help().pending = false; render(); return }
 				entry.taskId = Number(result.taskId); render(); await poll(entry)
 			} catch (error) { entry.status = 'FAILED'; entry.message = error.message; help().pending = false; render() }
@@ -137,8 +142,9 @@ export function createHelpModule(ctx) {
 		}
 		const data = state.helpFeedback
 		const date = (value) => { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('de-DE') }
-		const rows = (data?.entries || []).map((entry) => `<tr data-help-feedback-entry="${esc(entry.id)}"><td>${esc(date(entry.createdAt))}</td><td><b>${esc(entry.question)}</b>${(entry.sources || []).length ? `<small class="bp-muted">Gefunden: ${esc(entry.sources.join(' · '))}</small>` : '<small class="bp-muted">Kein passender Hilfetext gefunden</small>'}</td><td>${esc(entry.pageTitle || entry.page || '–')}</td><td><button type="button" class="bp-secondary" data-help-feedback-resolve="${esc(entry.id)}">Erledigt</button></td></tr>`).join('')
-		return `<section class="bp-panel bp-help-feedback-admin" data-help-feedback-admin><div class="bp-panel-head"><div><h3>Offene Hilfefragen</h3><p class="bp-muted">Fragen, bei denen die Bedienhilfe nach Angabe der Mitarbeitenden nicht geholfen hat – ohne Namen, mit der Seite, auf der gefragt wurde. Daraus lässt sich ablesen, wo Handbuch oder Anwendung nachgebessert werden sollten. „Erledigt“ entfernt den Eintrag; Einträge älter als ${Number(data?.maxAgeDays || 180)} Tage entfallen.</p></div><span class="bp-status">${(data?.entries || []).length}</span></div>
+		const reasonLabel = (entry) => ({ NO_SOURCE: 'Keine Antwort gefunden', FAILED: 'Antwort konnte nicht erzeugt werden' })[entry.reason] || 'Hat nicht geholfen'
+		const rows = (data?.entries || []).map((entry) => `<tr data-help-feedback-entry="${esc(entry.id)}"><td>${esc(date(entry.createdAt))}</td><td><b>${esc(entry.question)}</b><small class="bp-muted">${esc(reasonLabel(entry))}${Number(entry.count || 1) > 1 ? ` · ${Number(entry.count)}-mal gefragt` : ''}</small>${(entry.sources || []).length ? `<small class="bp-muted">Gefunden: ${esc(entry.sources.join(' · '))}</small>` : '<small class="bp-muted">Kein passender Hilfetext gefunden</small>'}</td><td>${esc(entry.pageTitle || entry.page || '–')}</td><td><button type="button" class="bp-secondary" data-help-feedback-resolve="${esc(entry.id)}">Erledigt</button></td></tr>`).join('')
+		return `<section class="bp-panel bp-help-feedback-admin" data-help-feedback-admin><div class="bp-panel-head"><div><h3>Offene Hilfefragen</h3><p class="bp-muted">Fragen, die die Bedienhilfe nicht beantworten konnte (automatisch erfasst) oder bei denen sie nach Angabe der Mitarbeitenden nicht geholfen hat – ohne Namen, mit der Seite, auf der gefragt wurde. Dieselbe Frage erscheint nur einmal, mit Anzahl. Daraus lässt sich ablesen, wo Handbuch oder Anwendung nachgebessert werden sollten. „Erledigt“ entfernt den Eintrag; Einträge älter als ${Number(data?.maxAgeDays || 180)} Tage entfallen.</p></div><span class="bp-status">${(data?.entries || []).length}</span></div>
 			${data?.error ? `<p class="bp-warning">${esc(data.error)}</p>` : ''}
 			${data === null ? '<p class="bp-muted">Wird geladen …</p>' : `<div class="bp-table-scroll"><table><thead><tr><th>Datum</th><th>Frage</th><th>Seite</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="bp-empty">Keine offenen Hilfefragen.</td></tr>'}</tbody></table></div>`}
 		</section>`

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Controller;
 
 use OCA\Bestatter\Service\CaseExportService;
+use OCA\Bestatter\Service\CaseNoteRules;
+use OCA\Bestatter\Service\CaseNoteService;
 use OCA\Bestatter\Service\CaseService;
 use OCA\Bestatter\Service\CustomizingService;
 use OCA\Bestatter\Service\LabelService;
@@ -27,6 +29,7 @@ class CaseApiController extends ApiController {
 		private CaseExportService $caseExport,
 		private ProcessService $process,
 		private LabelService $labels,
+		private ?CaseNoteService $caseNotes = null,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -42,11 +45,23 @@ class CaseApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function createCase(string $firstName = '', string $lastName = '', string $dateOfDeath = '', string $funeralType = '', string $branch = '', string $responsibleEmployee = '', string $masterData = '', string $creationToken = '', string $labels = '', string $caseKind = '', string $orderType = ''): DataResponse {
+	public function createCase(string $firstName = '', string $lastName = '', string $dateOfDeath = '', string $funeralType = '', string $branch = '', string $responsibleEmployee = '', string $masterData = '', string $creationToken = '', string $labels = '', string $caseKind = '', string $orderType = '', string $captureNote = ''): DataResponse {
 		$this->customizingService->ensureSeedData();
 		$data = $masterData !== '' ? json_decode($masterData, true, 512, JSON_THROW_ON_ERROR) : [];
+		// 0.91.1: Die Gesprächsnotiz der Schnellerfassung wird eine Notiz (Kategorie „Gesprächsnotiz“), kein Stammdatenfeld mehr.
+		$captureNote = trim($captureNote !== '' ? $captureNote : (is_array($data) && is_scalar($data['notes'] ?? null) ? (string)$data['notes'] : ''));
+		if (is_array($data)) {
+			unset($data['notes']);
+		}
 		// 0.89.7: caseKind STERBEFALL (Standard), AUFTRAG oder VORSORGE; orderType = Auftragsart.
 		$case = $this->caseService->createCase(compact('firstName', 'lastName', 'dateOfDeath', 'funeralType', 'branch', 'responsibleEmployee', 'creationToken', 'caseKind', 'orderType') + ['masterData' => $data]);
+		if (empty($case['idempotent']) && $captureNote !== '' && $this->caseNotes !== null) {
+			try {
+				$case['captureNotes'] = count($this->caseNotes->createSystemNotes((int)$case['id'], $captureNote, CaseNoteRules::CATEGORY_CONVERSATION, CaseNoteRules::SOURCE_CAPTURE));
+			} catch (\Throwable $error) {
+				$case['captureNoteWarning'] = 'Die Gesprächsnotiz konnte nicht gespeichert werden: ' . $error->getMessage();
+			}
+		}
 		// 0.76.0: Marker gleich bei der Anlage (z. B. Kostenträger aus dem Erstgespräch); Fehler nur als Hinweis.
 		if (empty($case['idempotent']) && $labels !== '') {
 			$case['labelWarnings'] = $this->labels->setInitial((int)$case['id'], (array)json_decode($labels, true));
@@ -99,5 +114,21 @@ class CaseApiController extends ApiController {
 		$data = $this->caseExport->export($id);
 		$name = preg_replace('/[^A-Za-z0-9._-]+/', '-', (string)($data['case']['caseNumber'] ?? ('Fall-' . $id)));
 		return new DataDownloadResponse(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), 'Bestatter-Fallexport-' . $name . '.json', 'application/json; charset=UTF-8');
+	}
+
+	/**
+	 * 0.91.0: „Falldaten exportieren“ als ZIP – der vollständige Fallexport (JSON) und die Notizen des Falls als lesbare
+	 * Markdown-Datei (Notizen-<Fallnummer>.md).
+	 */
+	#[NoAdminRequired]
+	public function exportCaseZip(int $id): DataDownloadResponse {
+		$data = $this->caseExport->export($id);
+		$name = preg_replace('/[^A-Za-z0-9._-]+/', '-', (string)($data['case']['caseNumber'] ?? ('Fall-' . $id)));
+		$files = ['Bestatter-Fallexport-' . $name . '.json' => json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)];
+		if ($this->caseNotes !== null) {
+			$notes = $this->caseNotes->markdown($id);
+			$files[$notes['fileName']] = $notes['content'];
+		}
+		return new DataDownloadResponse(CaseExportService::zip($files), 'Bestatter-Fallexport-' . $name . '.zip', 'application/zip');
 	}
 }

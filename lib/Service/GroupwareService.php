@@ -680,6 +680,10 @@ class GroupwareService {
 				$descriptionParts[] = 'Externe Beteiligte: ' . (string)$meta['externalParticipants'];
 			}
 		}
+		// 0.92.0: Disponierte Ressourcen mit Nummer/Kennung (z. B. „Bestattungswagen (HB-RL 333)“) – im Kalender nur als Text.
+		if ($type === 'schedule' && ($meta['resourceSummary'] ?? []) !== []) {
+			$descriptionParts[] = 'Ressourcen: ' . implode('; ', array_map(static fn (mixed $entry): string => SchedulingRules::resourceLabel(is_array($entry) ? $entry : ['name' => (string)$entry]), (array)$meta['resourceSummary']));
+		}
 		if ($userDescription !== '') {
 			$descriptionParts[] = '';
 			$descriptionParts[] = $userDescription;
@@ -719,7 +723,7 @@ class GroupwareService {
 		$caseNumber = $this->unescape($this->property($ics, 'X-BESTATTER-CASE-NUMBER'));
 		if ($recordTitle !== '') {
 			$title = $recordTitle;
-		} elseif ($caseNumber === '' && preg_match('/^\[([0-9]{4}-[0-9]+)\]\s*(.*)$/u', $title, $match)) {
+		} elseif ($caseNumber === '' && preg_match('/^\[(' . CaseKinds::TITLE_NUMBER . ')\]\s*(.*)$/u', $title, $match)) {
 			$caseNumber = $match[1];
 			$title = $match[2];
 		} elseif ($caseNumber !== '') {
@@ -745,6 +749,7 @@ class GroupwareService {
 			=> !str_starts_with($line, 'Fall: ')
 			&& !str_starts_with($line, 'Zuständig: ')
 			&& !str_starts_with($line, 'In Bestatter bearbeiten: ')
+			&& !str_starts_with($line, 'Ressourcen: ')
 		));
 		$description = trim(implode("\n", $descriptionLines));
 		$assigneeUid = $this->unescape($this->property($ics, 'X-BESTATTER-ASSIGNEE-UID'));
@@ -1084,7 +1089,7 @@ class GroupwareService {
 	}
 
 	private function stripCasePrefix(string $value): string {
-		return preg_replace('/^\[[0-9]{4}-[0-9]+\]\s*/u', '', trim($value)) ?? trim($value);
+		return preg_replace('/^\[' . CaseKinds::TITLE_NUMBER . '\]\s*/u', '', trim($value)) ?? trim($value);
 	}
 
 	private function escape(string $value): string {

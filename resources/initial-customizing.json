@@ -673,6 +673,28 @@
         ["RUNDFUNKBEITRAG", "Rundfunkbeitrag / Beitragsservice"],
         ["VERTRAGSPARTNER", "Sonstiger Vertragspartner"]
       ]
+    },
+    {
+      "key": "NOTE_CATEGORY",
+      "name": "Kategorie der Notiz",
+      "items": [
+        ["Gesprächsnotiz", "Gesprächsnotiz"],
+        ["Telefonat", "Telefonat"],
+        ["Absprache mit Angehörigen", "Absprache mit Angehörigen"],
+        ["Intern", "Intern"],
+        ["Trauerfeier", "Trauerfeier"],
+        ["Rückruf", "Rückruf"]
+      ]
+    },
+    {
+      "key": "RESOURCE_TYPE",
+      "name": "Ressourcentypen",
+      "items": [
+        { "value": "CHAPEL", "label": "Kapelle", "metadata": { "plural": "Kapellen", "icon": "building-church" } },
+        { "value": "ROOM", "label": "Raum", "metadata": { "plural": "Räume", "icon": "door" } },
+        { "value": "VEHICLE", "label": "Fahrzeug", "metadata": { "plural": "Fahrzeuge", "icon": "car" } },
+        { "value": "EQUIPMENT", "label": "Ausstattung", "metadata": { "plural": "Ausstattung", "icon": "armchair" } }
+      ]
     }
   ]
 }

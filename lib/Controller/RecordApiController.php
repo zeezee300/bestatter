@@ -48,8 +48,11 @@ class RecordApiController extends ApiController {
 		if ($type === 'document') {
 			throw new \InvalidArgumentException('Dokumente werden ausschließlich über die geprüften Fall- und Dokumentprozesse angelegt.');
 		}
+		if ($type === 'note') {
+			throw new \InvalidArgumentException('Notizen werden im Fall unter „Notizen“ angelegt.');
+		}
 		if ($type === 'schedule') {
-			$data = json_encode($this->scheduling->prepare($data, $date), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+			$data = json_encode($this->scheduling->prepare($data, $date, 0, $caseId), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 		}
 		$item = match ($type) {
 			'task' => $this->groupware->createTask($title, $date, $status, $data, $caseId),
@@ -73,8 +76,11 @@ class RecordApiController extends ApiController {
 		if (($previous['type'] ?? '') === 'document') {
 			throw new \InvalidArgumentException('Dokumente werden ausschließlich über die geprüften Fall- und Dokumentprozesse bearbeitet.');
 		}
+		if (($previous['type'] ?? '') === 'note') {
+			throw new \InvalidArgumentException('Notizen werden im Fall unter „Notizen“ bearbeitet.');
+		}
 		if (($previous['type'] ?? '') === 'schedule') {
-			$prepared = $this->scheduling->prepare($data, $date, $id);
+			$prepared = $this->scheduling->prepare($data, $date, $id, $caseId ?: (int)($previous['caseId'] ?? 0));
 			$this->scheduling->requireChangeReason($previous, $title, $date, $status, $prepared);
 			$data = json_encode($prepared, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 		}
@@ -95,6 +101,9 @@ class RecordApiController extends ApiController {
 
 	#[NoAdminRequired]
 	public function deleteRecord(int $id): DataResponse {
+		if (($this->recordService->get($id)['type'] ?? '') === 'note') {
+			throw new \InvalidArgumentException('Notizen werden im Fall unter „Notizen“ gelöscht.');
+		}
 		$this->recordService->delete($id);
 		return new DataResponse([], 204);
 	}
@@ -109,9 +118,19 @@ class RecordApiController extends ApiController {
 		return new DataResponse($this->actions->schedulePresets());
 	}
 
+	/** 0.90.3: all=1 liefert Bestatter-Administratoren (Customizing) auch deaktivierte Terminarten und Ressourcen. */
 	#[NoAdminRequired]
-	public function schedulingCatalog(): DataResponse {
-		return new DataResponse($this->scheduling->catalog());
+	public function schedulingCatalog(string $all = ''): DataResponse {
+		$includeInactive = in_array($all, ['1', 'true'], true) && $this->teamService->isBestatterAdmin();
+		return new DataResponse($this->scheduling->catalog(!$includeInactive));
+	}
+
+	/** 0.90.3: Matrix „Ressourcen je Terminart“ (zulässig/vorbelegt) speichern. */
+	#[NoAdminRequired]
+	public function saveScheduleAssignments(string $data = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$input = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
+		return new DataResponse($this->scheduling->saveAssignments(is_array($input) ? (array)($input['assignments'] ?? []) : []));
 	}
 
 	#[NoAdminRequired]
@@ -124,6 +143,24 @@ class RecordApiController extends ApiController {
 	public function saveScheduleResource(int $id = 0, string $data = '{}'): DataResponse {
 		$this->teamService->requireBestatterAdmin();
 		return new DataResponse($this->scheduling->saveResource(json_decode($data, true, 512, JSON_THROW_ON_ERROR), $id));
+	}
+
+	/**
+	 * 0.90.5: Verfügbarkeit der gewählten Personen und Ressourcen am Tag des Termins (Terminformular). $uids und $resources
+	 * sind kommagetrennt; $exclude ist der gerade bearbeitete Termin.
+	 */
+	#[NoAdminRequired]
+	public function scheduleAvailability(string $date = '', int $durationMinutes = 60, int $bufferBeforeMinutes = 0, int $bufferAfterMinutes = 0, string $uids = '', string $resources = '', int $exclude = 0): DataResponse {
+		$split = static fn (string $value): array => array_values(array_filter(array_map('trim', explode(',', $value)), static fn (string $entry): bool => $entry !== ''));
+		return new DataResponse($this->scheduling->availability($date, ['durationMinutes' => $durationMinutes, 'bufferBeforeMinutes' => $bufferBeforeMinutes, 'bufferAfterMinutes' => $bufferAfterMinutes], $split($uids), $split($resources), $exclude));
+	}
+
+	/** 0.90.5: Arbeitszeit für die Terminplanung speichern (Customizing → Terminplanung). */
+	#[NoAdminRequired]
+	public function saveSchedulingWorkingHours(string $data = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$input = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
+		return new DataResponse($this->scheduling->saveWorkingHours(is_array($input) ? $input : []));
 	}
 
 	#[NoAdminRequired]

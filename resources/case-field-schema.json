@@ -244,10 +244,6 @@
     "key": "newborn_lifetime_hours"
   },
   {
-    "label": "Interne Notizen",
-    "key": "notes"
-  },
-  {
     "label": "Weitere frühere Namen",
     "key": "other_previous_names"
   },

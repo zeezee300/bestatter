@@ -7,11 +7,13 @@ namespace OCA\Bestatter\Controller;
 use OCA\Bestatter\Service\ArticleService;
 use OCA\Bestatter\Service\AuditService;
 use OCA\Bestatter\Service\BurialVariantRuleService;
+use OCA\Bestatter\Service\CaseNumberService;
 use OCA\Bestatter\Service\CaseStorageService;
 use OCA\Bestatter\Service\CatalogStructureService;
 use OCA\Bestatter\Service\ConfigurationService;
 use OCA\Bestatter\Service\CustomizingService;
 use OCA\Bestatter\Service\DocumentService;
+use OCA\Bestatter\Service\GroupLookupService;
 use OCA\Bestatter\Service\InstallationConfigService;
 use OCA\Bestatter\Service\PriceListService;
 use OCA\Bestatter\Service\StorageMigrationService;
@@ -44,6 +46,8 @@ class CatalogApiController extends ApiController {
 		private CaseStorageService $storage,
 		private StorageMigrationService $storageMigration,
 		private \OCA\Bestatter\Service\DocumentTemplateFileService $templateFiles,
+		private CaseNumberService $caseNumbers,
+		private GroupLookupService $groupLookup,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -97,9 +101,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function updateCustomizingItem(int $id, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = ''): DataResponse {
+	public function updateCustomizingItem(int $id, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = '', string $plural = '', string $icon = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->customizingService->updateItem($id, $value, $label, $parentValue, $funeralScope));
+		return new DataResponse($this->customizingService->updateItem($id, $value, $label, $parentValue, $funeralScope, ['plural' => $plural, 'icon' => $icon]));
 	}
 
 	#[NoAdminRequired]
@@ -110,9 +114,9 @@ class CatalogApiController extends ApiController {
 	}
 
 	#[NoAdminRequired]
-	public function addCustomizingItem(string $key, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = ''): DataResponse {
+	public function addCustomizingItem(string $key, string $value = '', string $label = '', string $parentValue = '', string $funeralScope = '', string $plural = '', string $icon = ''): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->customizingService->addItem($key, $value, $label, $parentValue, $funeralScope), 201);
+		return new DataResponse($this->customizingService->addItem($key, $value, $label, $parentValue, $funeralScope, ['plural' => $plural, 'icon' => $icon]), 201);
 	}
 
 	#[NoAdminRequired]
@@ -133,7 +137,25 @@ class CatalogApiController extends ApiController {
 	#[NoAdminRequired]
 	public function installationSettings(): DataResponse {
 		$this->teamService->requireBestatterAdmin();
-		return new DataResponse($this->installationConfig->settings());
+		return new DataResponse($this->withGroupCheck($this->installationConfig->settings()));
+	}
+
+	/**
+	 * 0.92.2 – Zu jeder eingetragenen Gruppe: gibt es sie als Gruppen-ID, und falls nicht, welche ID passt
+	 * (umbenannte Gruppe, andere Schreibweise). Die Oberfläche zeigt das am Feld und bietet die ID zum Übernehmen an.
+	 */
+	private function withGroupCheck(array $settings): array {
+		$check = function (string $name): array {
+			$lookup = $this->groupLookup->lookup($name);
+			$lookup['hint'] = $lookup['exists'] || $lookup['name'] === '' ? '' : $this->groupLookup->explain($lookup);
+			return $lookup;
+		};
+		$settings['groupCheck'] = [
+			'memberGroup' => $check((string)($settings['memberGroup'] ?? '')),
+			'adminGroups' => array_map(static fn (mixed $name): array => $check((string)$name), array_values((array)($settings['adminGroups'] ?? []))),
+			'roleGroups' => array_map(static fn (mixed $name): array => $check((string)$name), (array)($settings['roleGroups'] ?? [])),
+		];
+		return $settings;
 	}
 
 	#[NoAdminRequired]
@@ -142,7 +164,7 @@ class CatalogApiController extends ApiController {
 		$before = $this->installationConfig->settings();
 		$saved = $this->installationConfig->save(json_decode($settings, true, 512, JSON_THROW_ON_ERROR));
 		$this->audit->logSystem('INSTALLATION_CONFIGURATION', 'UPDATED', ['before' => $before,'after' => $saved]);
-		return new DataResponse($saved);
+		return new DataResponse($this->withGroupCheck($saved));
 	}
 
 	/** 0.72.0: Ordnerplan der Fallakte (Kennzeichen, Namen, Verwendung). */
@@ -513,6 +535,21 @@ class CatalogApiController extends ApiController {
 		$this->teamService->requireBestatterAdmin();
 		$saved = $this->configuration->saveInvoiceSettings(json_decode($settings, true, 512, JSON_THROW_ON_ERROR));
 		$this->audit->logSystem('INVOICE_CONFIGURATION', 'UPDATED', $saved);
+		return new DataResponse($saved);
+	}
+
+	/** 0.90.2: Aufbau und Zählweise der Fallnummern (wahlweise mit Kennung der Niederlassung). */
+	#[NoAdminRequired]
+	public function caseNumberSettings(): DataResponse {
+		return new DataResponse($this->caseNumbers->view());
+	}
+
+	#[NoAdminRequired]
+	public function saveCaseNumberSettings(string $settings = '{}'): DataResponse {
+		$this->teamService->requireBestatterAdmin();
+		$before = $this->caseNumbers->settings();
+		$saved = $this->caseNumbers->save(json_decode($settings, true, 512, JSON_THROW_ON_ERROR));
+		$this->audit->logSystem('CASE_NUMBER_CONFIGURATION', 'UPDATED', ['before' => $before, 'after' => $saved['settings']]);
 		return new DataResponse($saved);
 	}
 

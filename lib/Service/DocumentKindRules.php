@@ -126,6 +126,19 @@ final class DocumentKindRules {
 		return null;
 	}
 
+	/**
+	 * 0.90.2: Fall zur Nummer; trifft eine Nummer mit Kennung der Niederlassung keinen Fall, wird sie ohne Kennung gesucht
+	 * (CaseKinds::fallbackNumber – fremde Aktenzeichen wie „XY-2026-0001“ verhalten sich damit wie vor 0.90.2).
+	 */
+	private static function findWithFallback(callable $findCase, string $number): ?array {
+		$case = $findCase($number);
+		if ($case !== null) {
+			return $case;
+		}
+		$fallback = CaseKinds::fallbackNumber($number);
+		return $fallback !== '' ? $findCase($fallback) : null;
+	}
+
 	/** Fallnummern im Text (in Reihenfolge, ohne Dubletten). */
 	public static function caseNumbersInText(string $text): array {
 		return CaseKinds::numbersInText($text);
@@ -193,7 +206,7 @@ final class DocumentKindRules {
 		}
 		$result = ['kindKey' => (string)($kind['key'] ?? $fallback['key'] ?? ''), 'kindSource' => $kind !== null ? 'PAPERLESS_TYPE' : 'DEFAULT', 'caseId' => null, 'caseNumber' => '', 'caseReason' => '', 'caseCandidates' => 0, 'autoFile' => false];
 		$fieldNumber = self::caseNumberFromField($document['caseNumberField'] ?? '');
-		if ($fieldNumber !== '' && ($case = $findCase($fieldNumber)) !== null) {
+		if ($fieldNumber !== '' && ($case = self::findWithFallback($findCase, $fieldNumber)) !== null) {
 			$result = array_replace($result, ['caseId' => (int)$case['id'], 'caseNumber' => (string)$case['caseNumber'], 'caseReason' => 'FIELD', 'caseCandidates' => 1]);
 			// Automatisch nur, wenn auch die Art eindeutig aus Paperless kommt und keine weiteren Angaben braucht.
 			$result['autoFile'] = $kind !== null && $kind['effect'] === 'FILE' && trim((string)($kind['countLabel'] ?? '')) === '';
@@ -202,7 +215,7 @@ final class DocumentKindRules {
 		$content = (string)($document['content'] ?? '');
 		$found = [];
 		foreach (self::caseNumbersInText($content) as $number) {
-			if (($case = $findCase($number)) !== null) {
+			if (($case = self::findWithFallback($findCase, $number)) !== null) {
 				$found[(int)$case['id']] = $case;
 			}
 		}
@@ -219,6 +232,59 @@ final class DocumentKindRules {
 			return array_replace($result, ['caseId' => (int)$case['id'], 'caseNumber' => (string)($case['caseNumber'] ?? ''), 'caseReason' => 'NAME_DATE', 'caseCandidates' => 1]);
 		}
 		return array_replace($result, ['caseCandidates' => count($byName)]);
+	}
+
+	/**
+	 * 0.90.1: Stichwörter je mitgelieferter Dokumentart für Belege ohne Paperless-Dokumenttyp (Eingangsordner, Upload).
+	 * Zusätzlich zählt der Name der Art selbst – auch bei eigenen Arten aus dem Customizing.
+	 */
+	public const KIND_KEYWORDS = [
+		'EINGANGSRECHNUNG' => ['rechnung', 'invoice', 'rechnungsnummer'],
+		'GEBUEHRENBESCHEID' => ['gebührenbescheid', 'gebuehrenbescheid', 'kostenbescheid', 'gebührenrechnung'],
+		'STERBEURKUNDE' => ['sterbeurkunde'],
+		'GENEHMIGUNG' => ['genehmigung', 'bestattungsgenehmigung', 'einäscherungsgenehmigung'],
+		'TODESBESCHEINIGUNG' => ['todesbescheinigung', 'leichenschauschein'],
+		'RUECKMELDUNG_ABMELDUNG' => ['abmeldebestätigung', 'kündigungsbestätigung', 'bestätigung der abmeldung'],
+		'FRIEDHOFSBESCHEID' => ['friedhofsbescheid', 'grabnutzungsrecht'],
+		'KREMATORIUMSNACHWEIS' => ['einäscherungsbescheinigung', 'kremierungsnachweis'],
+		'TRAUERDRUCK' => ['traueranzeige', 'trauerkarte'],
+	];
+
+	/**
+	 * Dokumentart aus Dateiname und Text (nur aktive Arten, nicht die Rückfallart). Treffer im Dateinamen gehen vor;
+	 * sonst gewinnt das längste Stichwort in den ersten 3000 Zeichen des Texts („Gebührenbescheid“ vor „Rechnung“).
+	 * Ergebnis ist immer nur ein Vorschlag (Herkunft TEXT).
+	 */
+	public static function kindFromText(string $fileName, string $text, array $definitions): ?array {
+		$sources = [mb_strtolower(pathinfo($fileName, PATHINFO_FILENAME)), mb_strtolower(mb_substr($text, 0, 3000))];
+		foreach ($sources as $haystack) {
+			if (trim($haystack) === '') {
+				continue;
+			}
+			$best = null;
+			$bestLength = 0;
+			foreach ($definitions as $definition) {
+				if (empty($definition['active']) || ($definition['key'] ?? '') === self::FALLBACK_KIND) {
+					continue;
+				}
+				$words = array_merge([mb_strtolower((string)$definition['name'])], self::KIND_KEYWORDS[(string)$definition['key']] ?? []);
+				foreach ($words as $word) {
+					$word = trim($word);
+					if (mb_strlen($word) < 5 || mb_strlen($word) <= $bestLength) {
+						continue;
+					}
+					// Wortanfang genügt („Rechnungsnummer“ enthält „rechnung“), Wortende nicht („Gutschrift“ ≠ „schrift“).
+					if (preg_match('/(?<![\p{L}])' . preg_quote($word, '/') . '/u', str_replace(['_', '-'], ' ', $haystack)) === 1) {
+						$best = $definition;
+						$bestLength = mb_strlen($word);
+					}
+				}
+			}
+			if ($best !== null) {
+				return $best;
+			}
+		}
+		return null;
 	}
 
 	/** „2026-03-05“ → [„05.03.2026“, „5.3.2026“]; leer bei ungültigem Datum. */

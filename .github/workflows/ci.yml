@@ -1,10 +1,14 @@
-# Automatische Prüfungen bei jedem Push und Pull Request – nur prüfen und bauen.
-# Keine Veröffentlichung, keine Signatur, kein Upload in den Nextcloud App Store.
+# Automatische Prüfungen bei jedem Push und Pull Request (Syntax, Code-Style, PHPStan, Manifest, Frontend-Build).
+# Sind alle Prüfungen grün, baut der Job „package“ bei jedem Push das Installationspaket bestatter-<version>.tar.gz
+# (dasselbe Skript wie lokal) und legt es als Artefakt am Lauf ab. Bei einem Versions-Tag vX.Y.Z hängt der Job
+# „release“ Paket und Prüfsummen zusätzlich an eine GitHub-Release.
+# Unsigniert: keine Nextcloud-Codesignatur, kein Upload in den Nextcloud App Store.
 name: Prüfungen
 
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -124,28 +128,96 @@ jobs:
         run: git diff --exit-code --stat -- js/main.js || (echo "js/main.js ist veraltet – bitte „npm run build“ ausführen und committen." && exit 1)
 
   package:
-    name: Installationspaket bauen (nur Artefakt, unsigniert)
-    runs-on: ubuntu-latest
+    name: Installationspaket bauen
+    # Nur wenn alle Prüfungen grün sind; bei Pull Requests kein Paket.
     needs: [php-lint, codestyle, phpstan, appinfo, frontend]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      artifact: ${{ steps.build.outputs.artifact }}
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.2'
           extensions: gd, zip
           coverage: none
           tools: composer
-      - name: Paket bauen (dasselbe Skript wie lokal)
-        run: bash tools/release/build-package.sh --out dist
-      - name: Paket prüfen (ein Wurzelordner, info.xml vorhanden, kein .git)
+      - name: Versions-Tag passt zur App-Version
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          pkg=$(ls dist/bestatter-*.tar.gz)
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          if [ "${GITHUB_REF_NAME#v}" != "$v" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zur Version $v in appinfo/info.xml – Tag v$v verwenden."
+            exit 1
+          fi
+      - name: Paket bauen (dasselbe Skript wie lokal)
+        id: build
+        run: |
+          bash tools/release/build-package.sh --out dist
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          pkg="dist/bestatter-$v.tar.gz"
           test "$(tar -tzf "$pkg" | cut -d/ -f1 | sort -u)" = "bestatter"
           tar -tzf "$pkg" | grep -qx 'bestatter/appinfo/info.xml'
-          ! tar -tzf "$pkg" | grep -qE '(^|/)\.git/'
-          echo "PACKAGE=$(basename "$pkg")" >> "$GITHUB_ENV"
+          tar -tzf "$pkg" | grep -qx 'bestatter/vendor/autoload.php'
+          if tar -tzf "$pkg" | grep -qE '(^|/)(\.git|node_modules|src|tests)/'; then echo "::error::Paket enthält Entwicklungsdateien"; exit 1; fi
+          (cd dist && sha256sum -c ./*.sha256)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then name="bestatter-$v"; else name="bestatter-$v-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "artifact=$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Installationspaket $v"
+            echo
+            echo "Download: Abschnitt **Artifacts** unten auf dieser Seite (\`$name\`)."
+            echo
+            echo '```'
+            cat dist/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         with:
-          name: ${{ env.PACKAGE }}
-          path: dist/bestatter-*.tar.gz
-          retention-days: 14
+          name: ${{ steps.build.outputs.artifact }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: GitHub-Release veröffentlichen
+    # Nur bei einem Versions-Tag vX.Y.Z; nur dieser Job darf schreiben (Release anlegen).
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.package.outputs.artifact }}
+          path: dist
+      - name: Release anlegen und Paket anhängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          # Text der Release = Abschnitt „## <version> – …“ aus CHANGELOG.md, dazu die Prüfsummen.
+          heading=$(awk -v v="$VERSION" 'index($0, "## " v " ") == 1 || $0 == "## " v { print; exit }' CHANGELOG.md)
+          title="Bestatter ${heading#\#\# }"
+          {
+            awk -v v="$VERSION" 'f && /^## / { exit } f { print } index($0, "## " v " ") == 1 || $0 == "## " v { f = 1 }' CHANGELOG.md
+            echo
+            echo "### Prüfsummen (SHA-256)"
+            echo
+            echo '```'
+            cat dist/*.sha256
+            echo '```'
+            echo
+            echo "Installation und Update: siehe README (Installation, Aktualisierung). Paket und \`.sha256\` in denselben Ordner legen, dann \`bin/bestatter-update.sh\` aus dem Paket verwenden."
+          } > release-notes.md
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$title" --notes-file release-notes.md
+          fi

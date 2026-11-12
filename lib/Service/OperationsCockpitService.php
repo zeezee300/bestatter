@@ -128,7 +128,8 @@ class OperationsCockpitService {
 	private function countUnassignedPaperless(): int {
 		$query = $this->db->getQueryBuilder();
 		return (int)$query->select($query->func()->count('id', 'count'))->from('bestatter_external_documents')
-			->where($query->expr()->eq('provider', $query->createNamedParameter('PAPERLESS')))
+			// 0.90.1: auch Eingänge aus dem Eingangsordner und dem Direkt-Upload (InboxFolderService)
+			->where($query->expr()->in('provider', $query->createNamedParameter(['PAPERLESS', InboxFolderService::PROVIDER], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))
 			->andWhere($query->expr()->in('record_type', $query->createNamedParameter(PaperlessService::INBOX_RECORD_TYPES, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR_ARRAY)))
 			->andWhere($query->expr()->eq('sync_status', $query->createNamedParameter('INBOX')))
 			->andWhere($query->expr()->isNull('case_id'))->executeQuery()->fetchOne();

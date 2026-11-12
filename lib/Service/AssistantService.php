@@ -403,6 +403,7 @@ class AssistantService {
 
 		$intent = 'INFORMATION';
 		$label = 'Information anzeigen';
+		$unrecognized = false;
 		$data = ['query' => $input];
 		$write = false;
 		$answer = null;
@@ -424,6 +425,12 @@ class AssistantService {
 			}
 			$answer = ['title' => 'Fallsuche', 'text' => $choices === [] ? 'Es wurde kein passender Fall gefunden.' : $matches['total'] . ' passende Fälle gefunden.', 'items' => []];
 			$data = ['query' => $query];
+		} elseif (self::isHelpQuestion($input)) {
+			// 0.90.2: Bedienungsfragen („Wie pflege ich Ressourcen?“) beantwortet die Bedienhilfe aus dem Handbuch; die Oberfläche
+			// fragt sie mit dieser Kennzeichnung an. Ohne passenden Hilfetext erfasst die Bedienhilfe die Frage als offene Hilfefrage.
+			$intent = 'HELP_QUESTION';
+			$label = 'Frage an die Bedienhilfe';
+			$answer = ['title' => 'Frage zur Bedienung', 'text' => 'Die Antwort kommt aus der Bedienhilfe (Handbuch).', 'items' => []];
 		} elseif ($this->isPaperlessSetupRequest($input)) {
 			// 0.81.0: Paperless-Einrichtung prüfen (nur Administration, rein lesend)
 			[$intent, $label, $answer, $choices] = $this->paperlessSetupAnswer();
@@ -539,6 +546,7 @@ class AssistantService {
 					'items' => array_map(static fn (array $item): string => ($item['caseNumber'] !== '' ? $item['caseNumber'] . ' · ' : '') . $item['title'], array_slice(array_merge($day['overdueTasks'], $day['tasksToday'], $day['schedulesToday']), 0, 12)),
 				];
 			} elseif ($answer === null) {
+				$unrecognized = true;
 				$answer = ['title' => 'Unterstützte Auskünfte', 'text' => 'Ich kann den persönlichen Arbeitstag, offene und überfällige Aufgaben, die Vollständigkeit eines Falls oder einer Rechnung, den Belegeingang und die eingegangenen Dokumente eines Falls prüfen.', 'items' => ['Was ist heute fällig?', 'Welche Aufgaben sind überfällig?', 'Welche Angaben fehlen in diesem Fall?', 'Ist der Fall für die Rechnung vollständig?', 'Was liegt im Belegeingang?', 'Welche Dokumente sind für diesen Fall eingegangen?']];
 			}
 		}
@@ -556,6 +564,8 @@ class AssistantService {
 			'choices' => $choices,
 			'documents' => $documents,
 			'requiredInput' => $requiredInput,
+			// 0.90.2: Bedienungsfrage oder nicht erkannte Anfrage → die Oberfläche fragt zusätzlich die Bedienhilfe.
+			'helpQuestion' => $intent === 'HELP_QUESTION' || $unrecognized,
 		];
 		if ($executable) {
 			$result['confirmationToken'] = $this->confirmationToken($intent, $data);
@@ -564,6 +574,22 @@ class AssistantService {
 			$this->audit->log($caseId, 'ASSISTANT', null, $write ? 'INTENT_PREVIEWED' : 'INFORMATION_REQUESTED', null, ['intent' => $intent, 'queryLength' => mb_strlen($input), 'writeOperation' => $write]);
 		}
 		return $result;
+	}
+
+	/**
+	 * 0.90.2: Bedienungsfrage statt Arbeitsauftrag – beginnt mit einem Fragewort zur Bedienung („Wie …“, „Wo …“, „Warum …“,
+	 * „Was bedeutet …“, „Kann ich …“). Ausgenommen sind Fragen zum eigenen Arbeitstag („Wie viele Aufgaben sind heute fällig?“),
+	 * die der Assistent selbst beantwortet.
+	 */
+	public static function isHelpQuestion(string $input): bool {
+		$text = mb_strtolower(trim($input));
+		if (preg_match('/\b(heute|arbeitstag|fällig|überfällig|meine aufgaben|meine fälle)\b/u', $text)) {
+			return false;
+		}
+		return preg_match('/^(wie|wo|wohin|woher|warum|weshalb|wieso|wozu|womit|wofür|wann)\b/u', $text) === 1
+			|| preg_match('/^was\s+(bedeutet|bedeuten|heißt|heisst|macht|passiert|tue|mache|muss|kann|ist\s+(ein|eine|der|die|das)\b)/u', $text) === 1
+			|| preg_match('/^(kann|darf|muss|soll)\s+(ich|man)\b/u', $text) === 1
+			|| preg_match('/^(gibt es|lässt sich|laesst sich)\b/u', $text) === 1;
 	}
 
 	public function executeIntent(string $confirmationToken): array {

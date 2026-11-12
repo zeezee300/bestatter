@@ -506,7 +506,10 @@ class ProcessService {
 				if ($step['trigger']['type'] === 'MANUAL') {
 					continue;
 				}
-				$phases[$step['phase']]['steps'][] = $this->stepView($step, null, $applies === 'PENDING' ? 'pending' : 'waiting', $applies === 'PENDING' ? $reason : $this->waitingReason($step, $facts), $uid, $today);
+				$view = $this->stepView($step, null, $applies === 'PENDING' ? 'pending' : 'waiting', $applies === 'PENDING' ? $reason : $this->waitingReason($step, $facts), $uid, $today);
+				// 0.90.4: fehlende Fallangabe direkt am Schritt beantworten (Trauerfeier/Rente) bzw. nachtragen (Bestattungsart)
+				$view['pendingAttribute'] = $applies === 'PENDING' ? ProcessRules::pendingAttribute($step['applies'], $facts) : '';
+				$phases[$step['phase']]['steps'][] = $view;
 				$phases[$step['phase']]['total']++;
 				continue;
 			}
@@ -572,6 +575,7 @@ class ProcessService {
 		}
 		$this->reconciling[$caseId] = true;
 		try {
+			$summary['ceremonyAdopted'] = $this->adoptCeremonyFromSchedule($caseId);
 			for ($pass = 0; $pass < self::MAX_RECONCILE_PASSES; $pass++) {
 				$case = $this->cases->getCase($caseId);
 				$facts = $this->facts($case);
@@ -593,6 +597,47 @@ class ProcessService {
 			unset($this->reconciling[$caseId]);
 		}
 		return $summary;
+	}
+
+	/**
+	 * 0.90.5: Ist das Fallmerkmal „Trauerfeier“ noch offen und hat der Fall einen bestätigten (oder schon stattgefundenen)
+	 * Trauerfeier-Termin, gilt die Frage als beantwortet: Das Merkmal wird auf „ja“ gesetzt und im Fall-Verlauf mit dem
+	 * Termin vermerkt. Ein bewusst eingetragenes „nein“ wird nie überschrieben (siehe ceremonyConflict()).
+	 * Fehler werden nur protokolliert, damit der übrige Abgleich weiterläuft.
+	 */
+	private function adoptCeremonyFromSchedule(int $caseId): bool {
+		try {
+			$case = $this->cases->getCase($caseId);
+			$master = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
+			if ((string)($master['with_funeral_ceremony'] ?? '') !== '' || in_array(strtoupper((string)$case['status']), ['STORNIERT', 'ABGESCHLOSSEN'], true)) {
+				return false;
+			}
+			$schedule = $this->confirmedCeremonySchedule($this->facts($case));
+			if ($schedule === null) {
+				return false;
+			}
+			$master['with_funeral_ceremony'] = '1';
+			$this->cases->updateMasterData($caseId, $master);
+			$this->audit->log($caseId, 'PROCESS', (int)$schedule['id'], 'CEREMONY_FROM_SCHEDULE', null, ['title' => $schedule['title'], 'date' => $schedule['date']]);
+			return true;
+		} catch (\Throwable $error) {
+			$this->logger->warning('Das Fallmerkmal „Trauerfeier“ konnte nicht aus dem Termin übernommen werden.', ['caseId' => $caseId, 'exceptionClass' => $error::class, 'reason' => $error->getMessage()]);
+			return false;
+		}
+	}
+
+	/** 0.90.5: Frühester bestätigter (oder stattgefundener) Trauerfeier-Termin des Falls. */
+	private function confirmedCeremonySchedule(array $facts): ?array {
+		return ProcessRules::confirmedSchedule((array)($facts['schedules'] ?? []), self::CEREMONY_PRESETS);
+	}
+
+	/** 0.90.5: Hinweis, wenn „keine Trauerfeier“ eingetragen ist, der Fall aber einen bestätigten Trauerfeier-Termin hat. */
+	private function ceremonyConflict(array $facts): string {
+		$schedule = $facts['ceremony'] === '0' ? $this->confirmedCeremonySchedule($facts) : null;
+		if ($schedule === null) {
+			return '';
+		}
+		return 'Widerspruch: Als Fallmerkmal ist „keine Trauerfeier“ eingetragen, es gibt aber den bestätigten Termin „' . $schedule['title'] . '“. Bitte das Fallmerkmal oder den Termin prüfen.';
 	}
 
 	/**
@@ -2201,6 +2246,7 @@ class ProcessService {
 			'funeralScope' => $facts['scope'], 'funeralScopeLabel' => $facts['scope'] === '' ? 'noch offen' : (ProcessRules::SCOPES[$facts['nature'] ? 'NATURE' : $facts['scope']] ?? $facts['scope']),
 			'funeralType' => (string)($case['funeralType'] ?? ''),
 			'ceremony' => $facts['ceremony'], 'pension' => $facts['pension'],
+			'ceremonyConflict' => $this->ceremonyConflict($facts),
 			'depositCents' => $facts['depositCents'], 'depositReceivedAt' => $facts['depositReceivedAt'],
 			'orderCommissioned' => $facts['orderCommissioned'],
 			'finalInvoiceNumber' => (string)($facts['finalInvoice']['invoice_number'] ?? ''), 'paid' => $facts['paid'],
@@ -2469,7 +2515,7 @@ class ProcessService {
 			$titles = array_values(array_unique($titles));
 			$named = implode(', ', array_slice($titles, 0, 3)) . (count($titles) > 3 ? ' und ' . (count($titles) - 3) . ' weitere' : '');
 			$warnings[] = 'Rolle „' . (ProcessRules::ROLES[$role] ?? $role) . '“ (' . (count($titles) === 1 ? 'Schritt ' : 'Schritte ') . $named . '): ' . $problem
-				. '. Bis dahin gehen diese Aufgaben an die Fallverantwortung (Administration → Installationsparameter → Rollen für Abläufe).';
+				. '. Bis dahin gehen diese Aufgaben an die Fallverantwortung (Administration → Systemprüfung → Installationsparameter → Rollen für Abläufe).';
 		}
 		return array_values(array_unique($warnings));
 	}

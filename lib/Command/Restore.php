@@ -27,6 +27,12 @@ class Restore extends Command {
 		$inspection = $package?$this->backup->inspectPackage($path):$this->backup->inspect($path);
 		unset($inspection['payload'],$inspection['manifest']);
 		$output->writeln(json_encode($inspection, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+		// 0.92.3: Klartext, was den Restore sperrt bzw. was er am Ziel ersetzt.
+		if (($inspection['targetConflicts'] ?? []) !== []) {
+			$output->writeln('<error>Ziel nicht leer – vorhandene Falldaten: ' . $this->counts($inspection['targetConflicts']) . '. Ein Restore ist so nicht möglich.</error>');
+		} elseif (($inspection['targetReplaces'] ?? []) !== []) {
+			$output->writeln('<comment>Keine Falldaten am Ziel. Beim Einspielen ersetzt die Sicherung die vorhandenen Einstellungen und Stammdaten (' . $this->counts($inspection['targetReplaces']) . '); vorher legt die App einen App-Snapshot des Zielstands im Sicherungsordner ab.</comment>');
+		}
 		if (!$input->getOption('execute')) {
 			$output->writeln('<comment>Vorschau: keine Daten verändert. Für das leere, isolierte Ziel --execute --confirmation=' . self::CONFIRMATION . ' verwenden.</comment>');
 			return self::SUCCESS;
@@ -35,5 +41,10 @@ class Restore extends Command {
 			return self::FAILURE;
 		}$output->writeln(json_encode($package?$this->backup->restorePackage($path):$this->backup->restore($path), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		return self::SUCCESS;
+	}
+
+	/** @param array<string,int> $counts */
+	private function counts(array $counts): string {
+		return implode(', ', array_map(static fn (string $table, int $count): string => preg_replace('/^bestatter_/', '', $table) . ' ' . $count, array_keys($counts), array_values($counts)));
 	}
 }

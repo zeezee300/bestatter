@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Bestatter\Service;
 
 use OCA\Bestatter\AppInfo\Application;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -22,10 +23,35 @@ class BackupService {
 	/** 0.78.0: so viele neueste gültige Pakete bleiben beim Aufräumen immer erhalten, auch nach Fristablauf. */
 	private const DEFAULT_KEEP_PACKAGES = 3;
 	private const SCHEDULE_KEYS = ['frequency' => 'backup_schedule_frequency', 'hour' => 'backup_schedule_hour', 'weekday' => 'backup_schedule_weekday', 'kind' => 'backup_schedule_kind', 'autoCleanup' => 'backup_schedule_cleanup'];
-	/** Automatisch mit dem Auslieferungsstand befüllte Konfiguration, die eine Wiederherstellung nicht blockiert. */
-	private const SEEDED_TABLES = ['bestatter_process_templates','bestatter_process_steps','bestatter_order_forms'];
-	/** 0.76.0: mitgelieferte Marker entstehen beim ersten Aufruf (inaktiv) und stehen einer Wiederherstellung nicht entgegen. */
-	private const SEEDED_LABEL_TABLES = ['bestatter_labels','bestatter_label_values','bestatter_document_kinds'];
+	/**
+	 * 0.92.3: Einstellungen und Stammdaten. Sie entstehen in jeder neuen Installation von selbst (Standardpreisliste,
+	 * Wertelisten, Terminarten, Länderprofile, Vorlagen …) oder über Ersteinrichtung und Einrichtungspaket. Sie stehen
+	 * einer Wiederherstellung nicht entgegen: Enthält die Sicherung die Tabelle, ersetzt ihr Stand den des Ziels. Vorher
+	 * legt die App einen App-Snapshot des Zielstands ab. Früher galten nur Ablaufvorlagen, Auftragsformulare, Marker und
+	 * Dokumentarten als „mitgeliefert“ – schon die Standardpreisliste einer frischen Installation sperrte jeden Restore.
+	 */
+	private const REPLACEABLE_TABLES = [
+		'bestatter_choice_lists','bestatter_choice_items',
+		'bestatter_article_areas','bestatter_article_groups','bestatter_articles','bestatter_price_lists','bestatter_price_list_items','bestatter_boms','bestatter_bom_items','bestatter_burial_variant_rules','bestatter_surcharge_rules',
+		'bestatter_process_templates','bestatter_process_steps',
+		'bestatter_branches','bestatter_branch_logos','bestatter_document_templates','bestatter_dereg_templates','bestatter_invoice_settings','bestatter_invoice_sequences',
+		'bestatter_assistant_rules','bestatter_schedule_types','bestatter_resources','bestatter_country_profiles',
+		'bestatter_order_forms','bestatter_labels','bestatter_label_values','bestatter_document_kinds',
+	];
+	/** 0.92.5: von Nextcloud verwaltete App-Einstellungen – werden beim Restore nicht übernommen. */
+	private const NEXTCLOUD_APP_KEYS = ['installed_version', 'enabled', 'types', 'ocsid', 'levels'];
+	/** 0.92.3: verständliche Namen der Falldaten-Tabellen für die Meldung „Ziel nicht leer“. */
+	private const TABLE_LABELS = [
+		'bestatter_cases' => 'Fälle, Aufträge und Vorsorgen', 'bestatter_records' => 'Aufgaben, Termine und Fallangaben', 'bestatter_process_runs' => 'Ablaufschritte',
+		'bestatter_action_runs' => 'ausgeführte Ablaufaktionen', 'bestatter_mail_outbox' => 'E-Mail-Entwürfe', 'bestatter_dereg_mail_outbox' => 'Abmeldungs-E-Mails',
+		'bestatter_case_services' => 'Leistungen in Fällen', 'bestatter_commercial_docs' => 'Kostenvoranschläge und Aufträge', 'bestatter_invoices' => 'Rechnungen',
+		'bestatter_invoice_items' => 'Rechnungspositionen', 'bestatter_audit_log' => 'Protokolleinträge zu Fällen', 'bestatter_incoming_invoices' => 'Eingangsrechnungen',
+		'bestatter_incoming_items' => 'Positionen von Eingangsrechnungen', 'bestatter_schedule_history' => 'Terminänderungen', 'bestatter_capture_imports' => 'Schnellerfassungen',
+		'bestatter_external_documents' => 'Belege aus Paperless', 'bestatter_integration_jobs' => 'Aufträge an Kalender/Paperless', 'bestatter_order_form_entries' => 'ausgefüllte Auftragsformulare',
+		'bestatter_side_orders' => 'Nebenaufträge', 'bestatter_record_assignees' => 'Zuständigkeiten', 'bestatter_case_labels' => 'Marker an Fällen',
+		'bestatter_precare' => 'Vorsorgeverträge', 'bestatter_precare_funding' => 'Vorsorge-Finanzierungen', 'bestatter_debtors' => 'Debitoren',
+		'bestatter_acct_exports' => 'Buchhaltungsexporte', 'bestatter_acct_export_items' => 'exportierte Belege',
+	];
 	private const TABLES = [
 		'bestatter_choice_lists','bestatter_choice_items',
 		'bestatter_article_areas','bestatter_article_groups','bestatter_articles','bestatter_price_lists','bestatter_price_list_items','bestatter_boms','bestatter_bom_items','bestatter_burial_variant_rules','bestatter_surcharge_rules','bestatter_action_runs','bestatter_process_templates','bestatter_process_steps',
@@ -430,7 +456,7 @@ class BackupService {
 			foreach ((array)($snapshotEnvelope['payload']['tables'] ?? []) as $table => $rows) {
 				$tables[$table] = is_array($rows) ? count($rows) : 0;
 			}
-			return ['valid' => true, 'format' => $manifest['format'], 'appVersion' => $manifest['appVersion'] ?? '', 'createdAt' => $manifest['createdAt'] ?? '', 'sha256' => hash_file('sha256', $path), 'status' => $manifest['status'] ?? 'OK', 'fileCount' => count((array)($manifest['files'] ?? [])), 'totalBytes' => (int)($manifest['totalBytes'] ?? 0), 'errors' => (array)($manifest['errors'] ?? []), 'tables' => $tables, 'targetEmpty' => $includeTargetState ? $this->targetEmpty() : null, 'manifest' => $manifest];
+			return ['valid' => true, 'format' => $manifest['format'], 'appVersion' => $manifest['appVersion'] ?? '', 'createdAt' => $manifest['createdAt'] ?? '', 'sha256' => hash_file('sha256', $path), 'status' => $manifest['status'] ?? 'OK', 'fileCount' => count((array)($manifest['files'] ?? [])), 'totalBytes' => (int)($manifest['totalBytes'] ?? 0), 'errors' => (array)($manifest['errors'] ?? []), 'tables' => $tables] + $this->targetState($includeTargetState) + ['manifest' => $manifest];
 		} finally {
 			$zip->close();
 		}
@@ -453,40 +479,31 @@ class BackupService {
 		foreach (($payload['tables'] ?? []) as $table => $rows) {
 			$counts[$table] = is_array($rows)?count($rows):0;
 		}
-		return ['valid' => true,'format' => $payload['format'],'appVersion' => $payload['appVersion'] ?? '','createdAt' => $payload['createdAt'] ?? '','payloadSha256' => $actual,'tables' => $counts,'targetEmpty' => $includeTargetState ? $this->targetEmpty() : null,'payload' => $payload];
+		return ['valid' => true,'format' => $payload['format'],'appVersion' => $payload['appVersion'] ?? '','createdAt' => $payload['createdAt'] ?? '','payloadSha256' => $actual,'tables' => $counts] + $this->targetState($includeTargetState) + ['payload' => $payload];
 	}
 
 	public function restore(string $path): array {
 		$inspection = $this->inspect($path);
 		if (!$inspection['targetEmpty']) {
-			throw new \RuntimeException('Restore abgebrochen: Das Ziel enthält bereits Bestatter-Daten. Wiederherstellung nur in eine leere, isolierte Zielinstallation.');
+			throw new \RuntimeException($this->conflictMessage($inspection['targetConflicts']));
 		}
 		$payload = $inspection['payload'];
 		$inserted = [];
+		// 0.92.3: Einstellungen und Stammdaten des Ziels (Auslieferungsstand, Ersteinrichtung, Einrichtungspaket) und
+		// Protokolleinträge ohne Fallbezug werden durch die Sicherung ersetzt – vorher als App-Snapshot abgelegt.
+		$replace = array_values(array_filter([...self::REPLACEABLE_TABLES, 'bestatter_audit_log'], static fn (string $table): bool => array_key_exists($table, $payload['tables'] ?? [])));
+		$replacedCounts = array_intersect_key($inspection['targetReplaces'], array_flip($replace));
+		$preRestoreSnapshot = $replacedCounts === [] ? null : (string)$this->create()['path'];
 		$this->db->beginTransaction();
 		try {
-			// 0.66.0: Mitgelieferte Ablaufvorlagen werden beim ersten Aufruf angelegt; enthält die Sicherung
-			// eigene Vorlagen, ersetzen diese den Auslieferungsstand (ältere Sicherungen behalten ihn).
-			if (array_key_exists('bestatter_process_templates', $payload['tables'] ?? [])) {
-				foreach (['bestatter_process_templates','bestatter_process_steps'] as $seeded) {
-					$d = $this->db->getQueryBuilder();
-					$d->delete($seeded)->executeStatement();
-				}
-			}
-			// 0.74.0: ebenso das mitgelieferte Auftragsformular, wenn die Sicherung Auftragsformulare enthält.
-			if (array_key_exists('bestatter_order_forms', $payload['tables'] ?? [])) {
+			foreach ($replace as $table) {
 				$d = $this->db->getQueryBuilder();
-				$d->delete('bestatter_order_forms')->executeStatement();
-			}
-			// 0.76.0: ebenso die mitgelieferten (inaktiv angelegten) Marker, wenn die Sicherung Marker enthält.
-			if (array_key_exists('bestatter_labels', $payload['tables'] ?? [])) {
-				foreach (['bestatter_case_labels','bestatter_label_values','bestatter_labels'] as $seeded) {
-					$d = $this->db->getQueryBuilder();
-					$d->delete($seeded)->executeStatement();
+				$d->delete($table);
+				if ($table === 'bestatter_audit_log') {
+					// Protokoll zu Fällen gibt es im Ziel nicht (sonst wäre es oben abgebrochen); nur Einträge ohne Fallbezug.
+					$d->where($this->withoutCase($d));
 				}
-			}if (array_key_exists('bestatter_document_kinds', $payload['tables'] ?? [])) {
-				$d = $this->db->getQueryBuilder();
-				$d->delete('bestatter_document_kinds')->executeStatement();
+				$d->executeStatement();
 			}
 			foreach (self::TABLES as $table) {
 				$rows = $payload['tables'][$table] ?? [];
@@ -501,6 +518,11 @@ class BackupService {
 				}
 			}
 			foreach (($payload['appConfig'] ?? []) as $key => $value) {
+				// 0.92.5: Schlüssel, die Nextcloud selbst verwaltet (installierte Version, aktiv, App-Typen), bleiben am Ziel.
+				// Sonst meldet Nextcloud nach dem Restore „requires upgrade“ (installed_version der Sicherung < Code).
+				if (in_array((string)$key, self::NEXTCLOUD_APP_KEYS, true)) {
+					continue;
+				}
 				$this->config->setAppValue(Application::APP_ID, (string)$key, (string)$value);
 			}
 			$this->db->commit();
@@ -508,15 +530,15 @@ class BackupService {
 			$this->db->rollBack();
 			throw new \RuntimeException('Restore wurde vollständig zurückgerollt: ' . $error->getMessage(), 0, $error);
 		}
-		$this->audit->logSystem('RESTORE', 'COMPLETED', ['source' => $path,'sha256' => $inspection['payloadSha256'],'inserted' => $inserted]);
-		return ['restored' => true,'source' => $path,'inserted' => $inserted,'verification' => 'Anschließend occ maintenance:repair und bestatter:acceptance-check ausführen.'];
+		$this->audit->logSystem('RESTORE', 'COMPLETED', ['source' => $path,'sha256' => $inspection['payloadSha256'],'inserted' => $inserted,'replaced' => $replacedCounts,'preRestoreSnapshot' => $preRestoreSnapshot,'appVersionOfBackup' => (string)($payload['appVersion'] ?? '')]);
+		return ['restored' => true,'source' => $path,'inserted' => $inserted,'replaced' => $replacedCounts,'preRestoreSnapshot' => $preRestoreSnapshot,'verification' => 'Anschließend occ maintenance:repair und bestatter:acceptance-check ausführen.'];
 	}
 
 	/** Restauriert ein geprüftes Fachpaket ausschließlich in leere App-Tabellen und ohne Dateikollisionen. */
 	public function restorePackage(string $path): array {
 		$inspection = $this->inspectPackage($path);
 		if (!$inspection['targetEmpty']) {
-			throw new \RuntimeException('Restore abgebrochen: Das Ziel enthält bereits Bestatter-Daten.');
+			throw new \RuntimeException($this->conflictMessage($inspection['targetConflicts']));
 		}
 		if (($inspection['status'] ?? 'WARN') !== 'OK' || ($inspection['errors'] ?? []) !== []) {
 			throw new \RuntimeException('Restore abgebrochen: Das Sicherungspaket wurde nicht vollständig erstellt.');
@@ -527,6 +549,7 @@ class BackupService {
 		}
 		$manifest = $inspection['manifest'];
 		$targets = [];
+		$identical = 0;
 		try {
 			foreach ((array)$manifest['files'] as $entry) {
 				$uid = $this->safeSegment((string)$entry['ownerUid']);
@@ -546,18 +569,38 @@ class BackupService {
 						throw new \RuntimeException('Wiederherstellungspfad kollidiert mit einer Datei: ' . $relative);
 					} $folder = $node;
 				}
+				$replace = null;
 				if ($folder->nodeExists($fileName)) {
-					throw new \RuntimeException('Restore abgebrochen: Zieldatei existiert bereits: ' . $uid . '/' . $relative);
+					// 0.92.3: Gleiche Datei (z. B. mitgelieferte Dokumentvorlage) wird übersprungen; eine abweichende Vorlage
+					// oder ein Artikelbild wird beiseitegelegt und durch die gesicherte ersetzt. In Fallakten bleibt es beim Abbruch.
+					$existing = $folder->get($fileName);
+					if (!$existing instanceof File) {
+						throw new \RuntimeException('Restore abgebrochen: Am Ziel liegt ein Ordner statt der Datei: ' . $uid . '/' . $relative);
+					}
+					if (hash_equals((string)$entry['sha256'], $this->nodeSha256($existing))) {
+						$identical++;
+						continue;
+					}
+					if (!$this->isReplaceableFile($relative)) {
+						throw new \RuntimeException('Restore abgebrochen: Zieldatei existiert bereits mit anderem Inhalt: ' . $uid . '/' . $relative);
+					}
+					$replace = $existing;
 				}
-				$targets[] = ['folder' => $folder, 'name' => $fileName, 'archivePath' => (string)$entry['archivePath']];
+				$targets[] = ['folder' => $folder, 'name' => $fileName, 'archivePath' => (string)$entry['archivePath'], 'replace' => $replace];
 			}
 			$created = [];
+			$movedAside = [];
 			try {
 				foreach ($targets as $target) {
 					$content = $zip->getFromName($target['archivePath']);
 					if ($content === false) {
 						throw new \RuntimeException('Datei fehlt im Paket: ' . $target['archivePath']);
-					} $file = $target['folder']->newFile($target['name']);
+					}
+					if ($target['replace'] instanceof File) {
+						$aside = $this->asideName($target['folder'], $target['name']);
+						$movedAside[] = ['node' => $target['replace']->move($target['folder']->getPath() . '/' . $aside), 'path' => $target['folder']->getPath() . '/' . $target['name'], 'aside' => $aside];
+					}
+					$file = $target['folder']->newFile($target['name']);
 					$file->putContent($content);
 					$created[] = $file;
 				}
@@ -581,13 +624,53 @@ class BackupService {
 						$file->delete();
 					} catch (\Throwable) {
 					}
+				}
+				foreach (array_reverse($movedAside) as $moved) {
+					try {
+						$moved['node']->move($moved['path']);
+					} catch (\Throwable) {
+					}
 				} throw $error;
 			}
 		} finally {
 			$zip->close();
 		}
-		$this->audit->logSystem('BACKUP_PACKAGE', 'RESTORED', ['source' => $path, 'files' => count($targets)]);
-		return ['restored' => true, 'source' => $path, 'files' => count($targets), 'database' => $database, 'verification' => 'Anschließend occ maintenance:repair und bestatter:acceptance-check ausführen.'];
+		$asideNames = array_map(static fn (array $moved): string => (string)$moved['aside'], $movedAside);
+		$this->audit->logSystem('BACKUP_PACKAGE', 'RESTORED', ['source' => $path, 'files' => count($targets), 'identical' => $identical, 'replacedFiles' => $asideNames]);
+		return ['restored' => true, 'source' => $path, 'files' => count($targets), 'identicalFilesSkipped' => $identical, 'replacedFilesKeptAs' => $asideNames, 'database' => $database, 'verification' => 'Anschließend occ maintenance:repair und bestatter:acceptance-check ausführen.'];
+	}
+
+	/** 0.92.3: Dokumentvorlagen und Artikelbilder dürfen am Ziel schon liegen; die gesicherte Fassung ersetzt sie. */
+	private function isReplaceableFile(string $relative): bool {
+		foreach ([$this->installationConfig->templatesPath(), $this->installationConfig->articleImagesPath()] as $base) {
+			$base = trim($base, '/');
+			if ($base !== '' && str_starts_with($relative, $base . '/')) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private function nodeSha256(File $file): string {
+		$stream = $file->fopen('r');
+		if (!is_resource($stream)) {
+			return hash('sha256', (string)$file->getContent());
+		}
+		$context = hash_init('sha256');
+		hash_update_stream($context, $stream);
+		fclose($stream);
+		return hash_final($context);
+	}
+
+	private function asideName(Folder $folder, string $name): string {
+		$dot = strrpos($name, '.');
+		$base = $dot === false || $dot === 0 ? $name : substr($name, 0, $dot);
+		$extension = $dot === false || $dot === 0 ? '' : substr($name, $dot);
+		$candidate = $base . ' (vor Wiederherstellung ' . date('Y-m-d His') . ')' . $extension;
+		for ($i = 2; $folder->nodeExists($candidate); $i++) {
+			$candidate = $base . ' (vor Wiederherstellung ' . date('Y-m-d His') . ' ' . $i . ')' . $extension;
+		}
+		return $candidate;
 	}
 
 	private function rows(string $table): array {
@@ -595,13 +678,76 @@ class BackupService {
 		return $q->select('*')->from($table)->orderBy('id', 'ASC')->executeQuery()->fetchAllAssociative();
 	}
 	private function targetEmpty(): bool {
-		foreach (array_diff(self::TABLES, self::SEEDED_TABLES, self::SEEDED_LABEL_TABLES) as $table) {
-			$q = $this->db->getQueryBuilder();
-			if ((int)$q->select($q->func()->count('id', 'count'))->from($table)->executeQuery()->fetchOne() > 0) {
-				return false;
-			}
-		}return true;
+		return $this->targetConflicts() === [];
 	}
+
+	/**
+	 * 0.92.3: Was eine Wiederherstellung sperrt – Falldaten und Protokoll zu Fällen – mit Anzahl.
+	 *
+	 * @return array<string,int>
+	 */
+	private function targetConflicts(): array {
+		$conflicts = [];
+		foreach (array_diff(self::TABLES, self::REPLACEABLE_TABLES) as $table) {
+			$q = $this->db->getQueryBuilder();
+			$q->select($q->func()->count('id', 'count'))->from($table);
+			if ($table === 'bestatter_audit_log') {
+				// 0.92.4: Systemeinträge (AuditService::logSystem) tragen case_id 0, nicht NULL.
+				$q->where($q->expr()->gt('case_id', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+			}
+			$count = (int)$q->executeQuery()->fetchOne();
+			if ($count > 0) {
+				$conflicts[$table] = $count;
+			}
+		}
+		return $conflicts;
+	}
+
+	/**
+	 * 0.92.3: Was eine Wiederherstellung am Ziel ersetzt – Einstellungen, Stammdaten, Protokoll ohne Fallbezug.
+	 *
+	 * @return array<string,int>
+	 */
+	private function targetReplaceable(): array {
+		$counts = [];
+		foreach ([...self::REPLACEABLE_TABLES, 'bestatter_audit_log'] as $table) {
+			$q = $this->db->getQueryBuilder();
+			$q->select($q->func()->count('id', 'count'))->from($table);
+			if ($table === 'bestatter_audit_log') {
+				$q->where($this->withoutCase($q));
+			}
+			$count = (int)$q->executeQuery()->fetchOne();
+			if ($count > 0) {
+				$counts[$table] = $count;
+			}
+		}
+		return $counts;
+	}
+
+	/** 0.92.4: Protokolleinträge ohne Fallbezug – case_id 0 (Systemeinträge) oder leer. */
+	private function withoutCase(IQueryBuilder $q): string {
+		return (string)$q->expr()->orX($q->expr()->isNull('case_id'), $q->expr()->eq('case_id', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+	}
+
+	/** @return array<string,mixed> */
+	private function targetState(bool $include): array {
+		if (!$include) {
+			return ['targetEmpty' => null];
+		}
+		$conflicts = $this->targetConflicts();
+		return ['targetEmpty' => $conflicts === [], 'targetConflicts' => $conflicts, 'targetReplaces' => $this->targetReplaceable()];
+	}
+
+	/** @param array<string,int> $conflicts */
+	private function conflictMessage(array $conflicts): string {
+		$parts = [];
+		foreach ($conflicts as $table => $count) {
+			$parts[] = $count . ' ' . (self::TABLE_LABELS[$table] ?? $table);
+		}
+		return 'Restore abgebrochen: Das Ziel enthält bereits Falldaten (' . implode(', ', $parts) . '). Eine Sicherung wird nur in eine Installation ohne Fälle, Aufgaben, Rechnungen und Protokoll zu Fällen eingespielt. '
+			. 'Einstellungen, Stammdaten und ein eingespieltes Einrichtungspaket stören nicht – sie werden durch den Stand der Sicherung ersetzt.';
+	}
+
 	private function dataDirectory(): string {
 		return rtrim((string)$this->config->getSystemValue('datadirectory', sys_get_temp_dir()), '/\\');
 	}

@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'bestatter:workspace:v1'
-const ALLOWED_VIEWS = new Set(['dashboard', 'capture', 'cases', 'orders', 'precare', 'case-detail', 'task', 'schedule', 'document', 'inbox', 'customizing', 'administration'])
+const ALLOWED_VIEWS = new Set(['dashboard', 'capture', 'cases', 'orders', 'precare', 'case-detail', 'task', 'schedule', 'document', 'inbox', 'master-data', 'customizing', 'administration'])
 
 export function readWorkspace() {
 	let value = {}
@@ -12,7 +12,7 @@ export function rememberWorkspace(state) {
 	try {
 		globalThis.sessionStorage?.setItem(STORAGE_KEY, JSON.stringify({
 			view: state.view, caseId: Number(state.currentCase?.id || state.currentCaseId || 0),
-			caseTab: state.caseTab, masterTab: state.masterTab, customizingTab: state.customizingTab,
+			caseTab: state.caseTab, masterTab: state.masterTab, customizingTab: state.customizingTab, masterDataTab: state.masterDataTab,
 			administrationTab: state.administrationTab, dashboardDate: state.dashboardDate,
 		}))
 	} catch (_) {}
@@ -38,8 +38,10 @@ export async function restoreWorkspace(ctx) {
 		}
 		if (state.view === 'document') await loadAllCaseFiles()
 		if (state.view === 'inbox') await loadPaperlessInbox()
+		// 0.92.0: Stammdaten lädt der Reiter selbst nach (Ressourcen, Niederlassungen, Leistungen, Wertelisten, Marker).
+		if (state.view === 'master-data' && ctx.loadMasterDataTab) await ctx.loadMasterDataTab(state.masterDataTab)
 		if (state.view === 'customizing') {
-			if (state.customizingTab === 'scheduling') state.scheduling = await api(schedulingUrl(), { feedback: false })
+			if (state.customizingTab === 'scheduling') [state.schedulingAdmin, state.scheduling] = await Promise.all([api(`${schedulingUrl()}?all=1`, { feedback: false }), api(schedulingUrl(), { feedback: false })])
 		}
 		if (state.view === 'administration' && state.administrationTab === 'system') await loadSystemCheck()
 		if (state.view === 'administration' && state.administrationTab === 'cockpit') await loadOperationsCockpit()

@@ -7,7 +7,7 @@ import { referenceNotice } from './catalog-references.js'
 export function createSetupPackageModule(ctx) {
 	const { state, esc, api, apiBase, render, notifySuccess, notifyError, notifyWarning, confirmAction, download } = ctx
 	const TYPES = [
-		['branches', 'Niederlassungen (ohne Bankverbindung)'], ['article-groups', 'Warengruppen'], ['articles', 'Leistungskatalog (Artikel)'], ['price-list', 'Preislisten'], ['document-template', 'Dokumentvorlagen'],
+		['branches', 'Niederlassungen (ohne Bankverbindung)'], ['value-lists', 'Wertelisten (auch Ressourcentypen)'], ['scheduling', 'Terminplanung (Terminarten, Ressourcen, Zuordnung)'], ['article-groups', 'Warengruppen'], ['articles', 'Leistungskatalog (Artikel)'], ['price-list', 'Preislisten'], ['document-template', 'Dokumentvorlagen'],
 		['order-form', 'Auftragsformulare'], ['labels', 'Marker (mit Auswahl aktiv/inaktiv)'], ['document-kinds', 'Dokumentarten (mit Paperless-Zuordnung)'], ['process-template', 'Ablaufvorlagen'],
 		['order-choices', 'Ankreuzfelder (Auftrag)'], ['typical-costs', 'Typische Fremdkosten'], ['variant-rules', 'Variantenregeln'], ['surcharge-rules', 'Zuschlagsstaffeln'], ['logo', 'Logos der Niederlassungen'],
 	]

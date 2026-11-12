@@ -81,6 +81,16 @@ class BestatterActivityService {
 			return;
 		}
 
+		// 0.91.0: In einer Fallnotiz erwähnt – nur Personen, die mit dieser Änderung neu erwähnt wurden.
+		if ($type === 'NOTE' && in_array($action, ['CREATED', 'UPDATED'], true)) {
+			$mentioned = static fn (array $record): array => array_values(array_map('strval', (array)($record['data']['mentions'] ?? [])));
+			$recipients = CaseNoteRules::newMentions($action === 'CREATED' ? [] : $mentioned($before), $mentioned($after));
+			if ($recipients !== []) {
+				$this->publish('bestatter_note_mention', 'note_mentioned', $recipients, $caseId, $objectId, $case, $actor, $title);
+			}
+			return;
+		}
+
 		if ($type === 'SCHEDULE' && in_array($action, ['CREATED', 'UPDATED', 'DELETED'], true)) {
 			$remoteDeleted = $action === 'UPDATED'
 				&& (string)($before['data']['nextcloud']['remoteDeletedAt'] ?? '') === ''

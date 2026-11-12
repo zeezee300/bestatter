@@ -144,7 +144,7 @@ export function createCaseGuidance(ctx) {
 		const admin = Boolean(state.team?.isBestatterAdmin)
 		const hold = admin ? `<button type="button" class="bp-menu-item" id="toggle-retention-hold" role="menuitem" title="${item.retentionHold ? 'Die Löschsperre nach Angabe eines Grundes aufheben.' : 'Den Fall vor Löschung und Anonymisierung schützen.'}">${item.retentionHold ? 'Legal Hold aufheben' : 'Legal Hold setzen'}</button>` : ''
 		const remove = admin ? '<button type="button" class="bp-menu-item bp-menu-danger" id="delete-case" role="menuitem" title="Diesen Fall nach Sicherheitsabfrage endgültig löschen.">Fall löschen</button>' : ''
-		return `<details class="bp-action-menu" id="case-action-menu"><summary class="bp-secondary" aria-haspopup="menu">Weitere Aktionen</summary><div class="bp-action-menu-list" role="menu" aria-label="Weitere Aktionen zum Fall"><button type="button" class="bp-menu-item" id="export-case" role="menuitem" title="Alle strukturierten Daten dieses Falls als Exportdatei herunterladen.">Falldaten exportieren</button>${hold}${remove}</div></details>`
+		return `<details class="bp-action-menu" id="case-action-menu"><summary class="bp-secondary" aria-haspopup="menu">Weitere Aktionen</summary><div class="bp-action-menu-list" role="menu" aria-label="Weitere Aktionen zum Fall"><button type="button" class="bp-menu-item" id="export-case" role="menuitem" title="Alle strukturierten Daten dieses Falls und seine Notizen (Markdown) als ZIP-Datei herunterladen.">Falldaten exportieren</button>${hold}${remove}</div></details>`
 	}
 
 	function bindCaseHead() {

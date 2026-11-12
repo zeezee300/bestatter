@@ -22,6 +22,7 @@ class ConfigurationService {
 		private FolderService $folders,
 		private TemplateFieldCatalogService $templateFields,
 		private CountryConfigurationService $countryConfiguration,
+		private ?CaseNumberService $caseNumbers = null,
 	) {
 	}
 
@@ -201,6 +202,8 @@ class ConfigurationService {
 			'vatId' => $row['vat_id'] ?? '', 'taxNumber' => $row['tax_number'] ?? '', 'registerCourt' => $row['register_court'] ?? '',
 			'registerNumber' => $row['register_number'] ?? '', 'managingDirectors' => $row['managing_directors'] ?? '', 'electronicAddress' => $row['electronic_address'] ?? '',
 			'memberUids' => json_decode((string)($row['member_uids'] ?? '[]'), true) ?: [], 'active' => (bool)$row['active'], 'sortOrder' => (int)$row['sort_order'],
+			// 0.90.2: Kennung in Fallnummern (leer = Niederlassungsschlüssel, sofern er als Kennung taugt).
+			'numberCode' => (string)($row['number_code'] ?? ''), 'numberCodeEffective' => CaseNumberService::effectiveCode((string)($row['number_code'] ?? ''), (string)$row['branch_key']),
 		], $rows);
 	}
 
@@ -225,6 +228,8 @@ class ConfigurationService {
 		if ($countryLabel === '') {
 			$countryLabel = $this->countryConfiguration->profile($country['countryCode'])['name'];
 		}
+		$numberCode = $this->branchNumberCode($data, $key, $id);
+		$this->assertBranchBankFormat($data, $id);
 		$values = [
 			'branch_key' => $key, 'name' => $name, 'street' => trim((string)($data['street'] ?? '')),
 			'postal_code' => trim((string)($data['postalCode'] ?? '')), 'city' => trim((string)($data['city'] ?? '')),
@@ -239,8 +244,68 @@ class ConfigurationService {
 			'electronic_address' => trim((string)($data['electronicAddress'] ?? '')), 'member_uids' => json_encode($memberUids, JSON_THROW_ON_ERROR), 'active' => (int)($data['active'] ?? true),
 			'sort_order' => (int)($data['sortOrder'] ?? 0), 'updated_at' => date('c'),
 		];
+		if ($numberCode !== null) {
+			$values['number_code'] = $numberCode !== '' ? $numberCode : null;
+		}
 		$this->upsert('bestatter_branches', $values, $id);
 		return $this->findByKey($this->branches(), $key);
+	}
+
+	/**
+	 * 0.90.2: Kennung in Fallnummern prüfen (Form, eindeutig je Niederlassung). null = Feld nicht übermittelt (z. B. ältere
+	 * Einrichtungspakete) – dann bleibt die gespeicherte Kennung unverändert. Tragen Fallnummern die Kennung, braucht jede aktive
+	 * Niederlassung eine gültige Kennung (eigene oder ein kurzer Niederlassungsschlüssel).
+	 */
+	private function branchNumberCode(array $data, string $key, int $id): ?string {
+		$given = array_key_exists('numberCode', $data);
+		$code = $given ? CaseNumberService::normalizeCode((string)$data['numberCode']) : null;
+		$current = '';
+		foreach ($this->branches() as $branch) {
+			if ($branch['id'] === $id) {
+				$current = (string)$branch['numberCode'];
+			}
+		}
+		$effective = CaseNumberService::effectiveCode($code ?? $current, $key);
+		if ($effective !== '') {
+			foreach ($this->branches() as $branch) {
+				if ($branch['id'] !== $id && $branch['key'] !== $key && $branch['numberCodeEffective'] === $effective) {
+					throw new \InvalidArgumentException('Die Kennung „' . $effective . '“ für Fallnummern hat bereits die Niederlassung „' . $branch['name'] . '“.');
+				}
+			}
+		}
+		$active = (bool)($data['active'] ?? true);
+		if ($effective === '' && $active && $this->caseNumbers !== null && CaseNumberService::withBranch($this->caseNumbers->settings())) {
+			throw new \InvalidArgumentException('Fallnummern tragen die Kennung der Niederlassung – bitte eine „Kennung in Fallnummern“ eintragen (1 bis 5 Großbuchstaben oder Ziffern, z. B. „HB“ oder „01“).');
+		}
+		return $code;
+	}
+
+	/**
+	 * 0.92.1: „Niederlassung speichern“ sichert die ganze Karte einschließlich der Bankdaten. IBAN und BIC werden dabei wie
+	 * beim eigenen Bankdaten-Endpunkt geprüft – aber nur, wenn sie sich gegenüber dem gespeicherten Stand ändern (Altbestände
+	 * und Einrichtungspakete mit unverändertem Wert bleiben speicherbar).
+	 */
+	private function assertBranchBankFormat(array $data, int $id): void {
+		$ibanValidator = new IbanValidator();
+		$iban = $ibanValidator->normalize((string)($data['iban'] ?? ''));
+		$bic = strtoupper(str_replace(' ', '', trim((string)($data['bic'] ?? ''))));
+		$stored = ['iban' => '', 'bic' => ''];
+		foreach ($id > 0 ? $this->branches() : [] as $branch) {
+			if ($branch['id'] === $id) {
+				$stored = ['iban' => strtoupper(str_replace(' ', '', (string)$branch['iban'])), 'bic' => strtoupper(str_replace(' ', '', (string)$branch['bic']))];
+			}
+		}
+		if ($iban !== '' && $iban !== $stored['iban']) {
+			if (!$ibanValidator->hasValidFormat($iban)) {
+				throw new \InvalidArgumentException('Die IBAN hat kein gültiges Format.');
+			}
+			if (!$ibanValidator->isValid($iban)) {
+				throw new \InvalidArgumentException('Die IBAN ist ungültig (Prüfziffer stimmt nicht).');
+			}
+		}
+		if ($bic !== '' && $bic !== $stored['bic'] && !preg_match('/^[A-Z0-9]{8}([A-Z0-9]{3})?$/', $bic)) {
+			throw new \InvalidArgumentException('Die BIC muss 8 oder 11 Zeichen enthalten.');
+		}
 	}
 
 	public function branchByKey(string $key): ?array {
@@ -317,14 +382,64 @@ class ConfigurationService {
 			$this->saveInvoiceSettings([]);
 			return $this->invoiceSettings();
 		}
+		$codes = $this->invoiceBranchCodes();
+		$example = ['key' => 'STAMMHAUS', 'code' => 'HB', 'name' => 'Stammhaus'];
+		foreach ($codes as $entry) {
+			if ($entry['active']) {
+				$example = ['key' => $entry['key'], 'code' => $entry['code'], 'name' => $entry['name']];
+				break;
+			}
+		}
 		return ['id' => (int)$row['id'], 'prefix' => $row['number_prefix'], 'pattern' => $row['number_pattern'], 'sequenceLength' => (int)$row['sequence_length'],
 			'sequenceScope' => $row['sequence_scope'], 'caseReference' => (bool)$row['case_reference'], 'zugferdEnabled' => (bool)$row['zugferd_enabled'],
 			'zugferdVersion' => $row['zugferd_version'], 'zugferdProfile' => $row['zugferd_profile'],
 			'xrechnungEnabled' => (bool)($row['xrechnung_enabled'] ?? false), 'normativeValidationRequired' => (bool)($row['norm_validation_required'] ?? false),
 			'qrEnabled' => (bool)$row['qr_enabled'],
 			'correctionPrefix' => strtoupper(trim((string)($row['correction_prefix'] ?? 'GS'))) ?: 'GS',
-			'preview' => $this->renderInvoiceNumber($row, 1, '2026-0006', 'STAMMHAUS'),
-			'correctionPreview' => $this->renderInvoiceNumber(['number_prefix' => strtoupper(trim((string)($row['correction_prefix'] ?? 'GS'))) ?: 'GS'] + $row, 1, '2026-0006', 'STAMMHAUS')];
+			'preview' => $this->renderInvoiceNumber($row, 1, '2026-0006', $example['key'], $example['code']),
+			'correctionPreview' => $this->renderInvoiceNumber(['number_prefix' => strtoupper(trim((string)($row['correction_prefix'] ?? 'GS'))) ?: 'GS'] + $row, 1, '2026-0006', $example['key'], $example['code']),
+			// 0.92.1: Bausteine {BRANCH} (Schlüssel) und {KENNUNG} (Kennung der Niederlassung) – Beispielwerte und Hinweise für die Oberfläche.
+			'previewBranch' => $example, 'branchCodes' => $codes,
+			'problems' => $this->invoiceNumberProblems((string)$row['number_pattern'], $codes)];
+	}
+
+	/**
+	 * 0.92.1: Kennung der Niederlassung für den Baustein {KENNUNG} der Rechnungsnummer: die „Kennung“ aus den Stammdaten,
+	 * sonst der Niederlassungsschlüssel. Gilt unabhängig davon, ob Fallnummern die Kennung tragen.
+	 *
+	 * @return list<array{key: string, name: string, code: string, ownCode: bool, active: bool}>
+	 */
+	public function invoiceBranchCodes(): array {
+		try {
+			$branches = $this->branches();
+		} catch (\Throwable) {
+			return [];
+		}
+		return array_map(static fn (array $branch): array => [
+			'key' => strtoupper((string)$branch['key']), 'name' => (string)$branch['name'],
+			'code' => (string)$branch['numberCodeEffective'] !== '' ? (string)$branch['numberCodeEffective'] : strtoupper((string)$branch['key']),
+			'ownCode' => (string)$branch['numberCodeEffective'] !== '', 'active' => (bool)$branch['active'],
+		], $branches);
+	}
+
+	/** Kennung einer Niederlassung für {KENNUNG}; unbekannter Schlüssel → der Schlüssel selbst, leer → leer. */
+	public function invoiceBranchCode(string $branchKey): string {
+		$branchKey = strtoupper(trim($branchKey));
+		foreach ($branchKey !== '' ? $this->invoiceBranchCodes() : [] as $entry) {
+			if ($entry['key'] === $branchKey) {
+				return $entry['code'];
+			}
+		}
+		return $branchKey;
+	}
+
+	/** Hinweise zum Nummernmuster (keine Sperre): Niederlassungen ohne Kennung, wenn {KENNUNG} verwendet wird. */
+	private function invoiceNumberProblems(string $pattern, array $codes): array {
+		if (!str_contains(strtoupper($pattern), '{KENNUNG}')) {
+			return [];
+		}
+		$missing = array_values(array_filter($codes, static fn (array $entry): bool => $entry['active'] && !$entry['ownCode']));
+		return array_map(static fn (array $entry): string => 'Die Niederlassung „' . $entry['name'] . '“ hat keine Kennung (Stammdaten → Niederlassungen); in der Rechnungsnummer steht dann der Schlüssel ' . $entry['code'] . '.', $missing);
 	}
 
 	public function saveInvoiceSettings(array $data): array {
@@ -335,8 +450,8 @@ class ConfigurationService {
 		} catch (\Throwable) {
 		}
 		$pattern = strtoupper(trim((string)($data['pattern'] ?? $current['number_pattern'] ?? '{PREFIX}-{YYYY}-{SEQ}')));
-		if (!str_contains($pattern, '{SEQ}') || preg_match('/\{(?!PREFIX\}|YYYY\}|YY\}|SEQ\}|CASE\}|BRANCH\})[^}]+\}/', $pattern)) {
-			throw new \InvalidArgumentException('Das Nummernmuster muss {SEQ} enthalten und darf nur die angebotenen Platzhalter verwenden.');
+		if (!str_contains($pattern, '{SEQ}') || preg_match('/\{(?!PREFIX\}|YYYY\}|YY\}|SEQ\}|CASE\}|BRANCH\}|KENNUNG\})[^}]+\}/', $pattern)) {
+			throw new \InvalidArgumentException('Das Nummernmuster muss {SEQ} enthalten und darf nur die angebotenen Bausteine verwenden: {PREFIX}, {YYYY}, {YY}, {SEQ}, {CASE}, {BRANCH}, {KENNUNG}.');
 		}
 		$scope = strtoupper((string)($data['sequenceScope'] ?? $current['sequence_scope'] ?? 'YEAR_GLOBAL'));
 		if (!in_array($scope, ['YEAR_GLOBAL', 'YEAR_BRANCH', 'GLOBAL'], true)) {
@@ -360,9 +475,16 @@ class ConfigurationService {
 		return $this->invoiceSettings();
 	}
 
-	public function renderInvoiceNumber(array $settings, int $sequence, string $caseNumber, string $branchKey): string {
+	/**
+	 * {BRANCH} = Niederlassungsschlüssel des Falls, {KENNUNG} (0.92.1) = Kennung der Niederlassung aus den Stammdaten
+	 * (ohne Kennung der Schlüssel). $branchCode nur für die Vorschau vorgeben; sonst wird die Kennung nachgeschlagen.
+	 */
+	public function renderInvoiceNumber(array $settings, int $sequence, string $caseNumber, string $branchKey, ?string $branchCode = null): string {
 		$length = (int)($settings['sequence_length'] ?? $settings['sequenceLength'] ?? 6);
-		return strtr((string)($settings['number_pattern'] ?? $settings['pattern'] ?? '{PREFIX}-{YYYY}-{SEQ}'), [
+		$pattern = (string)($settings['number_pattern'] ?? $settings['pattern'] ?? '{PREFIX}-{YYYY}-{SEQ}');
+		$code = str_contains($pattern, '{KENNUNG}') ? ($branchCode ?? $this->invoiceBranchCode($branchKey)) : '';
+		return strtr($pattern, [
+			'{KENNUNG}' => strtoupper($code),
 			'{PREFIX}' => (string)($settings['number_prefix'] ?? $settings['prefix'] ?? 'RE'), '{YYYY}' => date('Y'), '{YY}' => date('y'),
 			'{SEQ}' => str_pad((string)$sequence, $length, '0', STR_PAD_LEFT), '{CASE}' => $caseNumber, '{BRANCH}' => strtoupper($branchKey),
 		]);

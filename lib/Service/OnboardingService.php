@@ -46,7 +46,7 @@ class OnboardingService {
 		// 0.76.0: Marker werden bei der Einrichtung ausgewählt (mitgeliefert, aber inaktiv) – nur Hinweis, kein Hindernis.
 		$labels = $this->labels->definitions();
 		$activeLabels = count(array_filter($labels, static fn (array $label): bool => $label['active']));
-		$checks[] = ['key' => 'labels', 'label' => 'Marker', 'status' => $activeLabels > 0 ? 'OK' : 'WARN', 'message' => $activeLabels > 0 ? $activeLabels . ' aktive Marker' : ($labels === [] ? 'Keine Marker vorhanden – sie kommen mit dem Einrichtungspaket oder werden unter Customizing → Marker angelegt (optional)' : 'Noch keine Marker ausgewählt (optional, auch später unter Customizing → Marker)')];
+		$checks[] = ['key' => 'labels', 'label' => 'Marker', 'status' => $activeLabels > 0 ? 'OK' : 'WARN', 'message' => $activeLabels > 0 ? $activeLabels . ' aktive Marker' : ($labels === [] ? 'Keine Marker vorhanden – sie kommen mit dem Einrichtungspaket oder werden unter Stammdaten → Marker angelegt (optional)' : 'Noch keine Marker ausgewählt (optional, auch später unter Stammdaten → Marker)')];
 		// 0.89.5: Eine neue Installation startet mit leerem Leistungskatalog; Inhalte kommen mit dem Einrichtungspaket.
 		$articleCount = 0;
 		if ($this->db !== null) {

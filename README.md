@@ -20,7 +20,7 @@ Eine ausführliche, bebilderte Beschreibung aller Funktionen enthält das **Anwe
 - [Hintergrund-Jobs](#hintergrund-jobs)
 - [Konfiguration](#konfiguration)
 - [Aus dem Quellcode bauen](#aus-dem-quellcode-bauen)
-- [Installationspaket bauen und signieren](#installationspaket-bauen-und-signieren)
+- [Installationspaket](#installationspaket)
 - [Codequalität](#codequalität)
 - [Projektstruktur](#projektstruktur)
 - [Entstehung](#entstehung)
@@ -29,16 +29,19 @@ Eine ausführliche, bebilderte Beschreibung aller Funktionen enthält das **Anwe
 
 ## Funktionsumfang
 
-- **Digitale Fallakte** – Stammdaten, Aufgaben, Termine, Dokumente, Leistungen und Rechnungen eines Sterbefalls an einem Ort, inklusive Fallübersicht, globaler Nextcloud-Suche und mobiler Ansicht.
+- **Digitale Fallakte** – Stammdaten, Aufgaben, Termine, Dokumente, Leistungen und Rechnungen eines Sterbefalls an einem Ort, inklusive Fallübersicht, Fallverlauf, Markern, Notizen mit @-Erwähnungen (auch aus der Nextcloud-App „Notizen“ übernehmbar), globaler Nextcloud-Suche und mobiler Ansicht.
+- **Aufträge ohne Sterbefall und Vorsorgen** – eigene Vorgangsarten mit eigenen Nummernkreisen (z. B. Verkauf, Überführung, Urnenbeisetzung) sowie Vorsorgeverträge mit Finanzierung, Wiedervorlage und Übernahme in den Sterbefall.
 - **Geführte Schnellerfassung** – optionale, KI-gestützte Transkription von Aufnahmegesprächen mit strukturierter Erkennung von Namen, Daten und weiteren Angaben; jede Übernahme erfordert eine ausdrückliche Bestätigung. Vollständig ohne KI-Anbindung nutzbar.
-- **Termine & Ressourcen** – Terminarten mit Standarddauern, serverseitige Konfliktprüfung für Mitarbeitende und Ressourcen (Fahrzeuge, Räume), lückenlose Terminhistorie, verlustfreie CalDAV-Synchronisation.
-- **Abläufe in 7 Phasen** – eine pflegbare Ablaufvorlage beschreibt je Schritt in Klartext, wann er entsteht, für welche Fälle er gilt, welche Rolle (Nextcloud-Gruppe) zuständig ist, bis wann er fällig ist und wann er sich selbst erledigt; Aufgaben entstehen automatisch als vollwertige Nextcloud-Tasks, der Fortschritt ist im Fallcockpit sichtbar (siehe Handbuch, Kapitel Customizing). Die 7 Phasen erscheinen in der Übersicht, im Reiter „Aufgaben“ und im Reiter „Termine“. 26 Auslöser, darunter Terminänderung, Dokument, Abmeldung, Stammdatenfeld und die zeitgesteuerten „Datum erreicht“ und „Rechnung überfällig“ (Hintergrundjob).
+- **Termine & Ressourcen** – Terminarten mit Standarddauern und Pflichtbedarf, Ressourcen (Fahrzeuge mit Kennzeichen, Räume, Kapellen, Ausstattung und eigene Typen mit Symbol) je Niederlassung, serverseitige Konfliktprüfung für Mitarbeitende und Ressourcen, lückenlose Terminhistorie, verlustfreie CalDAV-Synchronisation.
+- **Abläufe in 7 Phasen** – eine pflegbare Ablaufvorlage beschreibt je Schritt in Klartext, wann er entsteht, für welche Fälle er gilt, welche Rolle (Nextcloud-Gruppe) zuständig ist, bis wann er fällig ist und wann er sich selbst erledigt; Aufgaben entstehen automatisch als vollwertige Nextcloud-Tasks, der Fortschritt ist im Fallcockpit sichtbar (siehe Handbuch, Kapitel Customizing). Die 7 Phasen erscheinen in der Übersicht, im Reiter „Aufgaben“ und im Reiter „Termine“. 34 Auslöser, darunter Terminänderung, Dokument, Abmeldung, Stammdatenfeld und die zeitgesteuerten „Datum erreicht“ und „Rechnung überfällig“ (Hintergrundjob).
 - **Dokumente auf Knopfdruck** – Vorlagenbibliothek (Bestattungsauftrag, -vollmacht, Sterbefallanzeige, Kondolenzliste, Abmeldungen u. a.), automatische Befüllung aus den Falldaten, Ausgabe als DOCX/PDF, Revisionssicherheit gegen Änderung finaler Dokumente, optionaler Direktversand über ein hinterlegtes Geschäfts-Postfach.
-- **Abrechnung** – Kostenvoranschlag und verbindlicher Auftrag mit geführter Leistungsauswahl, Teil- und Schlussrechnungen, native ZUGFeRD-/XRechnung-Erstellung inkl. EPC-SEPA-Zahlcode, Abrechnungssicherheitsprüfung, Eingangsrechnungsprüfung sowie eigenständige Nebenaufträge für weitere Beteiligte im selben Fall.
-- **Paperless-ngx-Anbindung (optional)** – automatischer, wiederanlauffähiger Beleg-Import inklusive OCR; fachliche Prüfung und Freigabe bleiben vollständig in „Bestatter".
+- **Abrechnung** – Kostenvoranschlag und verbindlicher Auftrag mit geführter Leistungsauswahl und Tablet-Unterschrift, Teil- und Schlussrechnungen, Storno und Gutschrift, native ZUGFeRD-/XRechnung-Erstellung inkl. EPC-SEPA-Zahlcode, Abrechnungssicherheitsprüfung, Eingangsrechnungsprüfung sowie eigenständige Nebenaufträge für weitere Beteiligte im selben Fall.
+- **Buchhaltungsexport** – freigegebene Rechnungen, Stornos und Gutschriften als Buchungsstapel im DATEV-Format für die Steuerberatung, mit Prüfliste, Exportprotokoll und Debitorenliste.
+- **Belegeingang** – Belege aus einem Nextcloud-Eingangsordner (Scanner, Handy, Mail-Anhang), per Direkt-Upload oder optional aus [Paperless-ngx](https://docs.paperless-ngx.com/); E-Rechnungen (XRechnung, ZUGFeRD) werden ausgelesen, Dokumentart und Fall vorgeschlagen. Abgelegt wird erst nach Bestätigung in „Bestatter".
 - **Benachrichtigungen & Auswertungen** – native Nextcloud-Benachrichtigungen, geschützte CSV-Auswertungen je Niederlassung sowie ein rein lesendes Betriebs-Cockpit für die Administration.
 - **Datenschutz, Datensicherheit & Vertrauen** – vollständiges, unveränderliches Audit-Log, eingebaute Systemprüfung (inklusive Nextcloud-Kompatibilitätsüberwachung), administrative Backup-/Restore-/Retention-/Purge-Kommandos, Schutz vor Wettlaufsituationen bei gleichzeitiger Bearbeitung sowie inhaltsbasierte Prüfung von Datei-Uploads.
-- **Mehrere Standorte** – eigene Bankverbindungen, Absenderdaten, Kennzahlen und Länderprofile (Mehrwertsteuersätze, Rechnungsprofil, Zahl-Standard) je Niederlassung bei gemeinsamer Datenbasis.
+- **Mehrere Standorte** – eigene Bankverbindungen, Absenderdaten, Logos, Preislisten, Kennzahlen und Länderprofile (Mehrwertsteuersätze, Rechnungsprofil, Zahl-Standard) je Niederlassung bei gemeinsamer Datenbasis; Fall- und Rechnungsnummern wahlweise mit Kennung der Niederlassung (z. B. `HB-2026-0001`).
+- **Einrichtungspaket** – Leistungskatalog, Preislisten, Vorlagen, Formulare, Abläufe, Marker und Niederlassungen als Paket übertragen; eine neue Installation startet leer.
 - **Aufgeräumte Oberfläche** – einklappbare Navigation links; Administration und Customizing stehen für Bestatter-Administratoren im eigenen Abschnitt „Einstellungen“.
 
 ## Voraussetzungen
@@ -47,7 +50,7 @@ Eine ausführliche, bebilderte Beschreibung aller Funktionen enthält das **Anwe
 - PHP 8.2, 8.3, 8.4 oder 8.5 (Nextcloud 35: ab 8.3) mit den Erweiterungen `gd` und `zip`.
 - Nextcloud-Cron (System-Cron, mindestens alle 5 Minuten) sowie die Nextcloud-Apps **Activity**, **Kalender**, **Kontakte** und empfohlen **Aufgaben** (Tasks).
 - Optional, aber empfohlen:
-  - [**Paperless-ngx**](https://docs.paperless-ngx.com/) für die automatische Belegverarbeitung,
+  - [**Paperless-ngx**](https://docs.paperless-ngx.com/) für die automatische Belegverarbeitung (der Belegeingang funktioniert auch ohne: Eingangsordner und Direkt-Upload),
   - **Collabora Online** oder **OnlyOffice** für die Bearbeitung erzeugter DOCX-Dokumente direkt im Browser,
   - **Nextcloud Talk** mit lokaler Spracherkennung sowie ein in Nextcloud registrierter Task-Processing-Anbieter (`OCP\TaskProcessing`) für die KI-gestützte Schnellerfassung und den Bestatter-Assistenten.
 
@@ -55,7 +58,7 @@ Alle produktiv benötigten PHP-Abhängigkeiten (u. a. `endroid/qr-code`, `bacon/
 
 ## Installation
 
-1. Das Installationspaket `bestatter-<version>.tar.gz` (oder `.zip`) herunterladen oder selbst bauen (siehe [Installationspaket bauen](#installationspaket-bauen-und-signieren)). Sobald die App im Nextcloud App Store veröffentlicht ist, genügt dort „Herunterladen und aktivieren“.
+1. Das Installationspaket `bestatter-<version>.tar.gz` mit Prüfsumme `<paket>.sha256` von der GitHub-Seite **Releases** dieses Repositorys herunterladen (siehe [Installationspaket](#installationspaket)). Sobald die App im Nextcloud App Store veröffentlicht ist, genügt dort „Herunterladen und aktivieren“.
 2. Das Paket nach `custom_apps/` der Nextcloud-Installation entpacken, sodass `custom_apps/bestatter/appinfo/info.xml` existiert, und die Dateien dem Webserver-Benutzer zuordnen (z. B. `chown -R www-data:www-data custom_apps/bestatter`; im offiziellen Docker-Image UID 33).
 3. Aktivieren: `occ app:enable bestatter` oder in Nextcloud unter **Apps → Deaktivierte Apps**.
 4. Die App als Nextcloud-Administrator öffnen und der Ersteinrichtung folgen (siehe unten). Rollen und Zugriffsrechte werden ausschließlich über reguläre Nextcloud-Gruppen gesteuert, es entsteht keine zweite Benutzerverwaltung.
@@ -109,7 +112,7 @@ Alle datenverändernden Kommandos zeigen ohne weitere Angaben nur eine Vorschau 
 Alle Jobs laufen über den Nextcloud-Cron, nie parallel.
 
 - `MaintenanceJob` (6 Stunden) – Kennzahlen für die Systemprüfung (Integrität, Audit-Kette); löscht nur nicht abgeholte Sprachaufnahmen nach 24 Stunden.
-- `PaperlessSyncJob` (5 Minuten) – wiederanlauffähige Übertragung und Statusabfrage von Belegen an Paperless-ngx.
+- `PaperlessSyncJob` (5 Minuten) – liest den Eingangsordner des Belegeingangs, holt Texterkennungen ab und überträgt Belege wiederanlauffähig an Paperless-ngx bzw. fragt deren Status ab (wenn eingerichtet).
 - `ProcessScheduleJob` (6 Stunden) – zeitgesteuerte Ablaufschritte („Datum erreicht“, „Rechnung überfällig“).
 - `GroupwareRetryJob` (30 Minuten) – wiederholt fehlgeschlagene Übertragungen von Aufgaben und Terminen nach Nextcloud, sobald Kalender bzw. Aufgabenliste der Person existiert.
 - `ScheduledBackupJob` (15 Minuten) – legt nach dem Zeitplan unter Administration → Backup & Restore automatisch Sicherungen an und räumt abgelaufene auf (ab 0.78.0).
@@ -119,6 +122,8 @@ Alle Jobs laufen über den Nextcloud-Cron, nie parallel.
 Konfigurationswerte liegen als App-Config in der Nextcloud-Datenbank (`occ config:app:*`), nicht in Dateien. Relevante Schlüssel u. a.:
 
 - `development_reset_enabled` – muss explizit auf `yes` gesetzt sein, damit `occ bestatter:development-reset` überhaupt läuft.
+
+Fachliche Einstellungen (Rechnungs- und Fallnummern, Buchhaltungsexport, Installationsparameter, Sicherungszeitplan) werden in der App unter **Einstellungen → Administration** gepflegt; sie liegen ebenfalls in der Datenbank und sind in jeder Sicherung enthalten.
 
 Die eigentliche KI-/Spracherkennungs-Anbindung wird zentral in Nextcloud selbst über das Task-Processing-Framework konfiguriert, nicht innerhalb von „Bestatter".
 
@@ -137,23 +142,19 @@ Frontend-Quelldateien liegen unter `src/` (Einstiegspunkt `src/main.js`, Module 
 
 Die PHP-Laufzeitabhängigkeiten (`vendor/`, u. a. für ZUGFeRD und QR-Code) sind nicht Teil dieses Repositorys – für eine lokale Entwicklungsumgebung einmalig `composer install` ausführen. Das Installationspaket enthält `vendor/` fertig gebaut.
 
-## Installationspaket bauen und signieren
+## Installationspaket
+
+Das Installationspaket `bestatter-<version>.tar.gz` enthält nur die Laufzeitdateien (gebautes Frontend, `vendor/` ohne Entwicklungsabhängigkeiten, Handbuch, Update-Skript `bin/bestatter-update.sh`), keine Quellen der Oberfläche. Gebaut wird es mit `tools/release/build-package.sh` (prüft vorher, dass `info.xml`, `package.json`, `Application::VERSION` und `CHANGELOG.md` dieselbe Version tragen):
+
+- **Jeder Push:** Sind alle Prüfungen der CI grün, baut der Job „Installationspaket bauen“ das Paket und legt es als Artefakt am Lauf ab (Actions → Lauf → *Artifacts*; nur für angemeldete GitHub-Nutzer, 30 Tage). Gedacht zum Testen.
+- **Versions-Tag `vX.Y.Z`:** Zusätzlich entsteht eine GitHub-Release mit `bestatter-X.Y.Z.tar.gz`, `.zip` und den `.sha256`-Dateien; der Text der Release ist der Abschnitt aus `CHANGELOG.md`. Der Tag muss zur Version in `appinfo/info.xml` passen, sonst bricht der Lauf ab.
+
+Die Pakete aus der CI sind nicht signiert (keine Nextcloud-Codesignatur).
 
 ```bash
-bash tools/release/build-package.sh                     # releases/bestatter-<version>.tar.gz und .zip (unsigniert)
-bash tools/release/build-package.sh --vendor-from ../vendor   # ohne Netz: vorhandenes vendor/ übernehmen
+bash tools/release/build-package.sh              # lokal: releases/bestatter-<version>.tar.gz, .zip und .sha256
+git tag v<version> && git push origin v<version> # Release auf GitHub auslösen
 ```
-
-Das Skript prüft vorher, dass `appinfo/info.xml`, `package.json`, `Application::VERSION` und der Abschnitt in `CHANGELOG.md` dieselbe Version tragen. Liegt der Ordner `tests/` vor, führt es außerdem die Tests und PHPStan aus (`PHPSTAN=/pfad/phpstan.phar`, Konfiguration über `PHPSTAN_CONFIG`); schlägt eins fehl, entsteht kein Paket (`--skip-checks` nur im Notfall). Es nimmt nur Laufzeitdateien auf (keine Quellen der Oberfläche, kein `.git`) und installiert die PHP-Bibliotheken ohne Entwicklungsabhängigkeiten.
-
-Für den Nextcloud App Store wird zusätzlich signiert. Dazu braucht es den privaten Schlüssel `bestatter.key` und das von Nextcloud ausgestellte Zertifikat `bestatter.crt` sowie eine laufende Nextcloud für `occ integrity:sign-app`:
-
-```bash
-bash tools/release/build-package.sh --key ~/.nextcloud/certificates/bestatter.key --cert ~/.nextcloud/certificates/bestatter.crt \
-  --container nextcloud --occ "docker exec -u www-data nextcloud php occ"
-```
-
-Das erzeugt `appinfo/signature.json` im Paket und die App-Store-Signatur des Archivs in `releases/bestatter-<version>.tar.gz.sig`. Der private Schlüssel wird nicht ins Paket aufgenommen und im Container sofort wieder gelöscht.
 
 ## Codequalität
 
@@ -177,7 +178,7 @@ resources/   Mitgelieferte Dokumentvorlagen, Hilfetexte, Stammdaten (Leistungska
 src/         Frontend-Quellcode (unminifiziert)
 templates/   Server-seitiges PHP-Template der App-Seite
 vendor/      PHP-Laufzeitabhängigkeiten (nicht im Repository, siehe oben)
-tools/       Release-Paket (tools/release), Update-Skript (tools/update), CI-Konfiguration (tools/ci)
+tools/       Paketbau (tools/release), Update-Skript (tools/update), CI-Konfiguration (tools/ci)
 ```
 
 ## Entstehung

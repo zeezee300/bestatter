@@ -42,6 +42,7 @@ class CaseHistoryFormatter {
 		'ASSISTANT' => 'Assistent', 'RETENTION' => 'Aufbewahrung', 'CASE_EXPORT' => 'Fallakte', 'CAPTURE_IMPORT' => 'Schnellerfassung',
 		'ARTICLE' => 'Artikel', 'ARTICLE_GROUP' => 'Warengruppe', 'ARTICLE_AREA' => 'Katalogbereich', 'ARTICLE_CATALOG' => 'Leistungskatalog',
 		'ORDER_FORM' => 'Auftragsformular', 'PRICE_LIST' => 'Preisliste', 'PRICE_LIST_ITEM' => 'Preis', 'LABEL' => 'Marker', 'LABEL_DEFINITION' => 'Marker (Customizing)',
+		'NOTE' => 'Notiz',
 	];
 	public const ACTIONS = [
 		'CREATED' => 'angelegt', 'UPDATED' => 'geändert', 'DELETED' => 'gelöscht', 'VERSION_CREATED' => 'festgeschrieben',
@@ -50,7 +51,7 @@ class CaseHistoryFormatter {
 		'LEGAL_HOLD_SET' => 'Legal Hold gesetzt', 'LEGAL_HOLD_RELEASED' => 'Legal Hold aufgehoben', 'SET' => 'gesetzt', 'REMOVED' => 'entfernt',
 		'CHANGED' => 'geändert', 'ACTIVATED' => 'aktiviert', 'SMTP_ACCEPTED' => 'per E-Mail versendet', 'EXPORTED' => 'exportiert',
 		'CLOSURE_RECORDED' => 'abgeschlossen', 'CREATED_WITH_OVERRIDE' => 'trotz Prüfhinweisen angelegt', 'TRANSFERRED' => 'in die Leistungen übernommen',
-		'DOCUMENTED' => 'dokumentiert', 'PAPERLESS_LINKED' => 'mit Paperless verknüpft', 'ADDRESS_BOOK_CREATED' => 'ins Adressbuch übernommen',
+		'DOCUMENTED' => 'dokumentiert', 'PAPERLESS_LINKED' => 'mit Paperless verknüpft', 'INBOX_LINKED' => 'aus dem Belegeingang übernommen', 'ADDRESS_BOOK_CREATED' => 'ins Adressbuch übernommen',
 		'APPLIED' => 'übernommen',
 	];
 	/** Vollständige Titel, wo „Objekt + Tätigkeit“ nicht passt. */
@@ -69,9 +70,12 @@ class CaseHistoryFormatter {
 		'PROCESS/STARTED' => 'Ablauf gestartet',
 		'PROCESS/STEP_SKIPPED' => 'Ablaufschritt entfällt',
 		'PROCESS/CASE_CLOSED' => 'Fall über den Ablauf abgeschlossen',
+		'PROCESS/CEREMONY_FROM_SCHEDULE' => 'Fallmerkmal „Trauerfeier“ aus bestätigtem Termin auf „ja“ gesetzt',
 		'DEREGISTRATION_MAIL/STATUS_TRANSITION_FAILED' => 'Abmeldung versendet, Status nicht umgestellt',
 		'CAPTURE_IMPORT/CONFIRMED_AND_FILED' => 'Schnellerfassung übernommen und abgelegt',
 		'DOCUMENT/PAPERLESS_LINKED' => 'Dokument mit Paperless verknüpft',
+		'DOCUMENT/INBOX_LINKED' => 'Dokument aus dem Belegeingang übernommen',
+		'INCOMING_INVOICE/INBOX_LINKED' => 'Eingangsrechnung aus dem Belegeingang übernommen',
 		'SCHEDULE/DEPENDENT_ACTIONS_REACTIVATED' => 'Folgeaktionen des Termins wieder aktiviert',
 		'ASSISTANT/TASK_BATCH_CREATED' => 'Aufgaben über den Assistenten angelegt',
 		'ASSISTANT/MASTER_DATA_APPLIED' => 'Stammdaten über den Assistenten übernommen',
@@ -465,6 +469,9 @@ class CaseHistoryFormatter {
 				return $text('reason') !== '' ? [self::line('reason', 'Begründung: ' . $text('reason'))] : [];
 			case 'PROCESS/CASE_CLOSED':
 				return $text('note') !== '' ? [self::line('note', 'Abschlussgrund: ' . $text('note'))] : [];
+			case 'PROCESS/CEREMONY_FROM_SCHEDULE':
+				$when = strtotime($text('date'));
+				return $text('title') !== '' ? [self::line('schedule', 'Termin „' . $text('title') . '“' . ($when !== false && $text('date') !== '' ? ' am ' . date('d.m.Y, H:i', $when) . ' Uhr' : ''))] : [];
 			case 'CASE/FOLLOWUP_RECORDS_CLOSED':
 			case 'CASE/FOLLOWUP_RECORDS_CANCELLED':
 				return (int)($a['count'] ?? 0) > 0 ? [self::line('count', (int)$a['count'] === 1 ? '1 Eintrag' : (int)$a['count'] . ' Einträge')] : [];

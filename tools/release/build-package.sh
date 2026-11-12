@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Baut das Installationspaket der App (tar.gz für den Nextcloud App Store, zusätzlich zip) aus dem Quellcode.
+# Wird lokal und von der GitHub-CI benutzt (Job „package“: Artefakt bei jedem Push, GitHub-Release bei Tag vX.Y.Z).
 #
 #   bash tools/release/build-package.sh [Optionen]
 #
@@ -14,8 +15,8 @@
 #
 # Vor dem Bauen laufen die Tests (node tests/run-all.mjs) und PHPStan. Schlägt eins fehl, entsteht kein Paket.
 # PHPStan wird gesucht als $PHPSTAN (z. B. Pfad zu phpstan.phar), vendor/bin/phpstan oder phpstan im Suchpfad;
-# Konfiguration: $PHPSTAN_CONFIG, sonst phpstan.neon. Fehlt der Ordner tests/ (öffentliche Arbeitskopie, CI), werden
-# beide Prüfungen mit Hinweis übersprungen – die CI führt PHPStan in einem eigenen Schritt aus.
+# Konfiguration: $PHPSTAN_CONFIG, sonst phpstan.neon. Fehlt der Ordner tests/, werden
+# beide Prüfungen mit Hinweis übersprungen (in der CI laufen sie als eigene Jobs vor dem Bauen).
 #
 # Ohne --key/--cert entsteht ein unsigniertes Paket (Testinstallation). Mit --key/--cert/--occ wird zuerst
 # appinfo/signature.json erzeugt (Nextcloud-Codesignatur) und danach die App-Store-Signatur des tar.gz in
@@ -56,7 +57,7 @@ if [ $SKIP_CHECKS -eq 1 ]; then
 	echo "WARNUNG: --skip-checks – Tests und PHPStan wurden NICHT ausgeführt; das Paket ist ungeprüft." >&2
 	CHECKS="übersprungen (--skip-checks)"
 elif [ ! -f "$ROOT/tests/run-all.mjs" ]; then
-	echo "Hinweis: kein Ordner tests/ (öffentliche Arbeitskopie bzw. CI) – Tests und PHPStan werden hier nicht ausgeführt."
+	echo "Hinweis: kein Ordner tests/ – Tests und PHPStan werden hier nicht ausgeführt."
 	CHECKS="hier nicht ausgeführt (kein tests/)"
 else
 	command -v node >/dev/null || fail "node nicht gefunden – für die Tests wird Node.js ≥ 22 benötigt (oder --skip-checks)"

@@ -1,5 +1,5 @@
 // 0.89.3: Customizing → E-Mail-Vorlagen für Auftrag, Kostenvoranschlag und Rechnung (Betreff, Text, Platzhalter, Vorschau)
-// und Signaturzusatz. Die Signatur selbst entsteht aus den Angaben der Niederlassung (Administration → Niederlassungen).
+// und Signaturzusatz. Die Signatur selbst entsteht aus den Angaben der Niederlassung (Stammdaten → Niederlassungen).
 
 export function createMailTemplatesModule(ctx) {
 	const { root, apiBase, state } = ctx
@@ -36,7 +36,7 @@ export function createMailTemplatesModule(ctx) {
 			<div class="bp-panel-head"><div><h3>E-Mail-Vorlagen</h3><p class="bp-muted">Betreff und Text für den Versand von Bestattungsauftrag, Kostenvoranschlag und Rechnung an die Angehörigen. Die Versandvorschau im Geschäfts-Postfach übernimmt den Text; er lässt sich dort für die einzelne Nachricht ändern. Anrede, Dokumentangaben und Signatur setzt die App über die Platzhalter ein.</p></div></div>
 			${catalog.canEdit ? '' : '<p class="bp-muted">Nur Bestatter-Administratoren können die Vorlagen ändern.</p>'}
 			<div class="bp-mail-templates">${(catalog.templates || []).map((template) => card(template, catalog)).join('')}</div>
-			<article class="bp-mail-template" data-mail-signature-admin><div class="bp-panel-head"><div><h4>Signatur</h4><p class="bp-muted">Die Signatur ({{mail.signature}}) entsteht aus Name, Anschrift, Telefon und E-Mail der Niederlassung des Falls; Geschäftsführung, Registergericht und USt-IdNr. stehen darunter, soweit unter Administration → Niederlassungen eingetragen. Der Signaturzusatz erscheint bei allen Niederlassungen, zum Beispiel Erreichbarkeit oder Internetseite.</p></div></div>
+			<article class="bp-mail-template" data-mail-signature-admin><div class="bp-panel-head"><div><h4>Signatur</h4><p class="bp-muted">Die Signatur ({{mail.signature}}) entsteht aus Name, Anschrift, Telefon und E-Mail der Niederlassung des Falls; Geschäftsführung, Registergericht und USt-IdNr. stehen darunter, soweit unter Stammdaten → Niederlassungen eingetragen. Der Signaturzusatz erscheint bei allen Niederlassungen, zum Beispiel Erreichbarkeit oder Internetseite.</p></div></div>
 				<label><span>Signaturzusatz</span><textarea data-mail-signature-extra rows="3" maxlength="1000" ${catalog.canEdit ? '' : 'disabled'}>${esc(catalog.signatureExtra || '')}</textarea></label>
 				<p class="bp-card-state" data-mail-signature-state aria-live="polite"></p>
 				${catalog.canEdit ? '<div class="bp-row-actions"><button type="button" class="bp-primary" data-mail-signature-save>Signaturzusatz speichern</button></div>' : ''}

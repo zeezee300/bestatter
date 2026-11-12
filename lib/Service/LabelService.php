@@ -12,7 +12,7 @@ use OCP\IUserSession;
 /**
  * Marker am Fall (0.76.0, Stufe 1).
  *
- * - Definitionen pflegen Bestatter-Administratoren unter Customizing → Marker (Ja/Nein oder Liste,
+ * - Definitionen pflegen Bestatter-Administratoren unter Stammdaten → Marker (Ja/Nein oder Liste,
  *   Farbe aus fester Palette, Symbol aus fester Auswahl, stabiler technischer Schlüssel).
  * - Marker-Vorschläge kommen seit 0.89.5 mit dem Einrichtungspaket (bis 0.89.4: resources/labels.json, inaktiv angelegt);
  *   bei der Einrichtung werden sie ausgewählt. Früher mitgelieferte Marker lassen sich nur deaktivieren, nicht löschen.

@@ -1,3 +1,5 @@
+import { handbookHelpLink, handbookUrl } from './handbook.js'
+
 export function createAssistantModule(ctx) {
 	const { state } = ctx
 	const esc = (...args) => ctx.esc(...args)
@@ -172,7 +174,7 @@ export function createAssistantModule(ctx) {
 				${captureGroup('Auftraggeber/in', `${captureField('order_client_relation')}${captureField('order_client_first_name')}${captureField('order_client_name')}${captureField('order_client_mobile', 'tel')}`)}
 				${captureGroup('Bestattung und Urkunden', `${burialChoice(data)}${captureField('cemetery_contact')}${captureField('certificate_free_count', 'number')}${captureField('certificate_paid_count', 'number')}`)}
 				${captureGroup('Zuständigkeit', `<label><span>Niederlassung</span><select name="branch"><option value=""></option>${branchOptions}</select></label><label><span>Zuständiger Mitarbeiter</span><select name="responsible_employee"><option value=""></option>${memberOptions}</select></label>`)}
-				${captureGroup('Gesprächsnotiz', `<label class="bp-span-2"><span>Interne Gesprächsnotiz</span><textarea name="notes" rows="4">${esc(data.notes || capture().transcript)}</textarea></label>`, true)}
+				${captureGroup('Gesprächsnotiz', `<label class="bp-span-2"><span>Interne Gesprächsnotiz</span><textarea name="notes" rows="4">${esc(data.notes || capture().transcript)}</textarea><small>Wird beim Anlegen als Notiz „Gesprächsnotiz“ im Reiter „Notizen“ gespeichert.</small></label>`, true)}
 			</form>
 			${(capture().warnings || []).length ? `<ul class="bp-capture-warnings">${capture().warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul>` : ''}</div></div>
 			<div class="bp-capture-actions"><button type="button" class="bp-secondary" data-capture-step="1">Zurück</button><button type="button" class="bp-primary" id="capture-review">Zur Prüfung</button></div>
@@ -231,7 +233,7 @@ export function createAssistantModule(ctx) {
 		const checks = questions.filter((question) => question.kind === 'CHECK' && filled(question.field))
 		const followUps = selectedFollowUps()
 		const cards = groups.map(([title, keys]) => `<section class="bp-capture-review-group"><h4>${esc(title)}</h4><dl>${keys.map(row).join('')}</dl></section>`).join('')
-		const note = filled('notes') ? `<section class="bp-capture-review-group bp-capture-review-note"><h4>Gesprächsnotiz</h4><p>${esc(data.notes)}</p></section>` : ''
+		const note = filled('notes') ? `<section class="bp-capture-review-group bp-capture-review-note"><h4>Gesprächsnotiz</h4><p>${esc(data.notes)}</p><small class="bp-muted">Wird als Notiz „Gesprächsnotiz“ im Reiter „Notizen“ gespeichert.</small></section>` : ''
 		return `<section class="bp-panel bp-capture-panel"><div class="bp-panel-head"><div><p class="bp-eyebrow">Schritt 3</p><h3>Entwurf verbindlich anlegen</h3></div><span class="bp-status">Noch nicht gespeichert</span></div>
 			<p>Bitte kontrolliere besonders Namen, Datumsangaben, Bestattungsart, Niederlassung und Zuständigkeit. Der Assistent legt erst nach dem folgenden Klick einen Fall an.</p>
 			${(capture().duplicates || []).length ? `<div class="bp-warning" role="alert"><b>Möglicher Doppelfall:</b> ${capture().duplicates.map((item) => esc(`${item.caseNumber} · ${item.firstName} ${item.lastName}${item.dateOfDeath ? ` · † ${new Date(`${item.dateOfDeath}T00:00:00`).toLocaleDateString('de-DE')}` : ''}`)).join('; ')}. Bitte prüfen, ob der Sterbefall schon angelegt ist.</div>` : ''}
@@ -259,10 +261,51 @@ export function createAssistantModule(ctx) {
 		}).join('')}</div>`
 	}
 
-	function assistantPreview(preview) {
+	// 0.90.2: Bedienungsfragen und nicht erkannte Anfragen beantwortet die Bedienhilfe (Handbuch); ohne passenden Hilfetext
+	// erfasst sie die Frage als offene Hilfefrage für die Bestatter-Administration.
+	const UNAVAILABLE = 'Die Bedienhilfe ist in dieser Installation gerade nicht verfügbar. Bitte im Handbuch nachsehen (Navigation → Handbuch).'
+	const helpSourceHref = (source) => source.kind === 'section' && source.id ? `${handbookUrl()}#${source.id}` : handbookHelpLink(source.heading)
+	function assistantHelpBlock(help) {
+		if (!help) return ''
+		const recorded = help.recorded ? '<p class="bp-help-feedback bp-muted">Diese Frage geht ohne Ihren Namen an die Bestatter-Administration (Offene Hilfefragen), damit Handbuch und Bedienhilfe ergänzt werden können.</p>' : ''
+		const sources = help.sources || []
+		if (help.status === 'FOUND') return `<div class="bp-assistant-help" data-assistant-help="FOUND"><h3>Aus der Bedienhilfe</h3>${sources.map((source, index) => `<details class="bp-help-topic" ${index === 0 ? 'open' : ''}><summary>${esc(source.heading)}</summary><p>${esc(source.excerpt || '')}</p><a href="${esc(helpSourceHref(source))}" target="_blank" rel="noopener">Im Handbuch öffnen</a></details>`).join('')}</div>`
+		if (['SCHEDULED', 'RUNNING'].includes(help.status)) return '<div class="bp-assistant-help" data-assistant-help="PENDING"><h3>Aus der Bedienhilfe</h3><p class="bp-muted">Die Bedienhilfe sucht im Handbuch …</p></div>'
+		const links = sources.length ? `<small class="bp-help-sources">Quelle im Handbuch: ${sources.map((source) => `<a href="${esc(helpSourceHref(source))}" target="_blank" rel="noopener">${esc(source.heading)}</a>`).join(', ')}</small>` : ''
+		return `<div class="bp-assistant-help" data-assistant-help="${esc(help.status)}"><h3>Aus der Bedienhilfe</h3><p>${esc(help.answer || help.message || '')}</p>${links}${recorded}</div>`
+	}
+
+	async function askAssistantHelp(question, preview) {
+		const sidebar = state.assistantSidebar
+		sidebar.help = { status: 'SCHEDULED', question, sources: [] }
+		render()
+		const url = `${ctx.apiBase}/assistant/help`
+		try {
+			let result = await api(url, { method: 'POST', feedback: false, loadingLabel: false, body: new URLSearchParams({ question, context: '' }) })
+			for (let attempt = 0; ['SCHEDULED', 'RUNNING'].includes(result.status) && result.taskId && attempt < 40; attempt++) {
+				if (sidebar.preview !== preview) return
+				sidebar.help = { ...result, question }
+				render()
+				await new Promise((resolve) => setTimeout(resolve, 2500))
+				result = { ...result, ...await api(`${url}/status/${Number(result.taskId)}`, { feedback: false, loadingLabel: false }) }
+			}
+			if (sidebar.preview !== preview) return
+			sidebar.help = { ...result, question }
+			if (result.recorded) state.helpFeedback = undefined
+		} catch (error) {
+			if (sidebar.preview !== preview) return
+			// Bedienhilfe nicht erreichbar: bei einer Bedienungsfrage ein Hinweis, sonst bleibt die Antwort des Assistenten.
+			sidebar.help = preview?.intent === 'HELP_QUESTION' ? { status: 'UNAVAILABLE', answer: UNAVAILABLE, sources: [] } : null
+		}
+		render()
+	}
+
+	function assistantPreview(preview, help = null) {
 		if (!preview) return '<p class="bp-empty">Stellen Sie eine Frage oder wählen Sie eine Schnellprüfung.</p>'
 		const answer = preview.answer
-		return `<article class="bp-intent-preview"><b>${esc(answer?.title || preview.label)}</b><span>${esc(answer?.text || preview.message)}</span>${answer?.items?.length ? `<ul>${answer.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}${preview.requiredInput ? `<p class="bp-assistant-question"><b>Rückfrage:</b> ${esc(preview.requiredInput.question)}</p>` : ''}${assistantChoices(preview.choices)}${assistantDocumentCards(preview.documents)}${preview.writeOperation && !preview.choices?.length && !preview.documents?.length ? `<details><summary>Erkannte Daten prüfen</summary><pre>${esc(JSON.stringify(preview.data, null, 2))}</pre></details><strong>Keine Ausführung ohne gesonderte Bestätigung.</strong>` : ''}${preview.executable ? `<button type="button" class="bp-primary" id="assistant-sidebar-execute">${esc(assistantActionLabel(preview.intent))}</button>` : ''}</article>`
+		// Kam eine Antwort aus der Bedienhilfe, ersetzt sie die allgemeine Liste „Unterstützte Auskünfte“.
+		if (preview.helpQuestion && help && help.status !== 'NO_SOURCE' || preview.intent === 'HELP_QUESTION') return `<article class="bp-intent-preview">${assistantHelpBlock(help) || `<b>${esc(answer?.title || preview.label)}</b><span>${esc(answer?.text || preview.message)}</span>`}</article>`
+		return `<article class="bp-intent-preview"><b>${esc(answer?.title || preview.label)}</b><span>${esc(answer?.text || preview.message)}</span>${answer?.items?.length ? `<ul>${answer.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}${preview.requiredInput ? `<p class="bp-assistant-question"><b>Rückfrage:</b> ${esc(preview.requiredInput.question)}</p>` : ''}${assistantChoices(preview.choices)}${assistantDocumentCards(preview.documents)}${preview.helpQuestion ? assistantHelpBlock(help) : ''}${preview.writeOperation && !preview.choices?.length && !preview.documents?.length ? `<details><summary>Erkannte Daten prüfen</summary><pre>${esc(JSON.stringify(preview.data, null, 2))}</pre></details><strong>Keine Ausführung ohne gesonderte Bestätigung.</strong>` : ''}${preview.executable ? `<button type="button" class="bp-primary" id="assistant-sidebar-execute">${esc(assistantActionLabel(preview.intent))}</button>` : ''}</article>`
 	}
 
 	function assistantActionLabel(intent) {
@@ -286,7 +329,7 @@ export function createAssistantModule(ctx) {
 			<p class="bp-muted">Funktioniert auch ohne KI-Anbieter. Schreibende Vorschläge werden niemals ohne Ihre ausdrückliche Bestätigung ausgeführt.</p>
 			<div class="bp-assistant-quick" aria-label="Schnellfragen"><button type="button" data-assistant-question="Was ist heute fällig?">Mein Arbeitstag</button><button type="button" data-assistant-question="Suche Fall ">Fall suchen</button><button type="button" data-assistant-question="Welche Angaben fehlen in diesem Fall?">Fehlende Angaben</button><button type="button" data-assistant-question="Öffne die Stammdaten dieses Falls">Stammdaten</button><button type="button" data-assistant-question="Öffne die Leistungen dieses Falls">Leistungen</button><button type="button" data-assistant-question="Bereite eine Abmeldung vor">Abmeldung</button><button type="button" data-assistant-question="Ist der Fall für die Schlussrechnung vollständig?">Rechnungsbereitschaft</button><button type="button" data-assistant-question="Welche Dokumentausgaben kann ich für diesen Fall erzeugen?">Dokument ausgeben</button><button type="button" data-assistant-question="Welche Dokumente sind für diesen Fall eingegangen?">Eingegangene Dokumente</button><button type="button" data-assistant-question="Was liegt im Belegeingang?">Belegeingang</button>${isAdmin() ? '<button type="button" data-assistant-question="Ist Paperless richtig eingerichtet?">Paperless prüfen</button>' : ''}</div>
 			<form id="assistant-sidebar-command"><label class="bp-assistant-case-field"><span>Fallbezug</span><select name="caseId" title="${esc(selectedCaseLabel)}"><option value="0">Kein Fall ausgewählt</option>${caseOptions}</select><small aria-live="polite">${esc(selectedCaseLabel)}</small></label><label><span>Frage oder Arbeitsauftrag</span><textarea name="input" rows="4" placeholder="Zum Beispiel: Was ist heute fällig?">${esc(side.command)}</textarea><small>Enter startet die Prüfung · Umschalt+Enter fügt eine neue Zeile ein.</small></label><button class="bp-primary">Prüfen</button></form>
-			<div class="bp-assistant-response" role="status" aria-live="polite">${assistantPreview(preview)}</div>
+			<div class="bp-assistant-response" role="status" aria-live="polite">${assistantPreview(preview, side.help)}</div>
 			<footer><small>Der Assistent arbeitet mit geprüften fachlichen Regeln; es werden keine Falldaten an eine Text-KI übermittelt.</small></footer>
 		</aside>`
 	}
@@ -439,8 +482,12 @@ export function createAssistantModule(ctx) {
 
 	async function requestSidebarPreview() {
 		try {
-			state.assistantSidebar.preview = await api(`${ctx.apiBase}/assistant/intents/preview`, { method: 'POST', feedback: false, loadingLabel: 'Der Assistent prüft die Anfrage …', body: new URLSearchParams({ input: state.assistantSidebar.command, caseId: String(state.assistantSidebar.caseId || state.currentCase?.id || 0) }) })
+			state.assistantSidebar.help = null
+			const preview = await api(`${ctx.apiBase}/assistant/intents/preview`, { method: 'POST', feedback: false, loadingLabel: 'Der Assistent prüft die Anfrage …', body: new URLSearchParams({ input: state.assistantSidebar.command, caseId: String(state.assistantSidebar.caseId || state.currentCase?.id || 0) }) })
+			state.assistantSidebar.preview = preview
 			render()
+			if (preview?.helpQuestion && state.help?.available !== false) await askAssistantHelp(state.assistantSidebar.command, preview)
+			else if (preview?.intent === 'HELP_QUESTION') { state.assistantSidebar.help = { status: 'UNAVAILABLE', answer: UNAVAILABLE, sources: [] }; render() }
 		} catch (error) { notifyError(error.message) }
 	}
 
@@ -460,6 +507,8 @@ export function createAssistantModule(ctx) {
 				if (result.navigation.caseTab) state.caseTab = result.navigation.caseTab
 				if (result.navigation.administrationTab) state.administrationTab = result.navigation.administrationTab
 				if (result.navigation.customizingTab) state.customizingTab = result.navigation.customizingTab
+				if (result.navigation.masterDataTab) state.masterDataTab = result.navigation.masterDataTab // 0.92.0: Stammdaten
+				if (state.view === 'master-data' && ctx.loadMasterDataTab) await ctx.loadMasterDataTab(state.masterDataTab).catch(() => {})
 				// 0.81.0: Daten des Zielbereichs laden wie beim Klick in der Navigation
 				if (state.view === 'inbox' && ctx.loadPaperlessInbox) await ctx.loadPaperlessInbox()
 				if (state.view === 'administration' && state.administrationTab === 'system' && ctx.loadSystemCheck) await ctx.loadSystemCheck()
@@ -631,9 +680,10 @@ export function createAssistantModule(ctx) {
 			const scanImport = capture().scanImport ? { ...capture().scanImport } : null
 			const data = { ...capture().data, status: 'NEU' }
 			delete data.funeral_type // Ausschließlich der Variantenbaum bestimmt die Bestattungsart.
+			const captureNote = String(data.notes || '').trim(); delete data.notes // 0.91.1: Gesprächsnotiz wird eine Notiz zum Fall
 			const corrections = allSuggestions().filter((item) => String(data[item.field] || '').trim() && String(data[item.field]).trim() !== String(item.value || '').trim()).map((item) => ({ field: item.field, source: item.source, observedValue: item.value, confirmedValue: data[item.field] }))
 			if (corrections.length) await api(`${ctx.apiBase}/assistant/corrections`, { method: 'POST', feedback: false, loadingLabel: 'Bestätigte Korrekturen werden für die fachliche Prüfung vorgemerkt …', body: new URLSearchParams({ corrections: JSON.stringify(corrections) }) })
-			const result = await api(ctx.urls.cases, { method: 'POST', feedback: false, loadingLabel: 'Geprüfter Fall wird angelegt …', body: new URLSearchParams({ masterData: JSON.stringify(data), firstName: data.first_name, lastName: data.last_name, creationToken: capture().creationToken }) })
+			const result = await api(ctx.urls.cases, { method: 'POST', feedback: false, loadingLabel: 'Geprüfter Fall wird angelegt …', body: new URLSearchParams({ masterData: JSON.stringify(data), captureNote, firstName: data.first_name, lastName: data.last_name, creationToken: capture().creationToken }) })
 			if(scanImport?.id){const ocrFields=new Set((capture().ocrSuggestions||[]).map((item)=>item.field));const confirmedFields=Object.entries(data).filter(([key,value])=>ocrFields.has(key)&&String(value||'').trim()!=='').map(([key])=>key);await api(`${ctx.apiBase}/assistant/capture-imports/${scanImport.id}/complete`,{method:'POST',feedback:false,loadingLabel:'Originalscan wird dem Fall zugeordnet …',body:new URLSearchParams({caseId:String(result.id),confirmedFields:JSON.stringify(confirmedFields)})})}
 			// 0.85.0: Folgeaufgaben aus dem Gespräch; ein Fehler verhindert die Fallanlage nicht.
 			const followUpWarnings = await createFollowUpTasks(result.id, data, selectedFollowUps())
@@ -646,6 +696,7 @@ export function createAssistantModule(ctx) {
 			const warnings = Array.isArray(result.validationWarnings) ? result.validationWarnings : []
 			if (warnings.length) notifyWarning(`Bitte prüfen: ${warnings.join(' ')}`)
 			if (followUpWarnings.length) notifyWarning(followUpWarnings.join(' '))
+			if (result.captureNoteWarning) notifyWarning(result.captureNoteWarning)
 			render()
 		} catch (error) { notifyError(error.message); if (button) { button.disabled = false; button.textContent = 'Geprüften Fall anlegen' } }
 	}

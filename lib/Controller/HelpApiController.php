@@ -26,15 +26,37 @@ class HelpApiController extends ApiController {
 		return new DataResponse($this->help->availability());
 	}
 
+	/** 0.90.1: Ohne passenden Hilfetext wird die Frage automatisch als offene Hilfefrage erfasst (ohne Benutzerkennung). */
 	#[NoAdminRequired]
 	public function ask(string $question = '', string $context = ''): DataResponse {
 		$result = $this->help->ask($question, $context);
+		if ($result['status'] === 'NO_SOURCE') {
+			$result['recorded'] = $this->record($question, $context, 'NO_SOURCE');
+		}
 		return new DataResponse($result, $result['status'] === 'SCHEDULED' ? 202 : 200);
 	}
 
+	/** 0.90.1: Konnte der Chat-Anbieter keine Antwort erzeugen oder fehlte am Ende eine Quelle, wird die Frage ebenfalls erfasst. */
 	#[NoAdminRequired]
-	public function status(int $taskId): DataResponse {
-		return new DataResponse($this->help->status($taskId));
+	public function status(int $taskId, string $context = ''): DataResponse {
+		$result = $this->help->status($taskId);
+		$question = (string)($result['question'] ?? '');
+		unset($result['question']);
+		if ($question !== '' && in_array($result['status'], ['FAILED', 'CANCELLED'], true)) {
+			$result['recorded'] = $this->record($question, $context, 'FAILED');
+		} elseif ($question !== '' && $result['status'] === 'SUCCESSFUL' && $result['sources'] === []) {
+			$result['recorded'] = $this->record($question, $context, 'NO_SOURCE');
+		}
+		return new DataResponse($result);
+	}
+
+	private function record(string $question, string $context, string $reason): bool {
+		try {
+			$this->feedback->add($question, $context, '', [], $reason);
+			return true;
+		} catch (\Throwable) {
+			return false;
+		}
 	}
 
 	/** 0.89.6: Hilfetexte zur geöffneten Seite. */

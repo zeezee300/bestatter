@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Controller;
 
+use OCA\Bestatter\Service\InboxFolderService;
 use OCA\Bestatter\Service\PaperlessInboxService;
 use OCA\Bestatter\Service\PaperlessService;
 use OCA\Bestatter\Service\TeamService;
@@ -18,6 +19,7 @@ class IntegrationApiController extends ApiController {
 		private TeamService $team,
 		private PaperlessService $paperless,
 		private PaperlessInboxService $inbox,
+		private InboxFolderService $folderInbox,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -69,6 +71,16 @@ class IntegrationApiController extends ApiController {
 		} catch (\Throwable $error) {
 			return new DataResponse(['available' => false,'types' => [],'message' => 'Paperless ist nicht erreichbar oder nicht eingerichtet – die Dokumenttyp-ID kann von Hand eingetragen werden.']);
 		}
+	}
+	/** 0.90.1: Direkt-Upload in den Eingangsordner des Belegeingangs (eine Datei je Aufruf). */
+	#[NoAdminRequired]
+	public function uploadInboxFile(): DataResponse {
+		$upload = $this->request->getUploadedFile('file');
+		if (!is_array($upload)) {
+			throw new \InvalidArgumentException('Bitte eine Datei auswählen.');
+		}
+		$item = $this->folderInbox->upload($upload);
+		return new DataResponse($this->inbox->refresh((int)$item['id']), 201);
 	}
 	#[NoAdminRequired]
 	public function retryPaperless(int $id): DataResponse {

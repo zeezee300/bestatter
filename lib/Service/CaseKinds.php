@@ -13,6 +13,7 @@ namespace OCA\Bestatter\Service;
  *
  * Nummern: Sterbefall „2026-0001“ (unverändert), Auftrag „A-2026-0001“, Vorsorge „V-2026-0001“.
  * Jede Art hat einen eigenen, fortlaufenden Zähler je Jahr (bestatter_invoice_sequences).
+ * 0.90.2: wahlweise mit Kennung der Niederlassung („HB-2026-0001“, „2026-HB-0001“, „A-HB-2026-0001“), siehe CaseNumberService.
  */
 final class CaseKinds {
 	public const DEATH = 'STERBEFALL';
@@ -35,7 +36,18 @@ final class CaseKinds {
 	 * Gruppe 1: mit Präfix („V-2026-0001“, davor kein Buchstabe/keine Ziffer); Gruppe 2: ohne Präfix –
 	 * aber nie direkt hinter „A-“/„V-“ (sonst würde in „V-2026-0001“ oder „XV-2026-0001“ der Sterbefall „2026-0001“ erkannt).
 	 */
-	public const NUMBER_PATTERN = '/(?<![0-9A-Za-z])([AV]-20[0-9]{2}-[0-9]{4})(?![0-9])|(?<![0-9])(?<!A-)(?<!V-)(20[0-9]{2}-[0-9]{4})(?![0-9])/';
+	public const NUMBER_PATTERN = '/(?<![0-9A-Za-z])([AV]-' . self::CODE_PART . '20[0-9]{2}-' . self::CODE_PART . '[0-9]{4})(?![0-9])'
+		. '|(?<![0-9A-Za-z])(' . self::CODE_PART . '20[0-9]{2}-' . self::CODE_PART . '[0-9]{4})(?![0-9])'
+		. '|(?<![0-9])(?<!A-)(?<!V-)(20[0-9]{2}-[0-9]{4})(?![0-9])/';
+
+	/**
+	 * 0.90.2: optionale Kennung der Niederlassung vor oder nach dem Jahr („HB-“, „01-“); 1–5 Großbuchstaben/Ziffern,
+	 * aber nie vier oder fünf Ziffern (sonst wäre „2026-0001-0002“ mehrdeutig).
+	 */
+	public const CODE_PART = '(?:(?![0-9]{4,5}-)[A-Z0-9]{1,5}-)?';
+
+	/** Nummer im Titel „[2026-0001] …“ von Aufgaben und Terminen (mit Präfix und Kennung). */
+	public const TITLE_NUMBER = '(?:[AV]-)?' . self::CODE_PART . '[0-9]{4}-' . self::CODE_PART . '[0-9]+';
 
 	public static function normalize(?string $kind, string $default = self::DEATH): string {
 		$value = strtoupper(trim((string)$kind));
@@ -74,7 +86,38 @@ final class CaseKinds {
 
 	/** Jahr der Nummer („2026“ aus „2026-0001“, „A-2026-0001“, „V-2026-0001“) oder null. */
 	public static function yearOfNumber(string $caseNumber): ?string {
-		return preg_match('/^(?:[AV]-)?(20\d{2})-/', trim($caseNumber), $match) === 1 ? $match[1] : null;
+		return preg_match('/^(?:[AV]-)?' . self::CODE_PART . '(20[0-9]{2})-/', trim($caseNumber), $match) === 1 ? $match[1] : null;
+	}
+
+	/**
+	 * 0.90.2: Nummer ohne Kennung der Niederlassung („HB-2026-0001“ → „2026-0001“, „A-2026-HB-0001“ → „A-2026-0001“);
+	 * Nummern ohne Kennung bleiben unverändert. Dient dem Belegeingang als Rückfall, wenn die volle Nummer keinen Fall trifft.
+	 */
+	public static function coreNumber(string $caseNumber): string {
+		$number = trim($caseNumber);
+		if (preg_match('/^([AV]-)?' . self::CODE_PART . '(20[0-9]{2})-' . self::CODE_PART . '([0-9]{4,})$/', $number, $match) !== 1) {
+			return $number;
+		}
+		return $match[1] . $match[2] . '-' . $match[3];
+	}
+
+	/**
+	 * 0.90.2: Rückfall für den Belegeingang, wenn eine Nummer mit (vermeintlicher) Kennung keinen Fall trifft – etwa ein
+	 * fremdes Aktenzeichen „XY-2026-0001“. Liefert die Nummer ohne Kennung, aber nie für „…A-“/„…V-“ davor (in „KVA-2026-0001“
+	 * oder „XV-2026-0001“ steckt kein Sterbefall „2026-0001“). Leer, wenn es keinen Rückfall gibt.
+	 */
+	public static function fallbackNumber(string $caseNumber): string {
+		$number = trim($caseNumber);
+		$core = self::coreNumber($number);
+		if ($core === $number) {
+			return '';
+		}
+		$kindPrefix = self::PREFIXES[self::kindOfNumber($number)];
+		$rest = substr($number, strlen($kindPrefix));
+		if (preg_match('/^([A-Z0-9]{1,5})-20[0-9]{2}-/', $rest, $match) === 1 && preg_match('/[AV]$/', $match[1]) === 1) {
+			return '';
+		}
+		return $core;
 	}
 
 	/** @return list<string> Fallnummern im Text (Reihenfolge des Auftretens, ohne Dubletten). */
@@ -82,7 +125,13 @@ final class CaseKinds {
 		preg_match_all(self::NUMBER_PATTERN, $text, $matches, PREG_SET_ORDER);
 		$numbers = [];
 		foreach ($matches as $match) {
-			$number = ($match[1] ?? '') !== '' ? $match[1] : ($match[2] ?? '');
+			$number = '';
+			foreach ([1, 2, 3] as $group) {
+				if (($match[$group] ?? '') !== '') {
+					$number = $match[$group];
+					break;
+				}
+			}
 			if ($number !== '' && !in_array($number, $numbers, true)) {
 				$numbers[] = $number;
 			}

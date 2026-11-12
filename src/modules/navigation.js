@@ -18,7 +18,8 @@ export const NAV_WIDE_QUERY = '(min-width: 1440px)'
 export const NAV_DRAWER_QUERY = '(max-width: 1023.98px)'
 // 0.89.7: Sterbefälle, Aufträge ohne Sterbefall und Vorsorgen als eigene Einträge (gleiche Listenansicht, Filter Vorgangsart).
 const WORK_VIEWS = ['dashboard', 'capture', 'cases', 'orders', 'precare', 'task', 'schedule', 'document', 'inbox']
-const SETTINGS_VIEWS = ['administration', 'customizing']
+// 0.92.0: „Stammdaten“ (Niederlassungen, Ressourcen, Leistungen, Wertelisten, Marker) vor Customizing und Administration.
+const SETTINGS_VIEWS = ['master-data', 'customizing', 'administration']
 // 0.90.0: „Buchhaltung“ nur für Bestatter-Administratoren und die Rollengruppe „Buchhaltung“ (team.canUseAccounting).
 const ACCOUNTING_VIEW = 'accounting'
 

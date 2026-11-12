@@ -118,7 +118,6 @@ class CaseKindTransitionService {
 			$master['date_of_death'] = $dateOfDeath;
 		}
 		$master['branch'] = (string)$order['branch'];
-		$master['notes'] = 'Aus Auftrag ' . $order['caseNumber'] . ' (' . ($order['orderTypeLabel'] ?: $order['orderType']) . ') weitergeführt.';
 		$case = $this->cases->createCase(['caseKind' => CaseKinds::DEATH, 'masterData' => $master, 'originCaseId' => $orderId, 'creationToken' => (string)($input['creationToken'] ?? ''),
 			'branch' => (string)$order['branch'], 'responsibleEmployee' => (string)$order['responsibleEmployee']]);
 		$warnings = [];
@@ -126,6 +125,8 @@ class CaseKindTransitionService {
 		if (!empty($case['idempotent'])) {
 			return ['case' => $case, 'positions' => [], 'warnings' => []];
 		}
+		// 0.91.1: Vermerk als Notiz „Intern“ statt im Stammdatenfeld „Interne Notizen“.
+		$this->transitionNote((int)$case['id'], 'Aus Auftrag ' . $order['caseNumber'] . ' (' . ($order['orderTypeLabel'] ?: $order['orderType']) . ') weitergeführt.', $warnings);
 		if (filter_var($input['transferPositions'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
 			try {
 				$positions = $this->transferPositions($orderId, (int)$case['id'], true, true);
@@ -229,13 +230,14 @@ class CaseKindTransitionService {
 			}
 			$master += $preview['orderClient'];
 			$master['branch'] = (string)$source['branch'];
-			$master['notes'] = 'Aus Vorsorge ' . $source['caseNumber'] . ' übernommen (' . $preview['precare']['priceModeLabel'] . ').';
 			$case = $this->cases->createCase(['caseKind' => CaseKinds::DEATH, 'masterData' => $master, 'originCaseId' => $precareId, 'creationToken' => (string)($input['creationToken'] ?? ''),
 				'branch' => (string)$source['branch'], 'responsibleEmployee' => (string)($source['responsibleEmployee'] ?? '')]);
 			if (!empty($case['idempotent'])) {
 				return ['case' => $case, 'warnings' => [], 'positions' => [], 'files' => [], 'notifications' => []];
 			}
 			$deathCaseId = (int)$case['id'];
+			// 0.91.1: Vermerk als Notiz „Intern“ statt im Stammdatenfeld „Interne Notizen“.
+			$noteText = 'Aus Vorsorge ' . $source['caseNumber'] . ' übernommen (' . $preview['precare']['priceModeLabel'] . ').';
 		} else {
 			$target = $this->cases->getCase($deathCaseId);
 			$data = (array)$target['masterData'];
@@ -254,7 +256,9 @@ class CaseKindTransitionService {
 			}
 			$this->cases->updateMasterData($deathCaseId, $data);
 			$this->cases->linkOrigin($deathCaseId, $precareId);
+			$noteText = 'Vorsorge ' . $source['caseNumber'] . ' eingelöst (' . $preview['precare']['priceModeLabel'] . ').';
 		}
+		$this->transitionNote($deathCaseId, $noteText, $warnings);
 		$death = $this->cases->getCase($deathCaseId);
 		$positions = [];
 		if (filter_var($input['transferPositions'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
@@ -315,6 +319,21 @@ class CaseKindTransitionService {
 		$this->audit->log($precareId, 'PRECARE', $precareId, 'REDEEMED_INTO', null, ['caseId' => $deathCaseId, 'caseNumber' => $death['caseNumber']]);
 		$this->audit->log($deathCaseId, 'CASE', $deathCaseId, 'CREATED_FROM_PRECARE', null, ['precareId' => $precareId, 'precareNumber' => $source['caseNumber'], 'positions' => count($positions), 'files' => count($copied), 'notifications' => count($notifications)]);
 		return ['case' => $this->cases->getCase($deathCaseId), 'warnings' => $warnings, 'positions' => $positions, 'files' => $copied, 'notifications' => $notifications];
+	}
+
+	/**
+	 * 0.91.1: Vermerk zum Übergang als Notiz (Kategorie „Intern“) im neuen bzw. gewählten Sterbefall. Ein Fehler hält den
+	 * Übergang nicht auf, sondern wird als Hinweis gemeldet.
+	 * @param list<string> $warnings
+	 */
+	private function transitionNote(int $caseId, string $text, array &$warnings): void {
+		try {
+			foreach (CaseNoteRules::systemPayloads($text, CaseNoteRules::CATEGORY_INTERNAL, CaseNoteRules::SOURCE_TRANSITION) as $payload) {
+				$this->records->create(CaseNoteRules::RECORD_TYPE, CaseNoteRules::title((string)$payload['text']), date('c'), CaseNoteRules::STATUS, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), $caseId);
+			}
+		} catch (\Throwable $error) {
+			$warnings[] = 'Der Vermerk „' . $text . '“ konnte nicht als Notiz gespeichert werden: ' . $error->getMessage();
+		}
 	}
 
 	/** Für den Sterbefall: passende aktive Vorsorgen (Hinweis in der Akte, Schnellerfassung). */
