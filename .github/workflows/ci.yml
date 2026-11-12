@@ -158,10 +158,14 @@ jobs:
           bash tools/release/build-package.sh --out dist
           v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
           pkg="dist/bestatter-$v.tar.gz"
-          test "$(tar -tzf "$pkg" | cut -d/ -f1 | sort -u)" = "bestatter"
-          tar -tzf "$pkg" | grep -qx 'bestatter/appinfo/info.xml'
-          tar -tzf "$pkg" | grep -qx 'bestatter/vendor/autoload.php'
-          if tar -tzf "$pkg" | grep -qE '(^|/)(\.git|node_modules|src|tests)/'; then echo "::error::Paket enthält Entwicklungsdateien"; exit 1; fi
+          list="${RUNNER_TEMP:-/tmp}/paketinhalt.txt"
+          tar -tzf "$pkg" > "$list"
+          test "$(cut -d/ -f1 "$list" | sort -u)" = "bestatter"
+          grep -qx 'bestatter/appinfo/info.xml' "$list"
+          grep -qx 'bestatter/vendor/autoload.php' "$list"
+          # Nur auf oberster Ebene: Bibliotheken unter vendor/ haben eigene src/-Ordner.
+          dev=$(grep -E '^bestatter/(src|tests|node_modules)/|(^|/)\.git/' "$list" || true)
+          if [ -n "$dev" ]; then echo "$dev" | head -20; echo "::error::Paket enthält Entwicklungsdateien"; exit 1; fi
           (cd dist && sha256sum -c ./*.sha256)
           if [ "$GITHUB_REF_TYPE" = tag ]; then name="bestatter-$v"; else name="bestatter-$v-${GITHUB_SHA::7}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
