@@ -1,0 +1,6 @@
+includes:
+    - ../../phpstan.neon
+parameters:
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+    tmpDir: ../../.phpstan-cache

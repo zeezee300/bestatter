@@ -1,0 +1,21 @@
+{
+  "name": "nextcloud-bestatter",
+  "version": "0.92.6",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --mode development",
+    "watch": "vite build --mode development --watch"
+  },
+  "devDependencies": {
+    "happy-dom": "^21.0.4",
+    "vite": "^7.3.8"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "dependencies": {}
+}

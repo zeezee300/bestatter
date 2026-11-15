@@ -1,0 +1,14 @@
+includes:
+    # Ausnahmeliste für Altbefunde – seit 0.75.1 leer. Neue Befunde beheben, nicht hier eintragen.
+    - phpstan-baseline.neon
+parameters:
+    # Durchsetzbarer Einstieg; nach Bereinigung des Bestands schrittweise anheben.
+    level: 3
+    paths:
+        - lib
+    tmpDir: .phpstan-cache
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
+    excludePaths:
+        analyse:
+            - lib/Migration/*

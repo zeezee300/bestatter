@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "description": "Terminvorlagen für den Knopf „Termin anlegen“ und die Terminart-Auswahl im Terminformular. Dauer und Puffer der Konfliktprüfung werden unter Customizing → Terminplanung gepflegt.",
+  "schedulePresets": [
+    {
+      "key": "BERATUNG",
+      "label": "Beratungsgespräch",
+      "title": "Beratungsgespräch",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Beratungsgespräch",
+      "durationMinutes": 90,
+      "priority": "NORMAL"
+    },
+    {
+      "key": "UEBERFUEHRUNG",
+      "label": "Überführung",
+      "title": "Überführung",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Überführung",
+      "durationMinutes": 60,
+      "priority": "HOCH"
+    },
+    {
+      "key": "AUFBAHRUNG",
+      "label": "Aufbahrung",
+      "title": "Aufbahrung",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Aufbahrung",
+      "durationMinutes": 60,
+      "priority": "NORMAL"
+    },
+    {
+      "key": "TRAUERFEIER_1",
+      "label": "1. Trauerfeier",
+      "title": "1. Trauerfeier",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "1. Trauerfeier",
+      "durationMinutes": 90,
+      "priority": "HOCH"
+    },
+    {
+      "key": "TRAUERFEIER_2",
+      "label": "2. Trauerfeier",
+      "title": "2. Trauerfeier",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "2. Trauerfeier",
+      "durationMinutes": 90,
+      "priority": "HOCH"
+    },
+    {
+      "key": "BEISETZUNG",
+      "label": "Beisetzung",
+      "title": "Beisetzung",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Beisetzung",
+      "durationMinutes": 90,
+      "priority": "HOCH"
+    },
+    {
+      "key": "ABSCHIEDNAHME",
+      "label": "Abschiednahme",
+      "title": "Abschiednahme",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Abschiednahme",
+      "durationMinutes": 60,
+      "priority": "NORMAL"
+    },
+    {
+      "key": "BEHOERDENTERMIN",
+      "label": "Behördentermin",
+      "title": "Behördentermin",
+      "scheduleKind": "EXTERNAL_APPOINTMENT",
+      "appointmentCategory": "Behördentermin",
+      "durationMinutes": 60,
+      "priority": "NORMAL"
+    },
+    {
+      "key": "INTERNE_TAETIGKEIT",
+      "label": "Interne Tätigkeit",
+      "title": "Interne Tätigkeit",
+      "scheduleKind": "INTERNAL_ACTIVITY",
+      "appointmentCategory": "",
+      "durationMinutes": 60,
+      "priority": "NORMAL"
+    }
+  ]
+}

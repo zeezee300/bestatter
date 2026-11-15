@@ -1,0 +1,227 @@
+# Automatische Prüfungen bei jedem Push und Pull Request (Syntax, Code-Style, PHPStan, Manifest, Frontend-Build).
+# Sind alle Prüfungen grün, baut der Job „package“ bei jedem Push das Installationspaket bestatter-<version>.tar.gz
+# (dasselbe Skript wie lokal) und legt es als Artefakt am Lauf ab. Bei einem Versions-Tag vX.Y.Z hängt der Job
+# „release“ Paket und Prüfsummen zusätzlich an eine GitHub-Release.
+# Unsigniert: keine Nextcloud-Codesignatur, kein Upload in den Nextcloud App Store.
+name: Prüfungen
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-lint:
+    name: PHP-Syntax (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Alle PHP-Dateien prüfen
+        run: find appinfo lib templates tools -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+  codestyle:
+    name: Code-Style (Nextcloud-Coding-Standard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer
+      - name: Abhängigkeiten installieren
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: php-cs-fixer (nur prüfen)
+        run: composer cs:check
+
+  phpstan:
+    name: PHPStan gegen Nextcloud ${{ matrix.nextcloud }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Muss zu <nextcloud min-version/max-version> in appinfo/info.xml passen.
+        nextcloud: ['34', '35']
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: app
+      - name: Nextcloud-Server (stable${{ matrix.nextcloud }}) für die Typinformationen
+        uses: actions/checkout@v5
+        with:
+          repository: nextcloud/server
+          ref: stable${{ matrix.nextcloud }}
+          path: server
+          submodules: true
+          fetch-depth: 1
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: gd, zip
+          coverage: none
+          tools: composer
+      - name: Abhängigkeiten installieren
+        working-directory: app
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: PHPStan
+        working-directory: app
+        env:
+          NEXTCLOUD_SERVER: ${{ github.workspace }}/server
+        run: vendor/bin/phpstan analyse --configuration tools/ci/phpstan-ci.neon --memory-limit=2G --no-progress
+
+  appinfo:
+    name: App-Manifest (info.xml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: xmllint installieren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+      - name: Gegen die Schemas von Nextcloud 34 und 35 prüfen
+        run: |
+          # Lizenz AGPL-3.0-only (Entscheidung 05.10.2026): ausdrücklich nur Version 3, nicht „or-later“.
+          grep -q '<licence>AGPL-3.0-only</licence>' appinfo/info.xml || { echo "info.xml: <licence>AGPL-3.0-only</licence> fehlt" >&2; exit 1; }
+          grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE || { echo "LICENSE enthält nicht den AGPL-3.0-Text" >&2; exit 1; }
+          for v in 34 35; do
+            curl -fsSL "https://raw.githubusercontent.com/nextcloud/server/stable$v/resources/app-info.xsd" -o "/tmp/app-info-$v.xsd"
+            xmllint --noout --schema "/tmp/app-info-$v.xsd" appinfo/info.xml
+          done
+      - name: Versionen stimmen überein (info.xml, package.json, Application::VERSION)
+        run: |
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          test "$(node -p "require('./package.json').version")" = "$v"
+          grep -q "VERSION = '$v'" lib/AppInfo/Application.php
+          echo "Version $v einheitlich"
+
+  frontend:
+    name: Frontend-Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Gebautes Bundle ist eingecheckt (js/main.js passt zu src/)
+        run: git diff --exit-code --stat -- js/main.js || (echo "js/main.js ist veraltet – bitte „npm run build“ ausführen und committen." && exit 1)
+
+  package:
+    name: Installationspaket bauen
+    # Nur wenn alle Prüfungen grün sind; bei Pull Requests kein Paket.
+    needs: [php-lint, codestyle, phpstan, appinfo, frontend]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      artifact: ${{ steps.build.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: gd, zip
+          coverage: none
+          tools: composer
+      - name: Versions-Tag passt zur App-Version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          if [ "${GITHUB_REF_NAME#v}" != "$v" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zur Version $v in appinfo/info.xml – Tag v$v verwenden."
+            exit 1
+          fi
+      - name: Paket bauen (dasselbe Skript wie lokal)
+        id: build
+        run: |
+          bash tools/release/build-package.sh --out dist
+          v=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          pkg="dist/bestatter-$v.tar.gz"
+          list="${RUNNER_TEMP:-/tmp}/paketinhalt.txt"
+          tar -tzf "$pkg" > "$list"
+          test "$(cut -d/ -f1 "$list" | sort -u)" = "bestatter"
+          grep -qx 'bestatter/appinfo/info.xml' "$list"
+          grep -qx 'bestatter/vendor/autoload.php' "$list"
+          # Nur auf oberster Ebene: Bibliotheken unter vendor/ haben eigene src/-Ordner.
+          dev=$(grep -E '^bestatter/(src|tests|node_modules)/|(^|/)\.git/' "$list" || true)
+          if [ -n "$dev" ]; then echo "$dev" | head -20; echo "::error::Paket enthält Entwicklungsdateien"; exit 1; fi
+          (cd dist && sha256sum -c ./*.sha256)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then name="bestatter-$v"; else name="bestatter-$v-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "artifact=$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Installationspaket $v"
+            echo
+            echo "Download: Abschnitt **Artifacts** unten auf dieser Seite (\`$name\`)."
+            echo
+            echo '```'
+            cat dist/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ steps.build.outputs.artifact }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: GitHub-Release veröffentlichen
+    # Nur bei einem Versions-Tag vX.Y.Z; nur dieser Job darf schreiben (Release anlegen).
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.package.outputs.artifact }}
+          path: dist
+      - name: Release anlegen und Paket anhängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          # Text der Release = Abschnitt „## <version> – …“ aus CHANGELOG.md, dazu die Prüfsummen.
+          heading=$(awk -v v="$VERSION" 'index($0, "## " v " ") == 1 || $0 == "## " v { print; exit }' CHANGELOG.md)
+          title="Bestatter ${heading#\#\# }"
+          {
+            awk -v v="$VERSION" 'f && /^## / { exit } f { print } index($0, "## " v " ") == 1 || $0 == "## " v { f = 1 }' CHANGELOG.md
+            echo
+            echo "### Prüfsummen (SHA-256)"
+            echo
+            echo '```'
+            cat dist/*.sha256
+            echo '```'
+            echo
+            echo "Installation und Update: siehe README (Installation, Aktualisierung). Paket und \`.sha256\` in denselben Ordner legen, dann \`bin/bestatter-update.sh\` aus dem Paket verwenden."
+          } > release-notes.md
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$title" --notes-file release-notes.md
+          fi
