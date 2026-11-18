@@ -124,7 +124,10 @@ class SurchargeRuleService {
 					'threshold_to' => $insert->createNamedParameter($to), 'article_id' => $insert->createNamedParameter(null),
 					'active' => $insert->createNamedParameter(0), 'sort_order' => $insert->createNamedParameter(($index + 1) * 10),
 				])->executeStatement();
-			} catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException) { /* concurrent first read */
+			} catch (\Throwable $error) {
+				if (!DbErrors::isUniqueViolation($error)) { // 0.92.8: gleichzeitige Erstanlage ist kein Fehler
+					throw $error;
+				}
 			}
 		}
 	}

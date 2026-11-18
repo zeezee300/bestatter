@@ -23,6 +23,26 @@ final class CsvTools {
 	}
 
 	/**
+	 * 0.92.8: Reine Ausgabe-CSV (Auswertungen, Debitorenliste) – Werte, die mit =, +, -, @, Tabulator oder
+	 * Wagenrücklauf beginnen, erhalten ein vorangestelltes Hochkomma. So führt Excel/LibreOffice keinen
+	 * eingeschleusten Text (z. B. aus einem Namen oder einer Anschrift) als Formel aus („CSV Injection“).
+	 * Reine Zahlen (auch negative wie -12,50) bleiben unverändert. Nicht für Dateien, die wieder eingelesen
+	 * werden (Leistungskatalog, Warengruppen) – dort würde das Zeichen den Wert verändern.
+	 */
+	public static function exportCell(mixed $value): string {
+		$text = (string)($value ?? '');
+		if ($text === '' || preg_match('/^(-?\d+([.,]\d+)?|-)$/', $text) === 1) {
+			return $text;
+		}
+		return preg_match('/^[=+\-@\t\r]/', $text) === 1 ? "'" . $text : $text;
+	}
+
+	/** @param list<string> $headers @param list<list<mixed>> $rows */
+	public static function writeExport(array $headers, array $rows): string {
+		return self::write($headers, array_map(static fn (array $row): array => array_map([self::class, 'exportCell'], $row), $rows));
+	}
+
+	/**
 	 * @param callable(string): string $normalizeHeader
 	 * @return list<array{line: int, values: array<string, string>}>
 	 */

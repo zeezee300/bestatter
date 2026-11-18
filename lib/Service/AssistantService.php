@@ -362,7 +362,11 @@ class AssistantService {
 		if ($taskId <= 0) {
 			throw new \InvalidArgumentException('Ungültige Transkriptionskennung.');
 		}
-		$task = $this->tasks->getTask($taskId);
+		try {
+			$task = $this->tasks->getTask($taskId);
+		} catch (\OCP\TaskProcessing\Exception\NotFoundException) { // 0.92.8: unbekannte Kennung → 400 statt technischer Fehler 500
+			throw new \InvalidArgumentException('Die Transkription wurde nicht gefunden.');
+		}
 		$userId = $this->userSession->getUser()?->getUID();
 		if ($task->getAppId() !== Application::APP_ID || $userId === null || $task->getUserId() !== $userId || !str_starts_with($task->getCustomId(), 'speech:')) {
 			throw new \InvalidArgumentException('Die Transkription wurde nicht gefunden.');

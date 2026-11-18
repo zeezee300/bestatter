@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\Bestatter\Service;
 
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use OCP\IDBConnection;
 
 class CustomizingService {
@@ -60,11 +59,12 @@ class CustomizingService {
 					$parentIds[$value] = (int)$this->db->lastInsertId('bestatter_choice_items');
 				}
 				$this->db->commit();
-			} catch (UniqueConstraintViolationException) {
-				$this->db->rollBack();
 			} catch (\Throwable $error) {
 				$this->db->rollBack();
-				throw $error;
+				// 0.92.8: gleichzeitige Erstanlage durch einen zweiten Aufruf – dessen Stand gilt (DbErrors)
+				if (!DbErrors::isUniqueViolation($error)) {
+					throw $error;
+				}
 			}
 		}
 	}

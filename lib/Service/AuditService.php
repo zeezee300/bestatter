@@ -20,17 +20,30 @@ class AuditService {
 	// Bei anderen Objekttypen (z. B. PROCESS_ACTION EXECUTED/FAILED, ORDER QUOTE_CONVERTED) haben
 	// before/after unterschiedliche, absichtlich verschiedene Formen (Auslöser- vs. Ergebnisdaten);
 	// ein Feld-für-Feld-Vergleich würde dort irreführenden statt hilfreichen Text erzeugen.
+	// 0.92.7: Änderungen dieser Typen werden nur noch mit den geänderten Feldern gespeichert, Speichervorgänge ohne
+	// fachliche Änderung gar nicht mehr (storedSnapshots()). Ältere Einträge bleiben vollständig; diff() liest beide.
 	private const DIFFABLE_TYPES = ['CASE', 'TASK', 'SCHEDULE', 'DOCUMENT', 'CONTACT'];
 	private const CONTAINER_KEY = ['CASE' => 'masterData'];
 	// Diese Fall-Stammdatenfelder werden sowohl auf oberster Ebene (camelCase) als auch identisch
 	// unter masterData.* (snake_case) geführt (siehe CaseService::mapCase()); ohne diese Ausnahme
 	// würde jede Änderung doppelt in der Änderungsliste erscheinen.
 	private const CASE_DUPLICATE_TOP_LEVEL_KEYS = ['firstName', 'lastName', 'dateOfDeath', 'funeralType', 'burialVariantCode', 'withFuneralCeremony', 'pickupTime', 'bodyHeightCm', 'bodyWeightKg'];
-	private const TOP_LEVEL_IGNORE = ['id', 'caseId', 'caseNumber', 'updatedAt', 'ownerUid', 'createdBy', 'updatedBy'];
+	private const TOP_LEVEL_IGNORE = ['id', 'caseId', 'caseNumber', 'updatedAt', 'ownerUid', 'createdBy', 'updatedBy', self::COMPACT_MARKER];
 	private const MAX_CHANGES = 20;
 	public const LOCK_TABLE = 'bestatter_audit_lock';
 	/** 0.84.1: So viele vorangehende Einträge werden betrachtet, um einen gleichzeitig geschriebenen Eintrag zu erkennen. */
 	private const CONCURRENT_WINDOW = 50;
+	/**
+	 * 0.92.7: Kennzeichen in before_data/after_data eines kompakt gespeicherten Eintrags (nur geänderte Felder).
+	 * Steht in beiden Seiten mit demselben Wert, erscheint deshalb nie als Änderung.
+	 */
+	public const COMPACT_MARKER = '__compact';
+	/** 0.92.7: Bleiben im kompakten Eintrag immer stehen, damit Fallverlauf und Aktivität den Eintrag benennen können. */
+	private const IDENTITY_KEYS = ['id', 'type', 'title', 'caseId', 'caseNumber'];
+	/** 0.92.7: Verwaltungsangaben, die sich bei jedem Speichern ändern und allein keinen Eintrag rechtfertigen. */
+	private const META_KEYS = ['updatedAt', 'updatedBy', 'validationWarnings'];
+	/** 0.92.7: Fachlich bedeutsame Angaben unter data.nextcloud; alles andere dort beschreibt nur den Abgleich. */
+	private const SYNC_RELEVANT_KEYS = ['remoteDeletedAt'];
 
 	private ?array $caseFieldLabelsCache = null;
 	private ?CaseHistoryFormatter $formatter = null;
@@ -62,6 +75,14 @@ class AuditService {
 		$userUid = $this->uid();
 		$before = $this->minimize($before);
 		$after = $this->minimize($after);
+		// 0.92.7: Änderungen ohne fachlichen Inhalt (nur Abgleich mit Nextcloud, Zeitstempel) werden nicht protokolliert,
+		// fachliche Änderungen nur mit den geänderten Feldern. Die Aktivität erhält weiterhin die vollständigen Stände.
+		$stored = self::storedSnapshots($objectType, $action, $before, $after);
+		if ($stored === null) {
+			$this->activity->publishAuditEvent($caseId, $objectType, $objectId, $action, $before, $after);
+			return;
+		}
+		[$storedBefore, $storedAfter] = $stored;
 		// 0.84.1: Lesen des letzten Hashs und Einfügen müssen ununterbrochen nacheinander geschehen. Ohne Sperre lasen
 		// zwei gleichzeitige Vorgänge (z. B. Klick und Hintergrundjob) denselben Vorgänger und die Kette verzweigte.
 		// Die Sperrzeile in bestatter_audit_lock reiht alle Schreibvorgänge hintereinander ein; Nextcloud arbeitet mit
@@ -80,8 +101,8 @@ class AuditService {
 				'object_type' => $query->createNamedParameter($objectType),
 				'object_id' => $query->createNamedParameter($objectId),
 				'action' => $query->createNamedParameter($action),
-				'before_data' => $query->createNamedParameter($before === null ? null : json_encode($before, JSON_THROW_ON_ERROR)),
-				'after_data' => $query->createNamedParameter($after === null ? null : json_encode($after, JSON_THROW_ON_ERROR)),
+				'before_data' => $query->createNamedParameter($storedBefore === null ? null : json_encode($storedBefore, JSON_THROW_ON_ERROR)),
+				'after_data' => $query->createNamedParameter($storedAfter === null ? null : json_encode($storedAfter, JSON_THROW_ON_ERROR)),
 				'user_uid' => $query->createNamedParameter($userUid),
 				'created_at' => $query->createNamedParameter($createdAt),
 				'previous_hash' => $query->createNamedParameter($previousHash !== '' ? $previousHash : null),
@@ -97,6 +118,174 @@ class AuditService {
 			throw $error;
 		}
 		$this->activity->publishAuditEvent($caseId, $objectType, $objectId, $action, $before, $after);
+	}
+
+	/**
+	 * 0.92.7: Was von einem Eintrag gespeichert wird. Gilt nur für Änderungen (UPDATED) an Fall, Aufgabe, Termin,
+	 * Dokument und Kontakt, bei denen Vorher und Nachher derselbe Datensatz sind:
+	 * - null = nichts Fachliches geändert (nur Abgleich mit Nextcloud, Zeitstempel, gleiche Werte) → kein Eintrag;
+	 * - sonst nur die geänderten Felder (plus Kennung und COMPACT_MARKER), siehe compactPair().
+	 * Alle übrigen Einträge bleiben unverändert. Der Hash der Kette umfasst die Inhalte nicht.
+	 * @return array{0: mixed, 1: mixed}|null
+	 */
+	public static function storedSnapshots(string $objectType, string $action, mixed $before, mixed $after): ?array {
+		if (strtoupper($action) !== 'UPDATED' || !in_array(strtoupper($objectType), self::DIFFABLE_TYPES, true) || !is_array($before) || !is_array($after)) {
+			return [$before, $after];
+		}
+		if (self::canonical(self::relevantView($before)) === self::canonical(self::relevantView($after))) {
+			return null;
+		}
+		return self::compactPair($before, $after, 0, self::CONTAINER_KEY[strtoupper($objectType)] ?? 'data');
+	}
+
+	/** 0.92.7: Ist der gespeicherte Stand kompakt (nur geänderte Felder)? */
+	public static function isCompact(mixed $snapshot): bool {
+		return is_array($snapshot) && ($snapshot[self::COMPACT_MARKER] ?? null) === 1;
+	}
+
+	/**
+	 * 0.92.7: Spielt einen kompakten Eintrag auf einen vollständigen Stand: geänderte Felder übernehmen,
+	 * nur vorher vorhandene Felder entfernen. Gegenstück zu compactPair() (z. B. für die Groupware-Reparatur).
+	 */
+	public static function applyCompact(array $state, array $before, array $after): array {
+		foreach ($after as $key => $value) {
+			if ($key === self::COMPACT_MARKER) {
+				continue;
+			}
+			// Objekte feldweise; auch ein ganz gespeichertes einfaches Objekt ergibt so denselben Stand.
+			if (self::isObject($value) && self::isObject($before[$key] ?? null) && is_array($state[$key] ?? null)) {
+				$state[$key] = self::applyCompact($state[$key], $before[$key], $value);
+				continue;
+			}
+			$state[$key] = $value;
+		}
+		foreach (array_keys($before) as $key) {
+			if ($key !== self::COMPACT_MARKER && !array_key_exists($key, $after)) {
+				unset($state[$key]);
+			}
+		}
+		return $state;
+	}
+
+	/**
+	 * 0.92.7: Datensatz ohne Verwaltungsangaben und ohne Abgleichsdaten. Von data.nextcloud zählen nur
+	 * „in Nextcloud gelöscht“ und ob ein Übertragungsfehler besteht (Wechsel wird protokolliert, Wiederholungen nicht).
+	 */
+	private static function relevantView(array $snapshot): array {
+		foreach (self::META_KEYS as $key) {
+			unset($snapshot[$key]);
+		}
+		if (is_array($snapshot['data'] ?? null)) {
+			$data = $snapshot['data'];
+			$nextcloud = is_array($data['nextcloud'] ?? null) ? $data['nextcloud'] : [];
+			$sync = ['syncFailed' => self::syncFailed($data)];
+			foreach (self::SYNC_RELEVANT_KEYS as $key) {
+				if ((string)($nextcloud[$key] ?? '') !== '') {
+					$sync[$key] = $nextcloud[$key];
+				}
+			}
+			unset($data['nextcloud'], $data['nextcloudCopies'], $data['updatedAt'], $data['updatedBy']);
+			$data['nextcloud'] = $sync;
+			$snapshot['data'] = $data;
+		}
+		return $snapshot;
+	}
+
+	/** 0.92.7: Gleiche Regel wie GroupwareService::hasSyncError() (Original oder eine Kopie nicht übertragen). */
+	private static function syncFailed(array $data): bool {
+		if ((string)($data['nextcloud']['syncError'] ?? '') !== '') {
+			return true;
+		}
+		foreach ((array)($data['nextcloudCopies'] ?? []) as $copy) {
+			if (is_array($copy) && !($copy['stored'] ?? false)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * 0.92.7: Nur die geänderten Felder beider Seiten. Ein Feld, das nur auf einer Seite steht, bleibt nur dort
+	 * stehen (hinzugefügt bzw. entfernt); Listen werden als Ganzes gespeichert. Objekte werden feldweise verglichen –
+	 * außer einfachen Objekten (nur Einzelwerte, z. B. Auskunftgeber, data.nextcloud) auf den Ebenen, die der
+	 * Fall-Verlauf anzeigt (oberste Ebene und Datenteil data/masterData): Die zeigt diff() als einen Wert, sie werden
+	 * deshalb bei einer Änderung ganz gespeichert. Kennungsfelder (IDENTITY_KEYS) bleiben oben immer stehen.
+	 * $level: 0 = Datensatz, 1 = Datenteil, 2 = tiefer (vom Fall-Verlauf nicht angezeigt).
+	 * @return array{0: array, 1: array}
+	 */
+	private static function compactPair(array $before, array $after, int $level, string $containerKey): array {
+		$compactBefore = [];
+		$compactAfter = [];
+		foreach (array_unique([...array_keys($before), ...array_keys($after)]) as $key) {
+			$inBefore = array_key_exists($key, $before);
+			$inAfter = array_key_exists($key, $after);
+			if ($inBefore && $inAfter && self::canonical($before[$key]) === self::canonical($after[$key])) {
+				if ($level === 0 && in_array($key, self::IDENTITY_KEYS, true)) {
+					$compactBefore[$key] = $before[$key];
+					$compactAfter[$key] = $after[$key];
+				}
+				continue;
+			}
+			$childLevel = $level === 0 && $key === $containerKey ? 1 : 2;
+			$fieldwise = $childLevel === 1 || $level >= 2
+				? self::isObject($before[$key] ?? null) && self::isObject($after[$key] ?? null)
+				: self::isNested($before[$key] ?? null) && self::isNested($after[$key] ?? null);
+			if ($inBefore && $inAfter && $fieldwise) {
+				[$innerBefore, $innerAfter] = self::compactPair($before[$key], $after[$key], $childLevel, $containerKey);
+				// Eine leere Seite würde als leere Liste gespeichert und wäre nicht von „alles entfernt“ zu unterscheiden;
+				// dann beide Seiten vollständig speichern.
+				[$compactBefore[$key], $compactAfter[$key]] = $innerBefore === [] || $innerAfter === [] ? [$before[$key], $after[$key]] : [$innerBefore, $innerAfter];
+				continue;
+			}
+			if ($inBefore) {
+				$compactBefore[$key] = $before[$key];
+			}
+			if ($inAfter) {
+				$compactAfter[$key] = $after[$key];
+			}
+		}
+		if ($level === 0) {
+			$compactBefore[self::COMPACT_MARKER] = 1;
+			$compactAfter[self::COMPACT_MARKER] = 1;
+		}
+		return [$compactBefore, $compactAfter];
+	}
+
+	/** Objekt (Schlüssel => Wert) statt Liste; eine leere Liste gilt als einfacher Wert. */
+	private static function isObject(mixed $value): bool {
+		return is_array($value) && $value !== [] && !array_is_list($value);
+	}
+
+	/**
+	 * Objekt (Schlüssel => Wert), das selbst wieder Objekte oder Listen enthält: wird feldweise verglichen.
+	 * Listen und Objekte mit nur einfachen Werten (z. B. Auskunftgeber mit Name und Telefon) gelten als ein Wert
+	 * und werden bei einer Änderung ganz gespeichert – so zeigt der Fall-Verlauf (diff()) dieselben Angaben wie bisher.
+	 */
+	private static function isNested(mixed $value): bool {
+		if (!self::isObject($value)) {
+			return false;
+		}
+		foreach ($value as $item) {
+			if (is_array($item)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Vergleichsform: Objekte nach Schlüssel sortiert, damit eine andere Reihenfolge nicht als Änderung gilt. */
+	private static function canonical(mixed $value): string {
+		$sort = static function (mixed $item) use (&$sort): mixed {
+			if (!is_array($item)) {
+				return $item;
+			}
+			$item = array_map($sort, $item);
+			if (!array_is_list($item)) {
+				ksort($item, SORT_STRING);
+			}
+			return $item;
+		};
+		return json_encode($sort($value), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
 	}
 
 	/**

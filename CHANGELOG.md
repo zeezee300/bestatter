@@ -2,6 +2,29 @@
 
 Je Version ein Abschnitt `## x.y.z – Titel` (Format des Nextcloud App Stores).
 
+## 0.92.9 – Rechnungsbild, Vertragsschluss, breite Tabellen, Freigabe mit Rückfrage
+
+- **Rechnung und Korrekturbeleg:** Die Spalte „Leistung“ ist deutlich breiter, Bezeichnungen brechen nicht mehr mitten im Wort um („Einäscherungssarg Kiefer“ statt „Einäscherung/ssarg Kiefer“). Im Fuß stehen USt-IdNr., Steuernummer, Register und Geschäftsführung in einer Zeile; leere Angaben entfallen samt Bezeichnung (bisher z. B. „Geschäftsführung:“ ohne Namen). Unveränderte Vorlagen früherer Versionen ersetzt die App automatisch; eigene Vorlagen können den neuen Platzhalter `{{case.branch_legal_line}}` nutzen.
+- **Auftrag festschreiben:** Die Prüfung vor dem Festschreiben verlangt jetzt die Angabe „Vertragsschluss“ (Geschäftsräume, außerhalb oder Fernabsatz). Bisher ließ sich der Auftrag ohne sie festschreiben, und die Auftrags-PDF scheiterte danach.
+- **Breite Tabellen:** Texte in Tabellen brechen wieder um (Nextcloud verhinderte das für alle Tabellen). Dokumentarten passen damit ganz auf den Bildschirm; in Terminarten, Zuschlagsstaffeln, Leistungen und Finanzen steht die letzte Spalte mit „Speichern“ bzw. „Entfernen“ fest am rechten Rand. Zahlenfelder wie „Dauer“ zeigen ihren Wert vollständig, und die Länderprofile bleiben in ihren Karten.
+- **Rechnung freigeben:** „Freigeben“ ist ausgegraut, bis das verbindliche Prüfdokument erzeugt ist, und fragt vor der endgültigen Freigabe noch einmal nach. Nach „Verbindliches Prüfdokument erzeugen“ aktualisiert sich die Rechnungsliste sofort.
+
+## 0.92.8 – Sicher speichern, Härtungen vor dem Pilotbetrieb
+
+- **Automatisches Speichern:** Wer in Stammdaten oder Auftragsformular schnell hintereinander mehrere Felder ändert, sieht nicht mehr „Der Fall wurde inzwischen von einer anderen Person geändert“, und die letzte Eingabe geht nicht mehr verloren. Die App speichert die Änderungen jetzt nacheinander; Eingaben während eines laufenden Speicherns werden direkt danach mitgespeichert. Betroffen war vor allem langsamere Verbindungen (Tablet, WLAN, VPN) und das Anlegen eines neuen Falls.
+- **Auswertungen und Debitorenliste (CSV):** Werte, die mit =, +, -, @ beginnen (etwa ein entsprechend eingegebener Name), werden mit vorangestelltem Hochkomma ausgegeben. Excel und LibreOffice führen sie so nicht als Formel aus. Zahlen bleiben unverändert; Leistungskatalog und Warengruppen (zum Wiedereinlesen) sind nicht betroffen.
+- **Dateien der Fallakte:** PDF, Bilder (PNG, JPEG, GIF, WebP), Text- und JSON-Dateien öffnen weiter direkt im Browser. Andere Formate – etwa HTML- oder SVG-Dateien, die über Nextcloud-Dateien in den Fallordner gelangt sind – werden heruntergeladen statt im Browser angezeigt.
+- **Doppelte Einträge bei gleichzeitigen Klicks:** Wird derselbe KVA bzw. Auftrag zweimal gleichzeitig festgeschrieben, erscheint wieder die vorgesehene Meldung „Für diesen Beleg … besteht bereits ein Eintrag“ statt eines technischen Fehlers. Ebenso bei der gleichzeitigen Erstanlage der Wertelisten und Zuschlagsstaffeln.
+- **Weniger Warnungen im Nextcloud-Protokoll:** Die App fragt den Stand der Ersteinrichtung nur noch für Bestatter-Administratoren ab. Bisher erzeugte jeder Seitenaufruf einer Mitarbeiterin ohne Administrationsrechte eine abgewiesene Anfrage und eine Warnung im Protokoll.
+- **Schnellerfassung:** Die Abfrage einer unbekannten Transkription meldet „nicht gefunden“ statt eines technischen Fehlers.
+
+## 0.92.7 – Schlankeres Protokoll, Formulare direkt aus der Abmeldung
+
+- **Fall-Verlauf und Protokoll wachsen langsamer:** Speichern ohne Änderung, der reine Abgleich mit Nextcloud Aufgaben und Kalender (neue Versionsstempel, Kennungen) und erneute Übertragungsversuche erzeugen keinen Protokolleintrag mehr. Bei einer Änderung speichert das Protokoll nur noch die geänderten Felder statt des ganzen Datensatzes vorher und nachher.
+- **Weiter protokolliert:** jede fachliche Änderung mit Person, Zeitpunkt und den geänderten Feldern, außerdem wenn eine Übertragung nach Nextcloud scheitert oder wieder gelingt und wenn ein Termin oder eine Aufgabe in Nextcloud gelöscht wurde. Der Fall-Verlauf zeigt dieselben Angaben wie bisher; ältere Einträge bleiben unverändert. Die Verkettung des Protokolls ist davon nicht berührt.
+- **Abmeldungen:** Die Standesamtliche Anzeige zeigt nicht mehr den Hinweis „Im Fall ist noch keine Sterbeurkunde vorhanden.“ – die Sterbeurkunde stellt ja erst das Standesamt aus. Bei allen anderen Abmeldungen bleibt der Hinweis.
+- **Formular direkt aus der Abmeldung:** Gehört zu einer Abmeldung ein Formular – etwa die „Rentenservice – Änderungsanzeige im Sterbefall“ –, erzeugt „Formular erzeugen und anhängen“ es mit den Angaben des Falls und der Abmeldung und hängt das PDF gleich an. Beim Rentenservice sind damit Absender, bisherige Anschrift, Tag der Eheschließung, Witwe bzw. Witwer und das Ankreuzfeld für den Vorschuss ausgefüllt; Kontoangaben und Unterschrift ergänzen die Angehörigen auf dem Ausdruck. Bei „Vorschuss für Witwe/Witwer beantragen?“ = „Ja“ übernimmt die Abmeldung Name, Geburtsdatum und Anschrift des Ehepartners aus den Stammdaten. Eine unveränderte ältere Fassung der Formularvorlage ersetzt die App automatisch.
+
 ## 0.92.6 – Gelöschten Fall aus der Sicherung zurückholen
 
 - **Fall zurückholen:** Ein versehentlich gelöschter Sterbefall, Auftrag oder eine Vorsorge lässt sich aus einem vollständigen Sicherungspaket in die laufende Installation zurückholen – unter Administration → „Backup & Restore“ mit „Fall zurückholen“ am Sicherungspaket oder per `occ bestatter:restore-case`. Die Liste zeigt die gelöschten Fälle der Sicherung mit Zeitpunkt und Person des Löschens; „Prüfen“ zeigt vorher, was zurückkommt und was sperrt.

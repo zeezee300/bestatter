@@ -254,7 +254,11 @@ Den Audio-Chat (sprechen und eine gesprochene Antwort hören) zeigt der Nextclou
 
 ## Abmeldung vorbereiten und versenden
 
-Im Reiter „Abmeldungen“ wählen Sie „Abmeldung vorbereiten“, dann „Vorgang“, „Empfänger“ (Kontakt aus der Kontaktgruppe des Vorgangs) und „Übertragungsweg“. Wählen Sie die „Anlagen aus der Fallakte“; die Sterbeurkunde ist vorausgewählt, Rechnungen werden nicht angeboten. „Entwurf speichern“ speichert auch unvollständig. Danach: „Vorbereiten“ (prüft Pflichtangaben), dann „Per E-Mail versenden“ oder „Versand erfassen“ für Brief, Portal und Telefon (nur Dokumentation, kein Versand), später „Bestätigen“ und „Erledigen“. Mit dem Versand entsteht die Wiedervorlage „Rückmeldung prüfen“. Mehrere Abmeldungen legt der Ablaufschritt „Abmeldungen anlegen“ auf einmal als Entwurf an. Nach dem Versand ist die Abmeldung nicht mehr änderbar.
+Im Reiter „Abmeldungen“ wählen Sie „Abmeldung vorbereiten“, dann „Vorgang“, „Empfänger“ (Kontakt aus der Kontaktgruppe des Vorgangs) und „Übertragungsweg“. Wählen Sie die „Anlagen aus der Fallakte“; die Sterbeurkunde ist vorausgewählt, Rechnungen werden nicht angeboten. Gehört zum Vorgang ein Formular (zum Beispiel die Änderungsanzeige für den Rentenservice), füllt „Formular erzeugen und anhängen“ es mit den Fall- und Abmeldungsangaben und hängt das PDF an. „Entwurf speichern“ speichert auch unvollständig. Danach: „Vorbereiten“ (prüft Pflichtangaben), dann „Per E-Mail versenden“ oder „Versand erfassen“ für Brief, Portal und Telefon (nur Dokumentation, kein Versand), später „Bestätigen“ und „Erledigen“. Mit dem Versand entsteht die Wiedervorlage „Rückmeldung prüfen“. Mehrere Abmeldungen legt der Ablaufschritt „Abmeldungen anlegen“ auf einmal als Entwurf an. Nach dem Versand ist die Abmeldung nicht mehr änderbar.
+
+## Rentenservice abmelden und Vorschuss für Witwe oder Witwer beantragen
+
+Abmeldung „Rentenservice / Rentenversicherung“ vorbereiten, Empfänger „Deutsche Post AG – Renten Service“, Übertragungsweg Post. Bei überlebendem Ehepartner „Vorschuss für Witwe/Witwer beantragen?“ auf „Ja“ – Name, Geburtsdatum und Anschrift kommen aus den Stammdaten. „Formular erzeugen und anhängen“ füllt die Änderungsanzeige (Absender, bisherige Anschrift, Eheschließung, Witwe/Witwer, Ankreuzfeld Vorschuss) und hängt das PDF an. Ausdrucken, Kontoangaben ergänzen und von der Witwe bzw. dem Witwer unterschreiben lassen (nicht vom Bestatter), mit der Original-Sterbeurkunde innerhalb eines Monats an Deutsche Post AG, Niederlassung Renten Service, 13497 Berlin. Danach „Vorbereiten“ und „Versand erfassen“.
 
 ## Dokument aus einer Vorlage erzeugen
 
@@ -359,7 +363,7 @@ Die Fallakte in Nextcloud bleibt immer vollständig. Unter Einstellungen → Adm
 
 ## Technische Einträge im Fall-Verlauf
 
-Der Fall-Verlauf blendet technische Einträge aus: den Abgleich mit Nextcloud Aufgaben und Kalender (Kennungen, Versionsstempel, Rücksprung-Links) und interne Ablaufangaben. Sie sind für die tägliche Arbeit nicht wichtig. Für die Fehlersuche, etwa wenn eine Aufgabe nicht in Nextcloud erscheint, blendet der Schalter „Technische Einträge anzeigen“ oben rechts im Reiter „Fall-Verlauf“ sie ein; die Zahl dahinter nennt, wie viele es sind. Gleichzeitig angelegte Aufgaben stehen als ein Eintrag wie *6 Aufgaben angelegt*, der sich per Klick aufklappen lässt. Das Protokoll bleibt vollständig und unverändert.
+Der Fall-Verlauf blendet technische Einträge aus: Wechsel beim Abgleich mit Nextcloud Aufgaben und Kalender (Übertragungsfehler entstanden oder behoben, in Nextcloud gelöscht, geänderte Kennungen) und interne Ablaufangaben. Sie sind für die tägliche Arbeit nicht wichtig. Der reine Abgleich ohne Änderung und erneute Übertragungsversuche werden nicht protokolliert, damit das Protokoll nicht unnötig wächst. Für die Fehlersuche, etwa wenn eine Aufgabe nicht in Nextcloud erscheint, blendet der Schalter „Technische Einträge anzeigen“ oben rechts im Reiter „Fall-Verlauf“ sie ein; die Zahl dahinter nennt, wie viele es sind. Gleichzeitig angelegte Aufgaben stehen als ein Eintrag wie *6 Aufgaben angelegt*, der sich per Klick aufklappen lässt. Das Protokoll bleibt vollständig und unverändert.
 
 ## Legal Hold setzen oder aufheben
 

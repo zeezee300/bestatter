@@ -212,7 +212,7 @@ class AccountingExportService {
 			$lines[] = [$number, (string)($recipient['name'] ?? ''), (string)($recipient['attention'] ?? ''), (string)($recipient['street'] ?? ''), (string)($recipient['postalCode'] ?? ''), (string)($recipient['city'] ?? ''), (string)($recipient['vatId'] ?? ''), (string)$row['invoice_number']];
 		}
 		$this->audit->logSystem('ACCOUNTING_EXPORT', 'DEBTORS_DOWNLOADED', ['count' => count($lines)]);
-		return CsvTools::write(['Debitor', 'Name', 'z. Hd.', 'Straße', 'PLZ', 'Ort', 'USt-IdNr.', 'Letzter Beleg'], $lines);
+		return CsvTools::writeExport(['Debitor', 'Name', 'z. Hd.', 'Straße', 'PLZ', 'Ort', 'USt-IdNr.', 'Letzter Beleg'], $lines);
 	}
 
 	// --------------------------------------------------------------------------------------------- Vorbereitung

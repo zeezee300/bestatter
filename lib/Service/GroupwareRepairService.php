@@ -211,22 +211,50 @@ class GroupwareRepairService {
 		return $result;
 	}
 
-	/** Daten des jüngsten Audit-Stands, der das Merkmal (z. B. processStepId) noch enthielt. */
+	/**
+	 * Daten des jüngsten Audit-Stands, der das Merkmal (z. B. processStepId) noch enthielt.
+	 * 0.92.7: Änderungen werden kompakt (nur geänderte Felder) gespeichert; der Stand wird deshalb aus dem
+	 * letzten vollständigen Schnappschuss und den folgenden kompakten Einträgen zusammengesetzt.
+	 */
 	private function auditSnapshot(string $type, int $id, string $marker): ?array {
 		$query = $this->db->getQueryBuilder();
-		$rows = $query->select('after_data')->from('bestatter_audit_log')
+		$rows = $query->select('before_data', 'after_data')->from('bestatter_audit_log')
 			->where($query->expr()->eq('object_type', $query->createNamedParameter(strtoupper($type))))
 			->andWhere($query->expr()->eq('object_id', $query->createNamedParameter($id)))
-			->andWhere($query->expr()->like('after_data', $query->createNamedParameter('%"' . $marker . '"%')))
-			->orderBy('id', 'DESC')->setMaxResults(1)
+			->orderBy('id', 'ASC')
 			->executeQuery()->fetchAllAssociative();
+		return self::snapshotWithMarker($rows, $marker);
+	}
+
+	/**
+	 * 0.92.7: Setzt die Stände eines Datensatzes aus den Protokollzeilen (aufsteigend) zusammen und liefert die Daten
+	 * des jüngsten Stands, der das Merkmal enthält. Statisch für Tests ohne Datenbank.
+	 * @param list<array<string, mixed>> $rows
+	 */
+	public static function snapshotWithMarker(array $rows, string $marker): ?array {
+		$state = null;
+		$found = null;
 		foreach ($rows as $row) {
-			$after = json_decode((string)$row['after_data'], true);
-			if (is_array($after) && is_array($after['data'] ?? null)) {
-				return $after['data'];
+			$after = json_decode((string)($row['after_data'] ?? ''), true);
+			if (!is_array($after)) {
+				continue;
+			}
+			if (AuditService::isCompact($after)) {
+				if ($state === null) {
+					continue;
+				}
+				$before = json_decode((string)($row['before_data'] ?? ''), true);
+				$state = AuditService::applyCompact($state, is_array($before) ? $before : [], $after);
+			} elseif (is_array($after['data'] ?? null)) {
+				$state = $after;
+			} else {
+				continue;
+			}
+			if (is_array($state['data'] ?? null) && str_contains(json_encode($state['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', '"' . $marker . '"')) {
+				$found = $state['data'];
 			}
 		}
-		return null;
+		return $found;
 	}
 
 	private function deleteRecord(int $id, string $reason): void {

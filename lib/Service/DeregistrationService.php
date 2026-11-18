@@ -63,7 +63,83 @@ class DeregistrationService {
 				break;
 			}
 		}
-		return ['template' => $template, 'recipient' => $contact, 'availableChannels' => $channels, 'subject' => $payload['subject'], 'body' => $payload['body'], 'missingFields' => $missing, 'ready' => $missing === [], 'documentTemplateKey' => $template['documentTemplateKey'], 'attachments' => $attachments, 'availableAttachments' => $documents, 'attachmentWarning' => !$hasDeathCertificate ? ($availableDeathCertificate ? 'Die vorhandene Sterbeurkunde ist noch nicht als Anlage ausgewählt.' : 'Im Fall ist noch keine Sterbeurkunde vorhanden.') : '', 'previewMode' => in_array($channel, ['POST', 'BRIEF'], true) ? 'LETTER' : 'MESSAGE', 'letter' => ['templateName' => (string)($documentTemplate['name'] ?? $template['documentTemplateKey'] ?? 'Briefvorlage'), 'sender' => trim((string)($branch['name'] ?? '') . "\n" . (string)($branch['street'] ?? '') . "\n" . trim((string)($branch['postalCode'] ?? '') . ' ' . (string)($branch['city'] ?? ''))), 'recipient' => trim((string)($contact['title'] ?? '') . "\n" . (string)($contact['data']['street'] ?? $contact['data']['address'] ?? '') . "\n" . trim((string)($contact['data']['postalCode'] ?? '') . ' ' . (string)($contact['data']['city'] ?? ''))), 'date' => date('d.m.Y')]];
+		return ['template' => $template, 'recipient' => $contact, 'availableChannels' => $channels, 'subject' => $payload['subject'], 'body' => $payload['body'], 'missingFields' => $missing, 'ready' => $missing === [], 'documentTemplateKey' => $template['documentTemplateKey'], 'attachments' => $attachments, 'availableAttachments' => $documents, 'attachmentWarning' => self::deathCertificateWarning($template, $hasDeathCertificate, $availableDeathCertificate), 'previewMode' => in_array($channel, ['POST', 'BRIEF'], true) ? 'LETTER' : 'MESSAGE', 'letter' => ['templateName' => (string)($documentTemplate['name'] ?? $template['documentTemplateKey'] ?? 'Briefvorlage'), 'sender' => trim((string)($branch['name'] ?? '') . "\n" . (string)($branch['street'] ?? '') . "\n" . trim((string)($branch['postalCode'] ?? '') . ' ' . (string)($branch['city'] ?? ''))), 'recipient' => trim((string)($contact['title'] ?? '') . "\n" . (string)($contact['data']['street'] ?? $contact['data']['address'] ?? '') . "\n" . trim((string)($contact['data']['postalCode'] ?? '') . ' ' . (string)($contact['data']['city'] ?? ''))), 'date' => date('d.m.Y')]];
+	}
+
+	/**
+	 * 0.92.7: „Formular erzeugen und anhängen“ in der Abmeldung. Liefert, womit die Dokumentvorlage des
+	 * Vorgangs (documentTemplateKey, nur DOCX) gefüllt wird: Fallangaben, die in der Abmeldung geändert
+	 * wurden (Postrentennummer), sowie Zusatzwerte aus der Abmeldung – Vorschussantrag mit Witwe/Witwer,
+	 * Referenznummer des Vorgangs und Empfänger. Der Ausgabetitel nennt den Empfänger, damit zwei
+	 * Abmeldungen mit derselben Vorlage (z. B. Bank und Arbeitgeber) sich nicht gegenseitig ersetzen.
+	 * Die Abmeldung muss dafür nicht gespeichert sein.
+	 */
+	public function formDocument(int $caseId, array $input): array {
+		$case = $this->cases->getCase($caseId);
+		$template = $this->template((string)($input['templateKey'] ?? ''));
+		$key = strtoupper(trim((string)($template['documentTemplateKey'] ?? '')));
+		$document = null;
+		foreach ($this->configuration->documents() as $candidate) {
+			if (strtoupper((string)($candidate['key'] ?? '')) === $key) {
+				$document = $candidate;
+				break;
+			}
+		}
+		if ($key === '' || $document === null || !($document['active'] ?? false) || !preg_match('/\.docx$/i', (string)($document['fileName'] ?? ''))) {
+			throw new \InvalidArgumentException('Für diesen Vorgang ist keine Formularvorlage (DOCX) hinterlegt.');
+		}
+		$contact = $this->contacts->find((int)($input['contactId'] ?? 0));
+		$recipientName = trim((string)($contact['title'] ?? ''));
+		$master = [];
+		foreach (['pensionNumber' => 'pension_insurance_number', 'pensionNumber2' => 'pension_insurance_number_2'] as $field => $masterKey) {
+			$value = trim((string)($input[$field] ?? ''));
+			if ($value !== '') {
+				$master[$masterKey] = $value;
+			}
+		}
+		$placeholders = self::formPlaceholders($template, $input, $contact);
+		$title = trim((string)($document['name'] ?? $key));
+		return [
+			'case' => $case,
+			'templateKey' => $key,
+			'masterData' => $master,
+			'placeholders' => $placeholders,
+			'outputTitle' => $recipientName !== '' ? $title . ' – ' . $recipientName : $title,
+		];
+	}
+
+	/** 0.92.7: Zusatzwerte einer Abmeldung für die Formularvorlage (rein, testbar). */
+	public static function formPlaceholders(array $template, array $input, ?array $contact): array {
+		$advance = strtoupper(trim((string)($input['advanceApplication'] ?? 'NEIN'))) === 'JA';
+		$text = static fn (string $field): string => $advance ? trim((string)($input[$field] ?? '')) : '';
+		$birthDate = $text('advanceApplicantBirthDate');
+		if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $birthDate, $match)) {
+			$birthDate = $match[3] . '.' . $match[2] . '.' . $match[1];
+		}
+		$values = [
+			'{{advance.application}}' => $advance ? 'JA' : 'NEIN',
+			'{{advance.application_mark}}' => $advance ? '☒' : '☐',
+			'{{advance.applicant_name}}' => $text('advanceApplicantName'),
+			'{{advance.applicant_birth_date}}' => $birthDate,
+			'{{advance.applicant_address}}' => $text('advanceApplicantAddress'),
+			'{{advance.applicant_pension_number}}' => $text('advanceApplicantPensionNumber'),
+			'{{advance.applicant_name_address}}' => implode(', ', array_filter([$text('advanceApplicantName'), $text('advanceApplicantAddress')], static fn (string $part): bool => $part !== '')),
+		];
+		$referenceFieldKey = (string)($template['referenceField']['field'] ?? '');
+		$referenceNumber = trim((string)($input['referenceNumber'] ?? ''));
+		if ($referenceFieldKey !== '' && $referenceNumber !== '') {
+			$values['{{' . $referenceFieldKey . '}}'] = $referenceNumber;
+		}
+		if ($contact !== null) {
+			$data = is_array($contact['data'] ?? null) ? $contact['data'] : [];
+			$name = trim((string)($contact['title'] ?? ''));
+			$address = trim(implode(', ', array_filter([trim((string)($data['street'] ?? '')), trim((string)($data['postalCode'] ?? '') . ' ' . (string)($data['city'] ?? ''))], static fn (string $part): bool => $part !== '')));
+			$values['{{recipient.name}}'] = $name;
+			$values['{{recipient.address}}'] = $address;
+			$values['{{case.recipient_name}}'] = $name;
+			$values['{{case.recipient_address}}'] = $address;
+		}
+		return $values;
 	}
 
 	public function save(int $caseId, array $input, int $id = 0): array {
@@ -222,6 +298,23 @@ class DeregistrationService {
 		}
 		$ids = array_fill_keys(array_filter($selectedIds), true);
 		return array_values(array_filter($documents, static fn (array $item): bool => isset($ids[(int)$item['fileId']]) || ((int)$item['recordId'] > 0 && isset($ids[(int)$item['recordId']]))));
+	}
+	/**
+	 * 0.92.8: Hinweis auf eine fehlende bzw. nicht ausgewählte Sterbeurkunde. Er galt bisher für jeden
+	 * Vorgang, also auch für die Standesamtliche Anzeige - dort ist er fachlich falsch, denn die
+	 * Sterbeurkunde stellt erst das Standesamt aufgrund dieser Anzeige aus (Befund bei der Vorbereitung
+	 * des Schulungsvideos V5, 16.11.2026). Für Vorgänge mit Empfängertyp bzw. Schlüssel STANDESAMT
+	 * entfällt der Hinweis deshalb; für alle anderen Stellen bleibt er unverändert.
+	 */
+	public static function deathCertificateWarning(array $template, bool $selected, bool $available): string {
+		if ($selected || self::isRegistryOfficeTemplate($template)) {
+			return '';
+		}
+		return $available ? 'Die vorhandene Sterbeurkunde ist noch nicht als Anlage ausgewählt.' : 'Im Fall ist noch keine Sterbeurkunde vorhanden.';
+	}
+	public static function isRegistryOfficeTemplate(array $template): bool {
+		return strtoupper(trim((string)($template['recipientType'] ?? ''))) === 'STANDESAMT'
+			|| strtoupper(trim((string)($template['key'] ?? ''))) === 'STANDESAMT';
 	}
 	private function isDeathCertificate(array $item): bool {
 		$haystack = mb_strtolower((string)($item['title'] ?? '') . ' ' . (string)($item['documentType'] ?? '') . ' ' . (string)($item['path'] ?? ''));

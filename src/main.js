@@ -9,7 +9,7 @@ import { createLabelsModule } from './modules/labels.js'; import { createPrecare
 import { createDocumentKindsModule } from './modules/document-kinds.js'
 import { createNavigation } from './modules/navigation.js'
 import { createCaseGuidance } from './modules/case-guidance.js'; import { createCaseDeletion } from './modules/case-deletion.js'; import { createDocumentTemplatesModule } from './modules/document-templates.js'; import { createOrderSignature } from './modules/order-signature.js'
-import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; import { caseKindForView, viewForCaseKind, CASE_LIST_VIEWS, CASE_KIND_LABELS, caseKindOf, caseEyebrow, caseDisplayName, masterNamesMissing, masterNameNotice } from './modules/case-kinds.js'
+import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; import { coalesce, runExclusive } from './modules/save-lock.js'; import { caseKindForView, viewForCaseKind, CASE_LIST_VIEWS, CASE_KIND_LABELS, caseKindOf, caseEyebrow, caseDisplayName, masterNamesMissing, masterNameNotice } from './modules/case-kinds.js'
 (function () {
 	'use strict'; const root = document.getElementById('bestatter-app'); if (!root) return
 	const appVersion = root.dataset.appVersion || ''; const urls = {
@@ -437,7 +437,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			const master = state.currentCase?.masterData || {}
 			const deferred = [...new Set([...(Array.isArray(master.burial_deferred_rule_ids) ? master.burial_deferred_rule_ids : []), id])]
 			try {
-				state.currentCase = await api(`${urls.cases}/${state.currentCase.id}/master-data`, { method:'PUT', body:new URLSearchParams({ masterData: JSON.stringify({...master, burial_deferred_rule_ids:deferred}), expectedUpdatedAt: state.currentCase.updatedAt || '' }) })
+				state.currentCase = await runExclusive(() => api(`${urls.cases}/${state.currentCase.id}/master-data`, { method:'PUT', body:new URLSearchParams({ masterData: JSON.stringify({...master, burial_deferred_rule_ids:deferred}), expectedUpdatedAt: state.currentCase.updatedAt || '' }) }))
 				render()
 			} catch (error) { notifyError(error.message) }
 		}))
@@ -584,7 +584,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		const form = document.getElementById('case-form'); if (!form) return
 		const stateLabel = document.getElementById('case-save-state'); let timer = null; const boundCaseId = Number(state.currentCase?.id || 0)
 		const namesMissing = (data) => masterNamesMissing(caseKindOf(state.currentCase), data); const nameNotice = (final) => { /* 0.89.7: Hinweis beim Tippen, Fehler erst beim Verlassen des Formulars */ const notice = masterNameNotice(caseKindOf(state.currentCase), state.newCase, final); stateLabel.textContent = notice.text; stateLabel.dataset.state = notice.state }
-		const save = async (final = false) => {
+		const save = coalesce(async (final = false) => { // 0.92.8: Speichervorgänge nacheinander, nie zwei gleichzeitig (save-lock.js)
 			clearTimeout(timer); caseGuidance.clearPendingSave('case')
 			if (state.createInFlight || !state.currentCase || (boundCaseId && Number(state.currentCase.id) !== boundCaseId)) return // 0.89.7: nie gegen einen gelöschten oder anderen Fall
 			const formData = Object.fromEntries(new FormData(form))
@@ -602,7 +602,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 				// zeigen – ohne Eingaben, Fokus oder Cursorposition im Formular zu verlieren.
 				if (created) { await caseGuidance.afterCaseCreated(); /* 0.88.1: Hinweis auf die entstandenen Aufgaben */ rerenderKeepingCaseForm(stateLabel.textContent, stateLabel.dataset.state) }
 			} catch (error) { stateLabel.textContent = error.message; stateLabel.dataset.state = 'error' } finally { state.createInFlight = false }
-		}
+		})
 		form.querySelectorAll('input,select,textarea').forEach((input) => ['input', 'change', 'blur'].forEach((name) => input.addEventListener(name, () => { clearTimeout(timer); timer = setTimeout(save, name === 'blur' ? 150 : 550); caseGuidance.registerPendingSave('case', () => save(true)) })))
 		form.addEventListener('focusout', () => setTimeout(() => { if (form.isConnected && !form.contains(document.activeElement) && namesMissing({ ...(state.currentCase?.masterData || {}), ...Object.fromEntries(new FormData(form)) })) nameNotice(true) }, 250))
 		form.querySelectorAll('[data-burial-level]').forEach((select) => select.addEventListener('change', async () => {
@@ -624,7 +624,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		if (!form) return
 		const status = document.getElementById('order-save-state')
 		let timer = null; const boundCaseId = Number(state.currentCase?.id || 0)
-		const save = async () => {
+		const save = coalesce(async () => { // 0.92.8: gemeinsame Reihenfolge mit dem Stammdatenformular (save-lock.js)
 			clearTimeout(timer); caseGuidance.clearPendingSave('order'); if (!state.currentCase || (boundCaseId && Number(state.currentCase.id) !== boundCaseId)) return
 			const data = Object.fromEntries(new FormData(form))
 			delete data.order_mode_choice // reine UI-Auswahl; fachlich gilt order_mode
@@ -654,7 +654,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 				status.dataset.state = 'error'
 				return false
 			}
-		}
+		})
 		form._saveOrder = save
 		form.querySelectorAll('[name="order_mode_choice"]').forEach((modeInput) => modeInput.addEventListener('change', async (event) => {
 			const previousMode = form.elements.order_mode.value
@@ -768,7 +768,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 		root.querySelectorAll('.create-invoice').forEach((invoiceButton) => invoiceButton.addEventListener('click', async () => {
 			showInvoiceDraftForm(invoiceButton.dataset.invoiceType || 'PARTIAL')
 		})); root.querySelectorAll('.transition-invoice').forEach((button) => button.addEventListener('click', async () => {
-			let reason=''; if(button.dataset.status==='STORNIERT'){reason=await promptAction('Der Entwurf wurde noch nicht ausgestellt. Bitte begründen Sie, warum er verworfen wird; die Nummer bleibt als verworfen dokumentiert.', '', { title: 'Entwurf verwerfen', label: 'Begründung', multiline: true })||'';if(!reason)return} if(button.dataset.status==='VERSENDET'&&!await confirmAction('Nur einen bereits außerhalb der Anwendung erfolgten Versand dokumentieren? Die App versendet keine E-Mail.', { title: 'Versand dokumentieren', confirmLabel: 'Versand dokumentieren' }))return
+			let reason=''; if(button.dataset.status==='STORNIERT'){reason=await promptAction('Der Entwurf wurde noch nicht ausgestellt. Bitte begründen Sie, warum er verworfen wird; die Nummer bleibt als verworfen dokumentiert.', '', { title: 'Entwurf verwerfen', label: 'Begründung', multiline: true })||'';if(!reason)return} if(button.dataset.status==='VERSENDET'&&!await confirmAction('Nur einen bereits außerhalb der Anwendung erfolgten Versand dokumentieren? Die App versendet keine E-Mail.', { title: 'Versand dokumentieren', confirmLabel: 'Versand dokumentieren' }))return; if(button.dataset.status==='FREIGEGEBEN'&&!await confirmAction(`${button.dataset.documentKind||'Rechnung'} ${button.dataset.invoiceNumber||''} jetzt endgültig freigeben? Danach ist der Beleg ausgestellt und unveränderlich.${(button.dataset.documentKind||'Rechnung')==='Rechnung'?' Ändern lässt er sich nur noch über Stornorechnung oder Gutschrift.':''}`, { title: `${button.dataset.documentKind||'Rechnung'} freigeben`, confirmLabel: 'Endgültig freigeben' }))return // 0.92.9: Rückfrage vor der unumkehrbaren Freigabe
 			try { await api(`${apiBase}/commercial/invoices/${button.dataset.invoiceId}/transition`, { method: 'POST', body: new URLSearchParams({ status: button.dataset.status, reason }) }); await loadCommercial(); render() } catch (error) { notifyError(error.message) }
 		}))
 		root.querySelectorAll('.create-cancellation').forEach((button) => button.addEventListener('click', async () => {
@@ -781,7 +781,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			try {
 				const invoiceId=button.dataset.invoiceId
 				const correction=(state.commercial?.invoices||[]).some((item)=>String(item.id)===String(invoiceId)&&(item.documentKind||'INVOICE')!=='INVOICE')
-				const result=await api(`${apiBase}/commercial/invoices/${invoiceId}/document`,{method:'POST',feedback:false,loadingLabel:correction?'Prüfdokument des Korrekturbelegs wird erzeugt …':'Rechnungs-Prüfdokument und Zahlungs-QR werden erzeugt …',body:new URLSearchParams({createPdf:'true'})});await Promise.all([loadCaseFiles(state.currentCase.id),loadRecordType('document',state.currentCase.id)])
+				const result=await api(`${apiBase}/commercial/invoices/${invoiceId}/document`,{method:'POST',feedback:false,loadingLabel:correction?'Prüfdokument des Korrekturbelegs wird erzeugt …':'Rechnungs-Prüfdokument und Zahlungs-QR werden erzeugt …',body:new URLSearchParams({createPdf:'true'})});await Promise.all([loadCaseFiles(state.currentCase.id),loadRecordType('document',state.currentCase.id),loadCommercial()]) // 0.92.9: Rechnungsstand neu laden – „Freigeben“ wird erst damit aktiv
 				if(result.file?.pdfWarning)notifyWarning(result.file.pdfWarning);else {
 					const qrState=result.file?.paymentQr?.rendering
 					const qrNote=qrState==='SERVER_RENDERED_PNG'?' Der EPC-SEPA-Zahlcode wurde serverseitig erzeugt und in DOCX und PDF eingebettet.':qrState==='SUPPRESSED_FOR_DIRECT_DEBIT'?' Bei SEPA-Lastschrift wird bestimmungsgemäß kein Überweisungs-QR ausgegeben.':qrState==='DISABLED_BY_CONFIGURATION'?' Der Zahlungs-QR ist in den Rechnungseinstellungen oder im Niederlassungsprofil deaktiviert.':' Der Status der Zahlungs-QR-Ausgabe konnte nicht ermittelt werden.'
@@ -789,7 +789,7 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 					const eNote=!eInvoice?'Das Rechnungs-Prüf-PDF wurde im Fallordner abgelegt.':eInvoice.embedded?(eInvoice.pdfa?`Das Rechnungs-PDF wurde als ZUGFeRD-Rechnung (PDF/A-${eInvoice.pdfa}, eingebettete factur-x.xml${eInvoice.validationStatus==='NORMATIV_VALIDATED'?', normativ geprüft':''}) im Fallordner abgelegt.`:'Das Rechnungs-PDF mit eingebetteter factur-x.xml wurde im Fallordner abgelegt.'):'Rechnungs-PDF und E-Rechnungs-XML wurden getrennt im Fallordner abgelegt.'
 					if(eInvoice&&(!eInvoice.embedded||!eInvoice.pdfa||eInvoice.normativeValidation==='INVALID'))notifyWarning(eInvoice.complianceNote)
 					notifySuccess(eNote+qrNote)
-				}
+				}; render()
 			} catch (error) { notifyError(error.message) }
 		}))
 		root.querySelectorAll('.preview-invoice-document').forEach((button) => button.addEventListener('click', async () => {
@@ -882,11 +882,11 @@ import { UNSAVED_CASE_TABS, isUnsavedCase } from './modules/case-unsaved.js'; im
 			return false
 		}
 	}
-	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0&kind=${state.caseSearch.kind}`), api(urls.customizing), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false })), api(`${apiBase}/customizing/burial-rules`), api(`${apiBase}/customizing/surcharges`), api(`${apiBase}/assistant/help/availability`, {feedback:false}).catch(() => ({available:false})), api(`${apiBase}/labels`, { feedback: false }).catch(() => null)])
+	Promise.all([api(urls.dashboard), api(`${apiBase}/dashboard/personal-day`), api(urls.team), api(`${apiBase}/cases/search?status=ALL&branch=ALL&responsible=ALL&limit=25&offset=0&kind=${state.caseSearch.kind}`), api(urls.customizing), api(recordUrl('task')), api(recordUrl('schedule')), api(recordUrl('contact')), api(articleUrl()), api(branchUrl()), api(documentTemplateUrl()), api(documentTemplateOptionsUrl()), api(deregistrationTemplateUrl()), api(invoiceSettingsUrl()), api(schedulePresetsUrl()), api(schedulingUrl()), api(`${apiBase}/assistant/configuration`), Promise.resolve(null), api(`${apiBase}/customizing/burial-rules`), api(`${apiBase}/customizing/surcharges`), api(`${apiBase}/assistant/help/availability`, {feedback:false}).catch(() => ({available:false})), api(`${apiBase}/labels`, { feedback: false }).catch(() => null)])
 		.then(async ([dashboard, personalDay, team, caseResult, customizingData, tasks, schedules, contacts, articleData, branches, documentTemplates, documentTemplateOptions, deregistrationTemplates, invoiceSettings, schedulePresets, scheduling, assistantConfiguration, onboarding, burialRules, surcharges, helpAvailability, labelCatalog]) => {
 			state.labels = labelCatalog
 			await loadDocumentKinds().catch(() => {})
-			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; Object.assign(state.help, { available: Boolean(helpAvailability?.available), chat: Boolean(helpAvailability?.chat) }); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding
+			state.dashboard = dashboard; state.personalDay = personalDay; state.team = team; state.cases = caseResult.items || []; state.caseSearch = { ...state.caseSearch, ...caseResult }; state.customizing = customizingData.lists || []; state.burialVariantRules = burialRules || []; state.surchargeRules = surcharges || []; Object.assign(state.help, { available: Boolean(helpAvailability?.available), chat: Boolean(helpAvailability?.chat) }); state.records.task = tasks; state.records.schedule = schedules; state.records.contact = contacts; applyCatalog(articleData); state.branches = branches; state.documentTemplates = documentTemplates; state.documentTemplateOptions = documentTemplateOptions; state.deregistrationTemplates = deregistrationTemplates; state.invoiceSettings = invoiceSettings; state.schedulePresets = schedulePresets; state.scheduling = scheduling; state.assistantConfiguration = assistantConfiguration; state.onboarding = onboarding ?? (team?.isBestatterAdmin ? await api(`${apiBase}/operations/onboarding`, { feedback: false }).catch(() => ({ ready: true, completed: false })) : { ready: true, completed: false }) // 0.92.8: Ersteinrichtung nur für Bestatter-Administratoren abfragen (kein 403 und keine Warnung im Nextcloud-Protokoll bei jedem Seitenaufruf)
 			initializeAssistantCapture(); await caseGuidance.loadRoleStatus()
 			if (!await openDeepLinkedTask()) { await restoreWorkspace({ state, urls, apiBase, api, loadMasterDataTab, loadRecordType, loadCaseFiles, loadAllCaseFiles, loadCommercial, loadSystemCheck, loadOperationsCockpit, loadReportingSummary, loadPaperlessInbox, loadPaperlessConfiguration, schedulingUrl, deregistrationUrl, notifyWarning }); if (state.view === 'case-detail' && state.currentCase) await Promise.all([loadProcess(state.currentCase.id), context.loadCaseKindData(state.currentCase.id)]); if (state.view === 'customizing' && state.customizingTab === 'processes') await loadProcessAdmin().catch(() => {}); render() }
 			refreshGroupwareSilently().catch(() => {})

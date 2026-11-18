@@ -352,7 +352,8 @@ class ReportingService {
 		} $out = fopen('php://temp', 'r+');
 		fputcsv($out, array_keys($rows[0]), ';', '"', '\\', "\r\n");
 		foreach ($rows as $row) {
-			fputcsv($out, $row, ';', '"', '\\', "\r\n");
+			// 0.92.8: keine Formeln aus Namen o. Ä. in Excel/LibreOffice (CsvTools::exportCell)
+			fputcsv($out, array_map([CsvTools::class, 'exportCell'], $row), ';', '"', '\\', "\r\n");
 		} rewind($out);
 		return "\xEF\xBB\xBF" . (string)stream_get_contents($out);
 	}

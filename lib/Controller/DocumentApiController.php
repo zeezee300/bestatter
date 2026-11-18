@@ -18,6 +18,9 @@ use OCP\IDBConnection;
 use OCP\IRequest;
 
 class DocumentApiController extends ApiController {
+	/** 0.92.8: Formate, die displayCaseFile() im Browser anzeigt; alle übrigen werden heruntergeladen. */
+	private const INLINE_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'application/json'];
+
 	public function __construct(
 		string $appName,
 		IRequest $request,
@@ -120,9 +123,14 @@ class DocumentApiController extends ApiController {
 	public function displayCaseFile(int $caseId, int $fileId): FileDisplayResponse {
 		$file = $this->caseFiles->file($this->caseService->getCase($caseId), $fileId);
 		$fileName = str_replace(["\r", "\n", '"'], ['', '', "'"], $file->getName());
+		// 0.92.8: Nur unbedenkliche Formate (PDF, Rasterbilder, Text, JSON) direkt im Browser anzeigen. Alles andere –
+		// z. B. HTML oder SVG, die über Nextcloud-Dateien in den Fallordner gelangt sind – wird heruntergeladen,
+		// damit kein aktiver Inhalt unter der Nextcloud-Adresse geöffnet wird.
+		$mimeType = strtolower(trim(explode(';', (string)$file->getMimeType())[0]));
+		$inline = in_array($mimeType, self::INLINE_MIME_TYPES, true);
 		$response = new FileDisplayResponse($file);
-		$response->addHeader('Content-Type', $file->getMimeType() ?: 'application/octet-stream');
-		$response->addHeader('Content-Disposition', 'inline; filename="' . $fileName . '"');
+		$response->addHeader('Content-Type', $inline ? $mimeType : 'application/octet-stream');
+		$response->addHeader('Content-Disposition', ($inline ? 'inline' : 'attachment') . '; filename="' . $fileName . '"');
 		$response->addHeader('Cache-Control', 'private, no-store');
 		$response->addHeader('X-Content-Type-Options', 'nosniff');
 		return $response;
@@ -176,6 +184,31 @@ class DocumentApiController extends ApiController {
 	#[NoAdminRequired]
 	public function previewDeregistration(int $caseId, string $deregistration = '{}'): DataResponse {
 		return new DataResponse($this->deregistrations->preview($caseId, json_decode($deregistration, true, 512, JSON_THROW_ON_ERROR)));
+	}
+
+	/**
+	 * 0.92.7: Formular des Abmeldevorgangs (z. B. Rentenservice – Änderungsanzeige) mit den Angaben der
+	 * Abmeldung erzeugen (Entwurf, DOCX + PDF) und als Ausgabe der Fallakte speichern. Die Antwort nennt die
+	 * Datei, die das Formular als Anlage auswählt (PDF, sonst DOCX).
+	 */
+	#[NoAdminRequired]
+	public function generateDeregistrationForm(int $caseId, string $deregistration = '{}'): DataResponse {
+		$form = $this->deregistrations->formDocument($caseId, json_decode($deregistration, true, 512, JSON_THROW_ON_ERROR));
+		$case = $form['case'];
+		$case['masterData'] = array_merge(is_array($case['masterData'] ?? null) ? $case['masterData'] : [], $form['masterData']);
+		$file = $this->documents->generateTemplate($case, $form['templateKey'], 'ENTWURF', true, false, null, 0, null, null, false, true, $form['outputTitle'], $form['placeholders']);
+		$file['title'] = $form['outputTitle'];
+		try {
+			$record = $this->recordService->saveDocument($caseId, $file['title'], $file['status'], $file);
+		} catch (\Throwable $error) {
+			$this->documents->discardGeneratedOutput($file);
+			throw $error;
+		}
+		$this->process->reconcileQuietly($caseId);
+		$attachment = is_array($file['pdf'] ?? null) && (int)($file['pdf']['fileId'] ?? 0) > 0
+			? ['fileId' => (int)$file['pdf']['fileId'], 'path' => (string)($file['pdf']['path'] ?? ''), 'pdf' => true]
+			: ['fileId' => (int)($file['fileId'] ?? 0), 'path' => (string)($file['path'] ?? ''), 'pdf' => false];
+		return new DataResponse(['file' => $file, 'record' => $record, 'attachment' => $attachment], 201);
 	}
 
 	#[NoAdminRequired]

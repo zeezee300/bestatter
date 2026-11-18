@@ -261,6 +261,7 @@ return ['routes' => [
 	['name' => 'documentApi#displayCaseFile', 'url' => '/api/cases/{caseId}/files/{fileId}/content', 'verb' => 'GET'],
 	['name' => 'documentApi#caseDeregistrations', 'url' => '/api/cases/{caseId}/deregistrations', 'verb' => 'GET'],
 	['name' => 'documentApi#previewDeregistration', 'url' => '/api/cases/{caseId}/deregistrations/preview', 'verb' => 'POST'],
+	['name' => 'documentApi#generateDeregistrationForm', 'url' => '/api/cases/{caseId}/deregistrations/form', 'verb' => 'POST'],
 	['name' => 'documentApi#createDeregistration', 'url' => '/api/cases/{caseId}/deregistrations', 'verb' => 'POST'],
 	['name' => 'documentApi#updateDeregistration', 'url' => '/api/cases/{caseId}/deregistrations/{id}', 'verb' => 'PUT'],
 	['name' => 'documentApi#transitionDeregistration', 'url' => '/api/deregistrations/{id}/transition', 'verb' => 'POST'],

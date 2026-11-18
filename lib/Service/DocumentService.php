@@ -25,10 +25,12 @@ class DocumentService {
 		// 0.89.5: Die Fassung 0.89.0 (09643f…) erhält in Abschnitt 2 den Hinweis zu Schätzbeträgen ({{order.price_terms}}).
 		'BESTATTUNGSAUFTRAG.docx' => ['2aba502e61c9ee18af3be3da0926f903644cb1514e22f6fe614fea5f367792ad', '5b8c7241cecb29aad903d4342faaa18bf06a10139168e8015f75f2df899cab80', '7a27d84e99e08c1b235f34c5299bf4c97b881a922b9894b12d519a8079e1b21b', '09643f89e6174279cf79c0167885e067f2cb6d79a6a2e7b0c3ea71ff15a963b6'],
 		// Package version 0.58.0. Individually changed invoice templates remain untouched.
+		// 0.92.9: RECHNUNG und KORREKTUR mit breiterer Spalte „Leistung“ und kombinierter Pflichtangabenzeile im Fuß; die Fassungen
+		// 0.92.6–0.92.8 (d7578c…, c5a9fc…) werden unverändert ersetzt.
 		// 0.92.6: RECHNUNG, KORREKTUR und KONDOLENZLISTE_DECKBLATT nur mit neutralen Dokumenteigenschaften (zuletzt geändert von);
 		// Inhalt unverändert. Die Fassungen bis 0.92.5 (86637a…, a81e11…, d3cbb7…) gelten als ältere Standardfassung.
-		'RECHNUNG.docx' => ['94695c36a21897c5b60ac269830ceaad3af40f1dcd327b4bfe07540859582f41', '0866b50e2f279c1e75fb672b512157920ce3017b59ff1db877b60e358be920ec', '86637af2b97441ea7e80b583dc1d87269363f663d92fd7600f4a535417beea74'],
-		'KORREKTUR.docx' => ['363560163ee34e23b7fb795b3f5ec81830ec3c632fa627101323c78bae22a62f', 'a81e115329c0466fbfaea0f8c5d7ba8e4d64bc06b4e89042a00a30d39c6cce14'],
+		'RECHNUNG.docx' => ['94695c36a21897c5b60ac269830ceaad3af40f1dcd327b4bfe07540859582f41', '0866b50e2f279c1e75fb672b512157920ce3017b59ff1db877b60e358be920ec', '86637af2b97441ea7e80b583dc1d87269363f663d92fd7600f4a535417beea74', 'd7578c49ca42d62d548d9a5fb7966199c103692ab1020142486102805337b7e4'],
+		'KORREKTUR.docx' => ['363560163ee34e23b7fb795b3f5ec81830ec3c632fa627101323c78bae22a62f', 'a81e115329c0466fbfaea0f8c5d7ba8e4d64bc06b4e89042a00a30d39c6cce14', 'c5a9fc67aa8e39263e58a2585b2640bd9d54011ba549dc7a8a5df5f1cd3bb5b4'],
 		'KONDOLENZLISTE_DECKBLATT.docx' => ['d3cbb71fee50912b6137d8c07faeaf1aed9e1644cd4bcadd5d10125dfc4d879a'],
 		// 0.81.0: Abmelde- und Mitteilungsschreiben nennen „Unser Zeichen“ (Fallnummer). Unveränderte Vorgängerfassungen werden ersetzt.
 		'RUNDFUNKBEITRAG_ABMELDUNG.docx' => ['cfdd239c992aa737db4428cc7d1179d7bcb6ddd42d7d55a5ee557b6bfceb6c7b'],
@@ -38,6 +40,9 @@ class DocumentService {
 		'ABMELDUNG_STANDARD_BRIEF.txt' => ['241f503dad223ed60c949df1fce1a8cd96038890ff3358bf1a817d36056bbd27'],
 		'ABMELDUNG_STANDARD_EMAIL.txt' => ['0a9217aae6c9056744bcefc967cc7ef41c92c76d5172f20130053551f394c5a0'],
 		'RENTENSERVICE_ABMELDUNG.txt' => ['06b466334c3401e91c29e4dcdf2d276d6609ad36336d13758eddf220218cb735'],
+		// 0.92.7: Rentenservice-Formular übernimmt Absender, bisherige Anschrift, Eheschließung sowie Vorschussantrag und
+		// Witwe/Witwer aus der Abmeldung (Knopf „Formular erzeugen und anhängen“). Die Fassung bis 0.92.6 (f48fc6…) wird ersetzt.
+		'DP_RS_AENDERUNGSFORMULAR_BEARBEITBAR.docx' => ['f48fc6c9d3551f9e6182303189098d5bdc3dfc9000655f7bee3849b97de2a00e'],
 	];
 
 	public function __construct(
@@ -603,6 +608,7 @@ class DocumentService {
 			'branch_tax_number' => '60/123/45678',
 			'branch_register' => 'Amtsgericht Bremen HRB 12345',
 			'branch_managing_directors' => 'Sabine Kowalski, Peter Nowak',
+			'branch_legal_line' => 'USt-IdNr. DE123456789  ·  St.-Nr. 60/123/45678  ·  Amtsgericht Bremen HRB 12345  ·  Geschäftsführung: Sabine Kowalski, Peter Nowak',
 		];
 		$case = [
 			'id' => 0, 'caseNumber' => '2026-0000', 'firstName' => 'Maria', 'lastName' => 'Mustermann',
@@ -847,6 +853,14 @@ class DocumentService {
 			'bank_account_holder' => (string)($paymentBranch['accountHolder'] ?? ''), 'bank_name' => (string)($paymentBranch['bankName'] ?? ''), 'bank_iban' => (string)($paymentBranch['iban'] ?? ''), 'bank_bic' => (string)($paymentBranch['bic'] ?? ''),
 			'branch_vat_id' => (string)($branch['vatId'] ?? ''), 'branch_tax_number' => (string)($branch['taxNumber'] ?? ''), 'branch_register' => trim((string)($branch['registerCourt'] ?? '') . ' ' . (string)($branch['registerNumber'] ?? '')),
 			'branch_managing_directors' => (string)($branch['managingDirectors'] ?? ''),
+			// 0.92.9: Pflichtangaben im Fuß von Rechnung und Korrektur als eine Zeile – leere Angaben entfallen samt Bezeichnung
+			// (vorher stand z. B. „Geschäftsführung:“ ohne Namen auf der Rechnung).
+			'branch_legal_line' => self::legalLine([
+				'USt-IdNr. ' => (string)($branch['vatId'] ?? ''),
+				'St.-Nr. ' => (string)($branch['taxNumber'] ?? ''),
+				'' => trim((string)($branch['registerCourt'] ?? '') . ' ' . (string)($branch['registerNumber'] ?? '')),
+				'Geschäftsführung: ' => (string)($branch['managingDirectors'] ?? ''),
+			]),
 			// 0.70.0: Korrekturbelege (Vorlage KORREKTUR.docx)
 			'invoice_document_kind' => (string)($invoice['documentKind'] ?? 'INVOICE'),
 			'invoice_reference_number' => (string)($invoice['referenceInvoiceNumber'] ?? ''),
@@ -1246,7 +1260,7 @@ class DocumentService {
 		];
 	}
 
-	public function generateTemplate(array $case, string $templateKey, string $status = 'ENTWURF', bool $createPdf = true, bool $allowIncomplete = false, ?array $costingOverride = null, int $scheduleId = 0, ?string $embeddedPaymentQr = null, ?string $outputStatusLabel = null, bool $allowImmutableOutputReplacement = false, bool $replaceExistingOutput = true, ?string $outputTitle = null): array {
+	public function generateTemplate(array $case, string $templateKey, string $status = 'ENTWURF', bool $createPdf = true, bool $allowIncomplete = false, ?array $costingOverride = null, int $scheduleId = 0, ?string $embeddedPaymentQr = null, ?string $outputStatusLabel = null, bool $allowImmutableOutputReplacement = false, bool $replaceExistingOutput = true, ?string $outputTitle = null, array $extraPlaceholders = []): array {
 		if (!class_exists(\ZipArchive::class)) {
 			throw new \RuntimeException('Die PHP-Erweiterung ZipArchive wird für DOCX-Vorlagen benötigt.');
 		}
@@ -1278,7 +1292,8 @@ class DocumentService {
 		);
 		$templateContent = (string)$template->getContent();
 		$templateSource = $this->templateNodeFingerprint($template, $templateContent);
-		$content = $this->replaceDocx($templateContent, $this->placeholderData($case, $costing), $costing['items'] ?? [], $embeddedPaymentQr, $this->caseBranchKey($case));
+		// 0.92.7: Zusatzwerte (z. B. Vorschussantrag aus einer Abmeldung) haben Vorrang vor den Falldaten.
+		$content = $this->replaceDocx($templateContent, array_merge($this->placeholderData($case, $costing), $extraPlaceholders), $costing['items'] ?? [], $embeddedPaymentQr, $this->caseBranchKey($case));
 		// 0.70.1: Belegnummern wie „RE-2026-000012“ im Dateinamen unverändert lassen (nicht „RE - 2026 - 000012“).
 		$safeTitle = $outputTitle !== null && trim($outputTitle) !== '' ? $this->safeOutputTitle($outputTitle, true) : $this->safeOutputTitle((string)$definition['title']);
 		$masterData = is_array($case['masterData'] ?? null) ? $case['masterData'] : [];
@@ -2445,6 +2460,9 @@ class DocumentService {
 			'{{branch.name}}' => $value('branch'), '{{standesamt}}' => $value('registry_office'),
 			'{{case.branch_name}}' => (string)($branch['name'] ?? $value('branch')), '{{case.branch_address}}' => trim(implode(', ', array_filter([(string)($branch['street'] ?? ''), trim((string)($branch['postalCode'] ?? '') . ' ' . (string)($branch['city'] ?? ''))]))),
 			'{{case.branch_phone}}' => (string)($branch['phone'] ?? ''), '{{case.branch_email}}' => (string)($branch['email'] ?? ''), '{{case.branch_city}}' => (string)($branch['city'] ?? ''),
+			'{{case.branch_street}}' => (string)($branch['street'] ?? ''), '{{case.branch_postal_city}}' => trim((string)($branch['postalCode'] ?? '') . ' ' . (string)($branch['city'] ?? '')),
+			// 0.92.7: Vorschussantrag (Rentenservice) – gefüllt nur über „Formular erzeugen und anhängen“ in der Abmeldung.
+			'{{advance.application_mark}}' => '☐', '{{advance.applicant_name_address}}' => '',
 			'{{case.current_date}}' => date('d.m.Y'), '{{case.recipient_name}}' => $value('recipient_name'), '{{case.recipient_address}}' => $value('recipient_address'),
 			'{{deceased_name}}' => trim((string)$case['firstName'] . ' ' . (string)$case['lastName']),
 			'{{funeral_event.date}}' => $value('funeral_event_date'), '{{funeral_event.date_iso}}' => $value('funeral_event_date_iso'),
@@ -2693,6 +2711,18 @@ class DocumentService {
 		return rtrim(rtrim(number_format($value, 3, ',', ''), '0'), ',');
 	}
 	/** Einheit in der Mengenspalte von KVA, Auftrag und Rechnung; Pauschalen erscheinen nur mit der Menge („1“). */
+	/** 0.92.9: Bezeichnung => Wert; nur gefüllte Angaben, getrennt durch „  ·  “. */
+	public static function legalLine(array $parts): string {
+		$items = [];
+		foreach ($parts as $label => $value) {
+			$value = trim((string)$value);
+			if ($value !== '') {
+				$items[] = $label . $value;
+			}
+		}
+		return implode('  ·  ', $items);
+	}
+
 	private function unitLabel(string $unit): string {
 		return ['STK' => 'Stk.', 'PAUSCHAL' => '', 'SATZ' => 'Satz', 'PERS' => 'Pers.', 'STD' => 'Std.', 'KM' => 'km', 'TAG' => 'Tage', 'KG' => 'kg', 'L' => 'l'][$unit] ?? $unit;
 	}

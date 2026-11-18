@@ -2569,3 +2569,35 @@ html.bp-signing #header { visibility: hidden; }
 /* 0.92.2: nicht gefundene Nextcloud-Gruppe direkt am Feld der Installationsparameter, mit Knopf zum Übernehmen der Gruppen-ID */
 #bestatter-app .bp-group-check { display: block; margin-top: 4px; line-height: 1.4; }
 #bestatter-app .bp-group-check .bp-group-suggest { font-weight: 600; }
+
+/* 0.92.9: Nextcloud setzt für jede Tabelle white-space: nowrap (core/server.css). Dadurch brachen Beschreibungen, Hinweise
+   und Spaltenköpfe nie um, und breite Tabellen (Dokumentarten, Terminarten, Zuschlagsstaffeln, Leistungen, Finanzen) liefen
+   bei 1440 px über den Rand; Aktionsknöpfe lagen außerhalb. Text in Tabellen der App bricht jetzt wie im übrigen Inhalt um;
+   Beträge, Zahlen und Knopfbeschriftungen bleiben einzeilig. */
+#bestatter-app table { white-space: normal; }
+#bestatter-app table td.number, #bestatter-app table th.number, #bestatter-app table .bp-money, #bestatter-app table button, #bestatter-app table .bp-status-chip { white-space: nowrap; }
+#bestatter-app .bp-table-wrap { width: 100%; overflow-x: auto; }
+/* 0.92.9: Länderprofile – Felder bleiben in der Karte (vorher ragte „Standard-Zahlungs-QR“ aus Karte und Fenster) */
+#bestatter-app .bp-country-profile { min-width: 0; }
+#bestatter-app .bp-country-profile .bp-form-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+#bestatter-app .bp-country-profile .bp-form-grid > label, #bestatter-app .bp-country-profile .bp-form-grid select, #bestatter-app .bp-country-profile .bp-form-grid input { min-width: 0; max-width: 100%; }
+/* 0.92.9: Terminarten und Zuschlagsstaffeln schmaler; Zahlenfelder zeigen dreistellige Werte („90“ statt „9..“) */
+#bestatter-app .bp-scheduling-admin td:nth-child(1) { min-width: 110px; }
+#bestatter-app .bp-scheduling-admin td:nth-child(2) { min-width: 160px; }
+#bestatter-app .bp-scheduling-admin td:nth-child(3) { min-width: 140px; }
+#bestatter-app .bp-surcharge-admin td:nth-child(2), #bestatter-app .bp-surcharge-admin td:nth-child(6) { min-width: 160px; }
+#bestatter-app .bp-surcharge-admin td:nth-child(3) { min-width: 120px; }
+#bestatter-app :is(.bp-scheduling-admin, .bp-surcharge-admin, .bp-services-section, .bp-finances) td input[type="number"] { min-width: 7ch; padding-inline: 8px; appearance: textfield; -moz-appearance: textfield; }
+#bestatter-app :is(.bp-scheduling-admin, .bp-surcharge-admin, .bp-services-section, .bp-finances) td input[type="number"]::-webkit-inner-spin-button,
+#bestatter-app :is(.bp-scheduling-admin, .bp-surcharge-admin, .bp-services-section, .bp-finances) td input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* 0.92.9: Bleibt eine Bearbeitungstabelle breiter als der Inhaltsbereich, steht die letzte Spalte (Speichern, Entfernen,
+   Aktionen) fest am rechten Rand und ist ohne Querscrollen erreichbar. */
+#bestatter-app :is(.bp-scheduling-admin, .bp-surcharge-admin, .bp-services-section, .bp-finances, .bp-document-kinds-admin) :is(.bp-table-scroll, .bp-table-wrap) :is(td, th):last-child { position: sticky; right: 0; z-index: 1; background: var(--color-main-background, #fff); box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .28); }
+#bestatter-app :is(.bp-scheduling-admin, .bp-surcharge-admin, .bp-services-section, .bp-finances, .bp-document-kinds-admin) :is(.bp-table-scroll, .bp-table-wrap) th:last-child { background: #edf4f5; }
+#bestatter-app .bp-services-section .bp-service-row-error > td:last-child { background: color-mix(in srgb, #c62828 7%, var(--color-main-background, #fff)); }
+#bestatter-app .bp-services-section .bp-service-row-warning > td:last-child { background: color-mix(in srgb, #f9a825 10%, var(--color-main-background, #fff)); }
+#bestatter-app .bp-services-section .bp-service-row-invoiced > td:last-child { background: color-mix(in srgb, var(--bp-muted) 7%, var(--bp-surface, #fff)); }
+#bestatter-app .bp-services-section .bp-service-row-package > td:last-child { background: color-mix(in srgb, var(--bp-soft, #eef4f5) 70%, var(--color-main-background, #fff)); }
+#bestatter-app .bp-services-section td:nth-child(2) { width: 150px; }
+#bestatter-app .bp-services-section td:nth-child(2) input { width: 100%; min-width: 0; }
+#bestatter-app .bp-scheduling-admin td summary { white-space: normal; }

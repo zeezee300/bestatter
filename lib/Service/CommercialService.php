@@ -142,6 +142,11 @@ class CommercialService {
 		if ($type === 'ORDER' && trim((string)($input['commissioningType'] ?? $master['commissioning_type'] ?? '')) === '') {
 			$errors[] = $issue('COMMISSIONING_TYPE', 'Art der Beauftragung', 'Die Art der Beauftragung fehlt.', 'commissioning_type');
 		}
+		// 0.92.9: Ohne Ort des Vertragsschlusses ließ sich der Auftrag festschreiben, die Auftrags-PDF scheiterte danach
+		// (DocumentService verlangt das Feld für BESTATTUNGSAUFTRAG). Er entscheidet über die Widerrufsbelehrung.
+		if ($type === 'ORDER' && !array_key_exists(strtoupper(trim((string)($input['contractConclusion'] ?? $master['order_contract_conclusion'] ?? ''))), DocumentService::CONTRACT_CONCLUSIONS)) {
+			$errors[] = $issue('CONTRACT_CONCLUSION', 'Vertragsschluss', 'Bitte unter „Vertragsschluss und Vollmacht“ angeben, wo der Vertrag geschlossen wird (Geschäftsräume, außerhalb oder Fernabsatz) – davon hängt die Widerrufsbelehrung ab.', 'order_contract_conclusion');
+		}
 		if ($type === 'ORDER' && strtoupper((string)($master['order_mode'] ?? 'A')) !== 'A') {
 			$errors[] = $issue('ORDER_MODE', 'Dokumentart', 'Ein direkter Auftrag kann nur im Modus Auftrag festgeschrieben werden.', 'order_mode');
 		}
@@ -1080,7 +1085,10 @@ class CommercialService {
 		$q->insert('bestatter_commercial_docs')->values(['case_id' => $q->createNamedParameter($caseId),'side_order_id' => $q->createNamedParameter($sideOrderId),'document_type' => $q->createNamedParameter($type),'document_number' => $q->createNamedParameter($number),'version_no' => $q->createNamedParameter($version),'status' => $q->createNamedParameter($status),'source_document_id' => $q->createNamedParameter($source),'snapshot' => $q->createNamedParameter(json_encode($snapshot, JSON_THROW_ON_ERROR)),'net_cents' => $q->createNamedParameter($totals['netCents']),'vat_cents' => $q->createNamedParameter($totals['vatCents']),'gross_cents' => $q->createNamedParameter($totals['grossCents']),'created_by' => $q->createNamedParameter($this->uid()),'created_at' => $q->createNamedParameter(date('c'))]);
 		try {
 			$q->executeStatement();
-		} catch (\Doctrine\DBAL\Exception\UniqueConstraintViolationException) {
+		} catch (\Throwable $error) {
+			if (!DbErrors::isUniqueViolation($error)) {
+				throw $error;
+			}
 			throw new \InvalidArgumentException('Für diesen Beleg (' . $type . ' ' . $number . ', Version ' . $version . ') besteht bereits ein Eintrag. Bitte die Fallübersicht neu laden.');
 		}
 		return (int)$this->db->lastInsertId('bestatter_commercial_docs');
